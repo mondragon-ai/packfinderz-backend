@@ -4,3 +4,7 @@
 # Docs / agent config (DO NOT COMMIT)
 AGENTS.md
 docs/prompt_template.md
+
+# Env Vars
+.env
+pack-finderz-9ea7d1c84b4e.json
