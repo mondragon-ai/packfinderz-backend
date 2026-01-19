@@ -1,20 +1,26 @@
 package responses
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"log"
 	"net/http"
 
 	pkgerrors "github.com/angelmondragon/packfinderz-backend/pkg/errors"
+	"github.com/angelmondragon/packfinderz-backend/pkg/logger"
 	"github.com/angelmondragon/packfinderz-backend/pkg/types"
 )
 
-func WriteSuccess(w http.ResponseWriter, status int, data any) {
+func WriteSuccess(w http.ResponseWriter, data any) {
+	WriteSuccessStatus(w, http.StatusOK, data)
+}
+
+func WriteSuccessStatus(w http.ResponseWriter, status int, data any) {
 	writeJSON(w, status, types.SuccessEnvelope{Data: data})
 }
 
-func WriteError(w http.ResponseWriter, err error) {
+func WriteError(ctx context.Context, logg *logger.Logger, w http.ResponseWriter, err error) {
 	if err == nil {
 		err = errors.New("unknown error")
 	}
@@ -33,6 +39,10 @@ func WriteError(w http.ResponseWriter, err error) {
 		if details := typed.Details(); details != nil {
 			payload.Error.Details = details
 		}
+	}
+	if logg != nil {
+		ctx = logg.WithField(ctx, "error_code", string(typed.Code()))
+		logg.Error(ctx, "request.error", err)
 	}
 	writeJSON(w, meta.HTTPStatus, payload)
 }

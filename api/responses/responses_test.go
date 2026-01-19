@@ -1,19 +1,22 @@
 package responses
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
 	pkgerrors "github.com/angelmondragon/packfinderz-backend/pkg/errors"
+	"github.com/angelmondragon/packfinderz-backend/pkg/logger"
 	"github.com/angelmondragon/packfinderz-backend/pkg/types"
 )
 
 func TestWriteSuccess(t *testing.T) {
 	w := httptest.NewRecorder()
-	WriteSuccess(w, http.StatusOK, map[string]string{"hello": "world"})
+	WriteSuccess(w, map[string]string{"hello": "world"})
 
 	if got := w.Code; got != http.StatusOK {
 		t.Fatalf("expected status 200 but got %d", got)
@@ -32,7 +35,7 @@ func TestWriteErrorMapsTypedError(t *testing.T) {
 	w := httptest.NewRecorder()
 	err := pkgerrors.New(pkgerrors.CodeValidation, "bad input").
 		WithDetails(map[string]string{"field": "demo"})
-	WriteError(w, err)
+	WriteError(context.Background(), logger.New(logger.Options{ServiceName: "test", Output: io.Discard}), w, err)
 
 	if got := w.Code; got != http.StatusBadRequest {
 		t.Fatalf("expected status 400 but got %d", got)
@@ -52,7 +55,7 @@ func TestWriteErrorMapsTypedError(t *testing.T) {
 
 func TestWriteErrorDefaultsToInternalForUntrustedErrors(t *testing.T) {
 	w := httptest.NewRecorder()
-	WriteError(w, errors.New("boom"))
+	WriteError(context.Background(), logger.New(logger.Options{ServiceName: "test", Output: io.Discard}), w, errors.New("boom"))
 
 	if got := w.Code; got != http.StatusInternalServerError {
 		t.Fatalf("expected status 500 but got %d", got)

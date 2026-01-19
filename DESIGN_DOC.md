@@ -389,8 +389,16 @@ Manifest approach (MVP):
 
 ---
 
-## 16) Error Handling (Canonical)
+## 16) Observability & Logging
 
+* Use `pkg/logger` to emit structured JSON logs across API and worker binaries, configured via `PACKFINDERZ_LOG_LEVEL` and `PACKFINDERZ_LOG_WARN_STACK`.
+* HTTP middleware must mint a `request_id`, attach it to the `X-Request-Id` response header, and log the lifecycle events (`request.start`, `request.complete`) with method, path, status, and duration fields so traces stay correlatable.
+* Workers reuse the same logger, seed contexts with job metadata, and propagate upstream `request_id`s (e.g., from outbox payloads) before emitting logs.
+* `Error` logs always include stack traces while warnings include them when debug mode is enabled via the warn-stack flag.
+
+---
+
+## 17) Error Handling (Canonical)
 * A global `pkg/errors` package holds typed `Code` values plus metadata (`http_status`, `retryable`, `public_message`, `details_allowed`); domain services must build errors with `pkg/errors.New`/`Wrap` so API handlers can rely on known semantics instead of ad-hoc strings.
 * `pkg/types` defines `SuccessEnvelope`, `APIError`, and `ErrorEnvelope` while `api/responses.WriteSuccess` / `WriteError` set HTTP headers/status and wrap payloads into the canonical envelope (`{"data":…}` or `{"error":{…}}`).
 * Metadata drives canonical mapping: validation → `400`, authentication/authorization → `401`/`403`, not found → `404`, conflicts/state → `409`/`422`, and all unknown/internal errors → `500` with the safe public message defined in metadata.

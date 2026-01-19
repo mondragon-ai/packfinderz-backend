@@ -38,8 +38,10 @@ func Load() (*Config, error) {
 }
 
 type AppConfig struct {
-	Env  string `required:"true"`
-	Port string `required:"true"`
+	Env          string `required:"true"`
+	Port         string `required:"true"`
+	LogLevel     string `envconfig:"PACKFINDERZ_LOG_LEVEL" default:"info"`
+	LogWarnStack bool   `envconfig:"PACKFINDERZ_LOG_WARN_STACK" default:"false"`
 }
 
 type ServiceConfig struct {
