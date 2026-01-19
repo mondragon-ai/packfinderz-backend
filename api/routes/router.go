@@ -26,6 +26,7 @@ func NewRouter(cfg *config.Config, logg *logger.Logger) http.Handler {
 
 	r.Route("/api/public", func(r chi.Router) {
 		r.Get("/ping", controllers.PublicPing())
+		r.Post("/validate", controllers.PublicValidate(logg))
 	})
 
 	r.Route("/api", func(r chi.Router) {

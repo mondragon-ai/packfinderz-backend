@@ -404,9 +404,7 @@ Implement a reusable request validation layer so all endpoints validate input ea
 
 ---
 
-## Title (number 8-N) => [PF-008]
-
-Health endpoints for API (liveness + readiness with DB+Redis checks)
+## [PF-008] Health endpoints for API (liveness + readiness with DB+Redis checks)
 
 ## Type
 
@@ -456,9 +454,7 @@ Implement health endpoints for the API binary. Liveness must only reflect proces
 
 ---
 
-## Title (number 9-N) => [PF-009]
-
-Postgres bootstrap (Cloud SQL + Heroku-compatible) and dev proxy automation
+## [PF-009]: Postgres bootstrap (Cloud SQL + Heroku-compatible) and dev proxy automation
 
 ## Type
 

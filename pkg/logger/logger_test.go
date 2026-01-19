@@ -19,10 +19,10 @@ func TestLoggerErrorIncludesContextFields(t *testing.T) {
 	log.Error(ctx, "boom", errors.New("boom"))
 
 	if !bytes.Contains(buf.Bytes(), []byte("\"request_id\"")) {
-		t.Fatalf("expected request_id to be preserved")
+		t.Fatalf("expected request_id to be preserved; entry=%s", buf.String())
 	}
 	if !bytes.Contains(buf.Bytes(), []byte("\"stack\"")) {
-		t.Fatalf("expected stack trace on error")
+		t.Fatalf("expected stack trace on error; entry=%s", buf.String())
 	}
 }
 

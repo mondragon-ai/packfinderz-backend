@@ -4,6 +4,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/angelmondragon/packfinderz-backend/pkg/config"
@@ -30,7 +31,7 @@ func TestHealthGroupAccessible(t *testing.T) {
 
 func TestPrivateGroupRejectsMissingJWT(t *testing.T) {
 	router := newTestRouter()
-	req := httptest.NewRequest(http.MethodGet, "/api/private/ping", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/ping", nil)
 	resp := httptest.NewRecorder()
 	router.ServeHTTP(resp, req)
 	if resp.Code != http.StatusUnauthorized {
@@ -70,11 +71,34 @@ func TestAgentGroupRequiresAgentRole(t *testing.T) {
 
 func TestPrivateGroupSucceedsWithJWT(t *testing.T) {
 	router := newTestRouter()
-	req := httptest.NewRequest(http.MethodGet, "/api/private/ping", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/ping", nil)
 	req.Header.Set("Authorization", "Bearer patti|buyer|store-xyz")
 	resp := httptest.NewRecorder()
 	router.ServeHTTP(resp, req)
 	if resp.Code != http.StatusOK {
 		t.Fatalf("expected 200 for private ping got %d", resp.Code)
+	}
+}
+
+func TestPublicValidateRejectsBadJSON(t *testing.T) {
+	router := newTestRouter()
+	req := httptest.NewRequest(http.MethodPost, "/api/public/validate", strings.NewReader("{"))
+	req.Header.Set("Content-Type", "application/json")
+	resp := httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+	if resp.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for invalid payload got %d", resp.Code)
+	}
+}
+
+func TestPublicValidateAcceptsGoodJSON(t *testing.T) {
+	router := newTestRouter()
+	body := `{"name":"Zed","email":"zed@example.com"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/public/validate", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	resp := httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("expected 200 for valid payload got %d", resp.Code)
 	}
 }

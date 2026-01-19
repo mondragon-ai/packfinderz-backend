@@ -4,11 +4,11 @@ import (
 	"context"
 	"io"
 	"os"
+	"runtime/debug"
 	"strings"
 	"time"
 
 	"github.com/rs/zerolog"
-	"github.com/rs/zerolog/pkgerrors"
 )
 
 // Options configures the structured logger.
@@ -33,7 +33,6 @@ func New(opts Options) *Logger {
 	if opts.Level == zerolog.NoLevel {
 		opts.Level = zerolog.InfoLevel
 	}
-	zerolog.ErrorStackMarshaler = pkgerrors.MarshalStack
 	zerolog.TimeFieldFormat = time.RFC3339Nano
 	logger := zerolog.New(opts.Output).With().Timestamp().Str("service", opts.ServiceName).Logger().Level(opts.Level)
 	return &Logger{base: &logger, warnStack: opts.WarnStack}
@@ -102,7 +101,7 @@ func (l *Logger) Info(ctx context.Context, msg string) {
 func (l *Logger) Warn(ctx context.Context, msg string) {
 	event := l.loggerFromContext(ctx).Warn()
 	if l.warnStack {
-		event = event.Stack()
+		event = event.Str("stack", stackTrace())
 	}
 	event.Msg(msg)
 }
@@ -112,5 +111,9 @@ func (l *Logger) Error(ctx context.Context, msg string, err error) {
 	if err != nil {
 		event = event.Err(err)
 	}
-	event.Stack().Msg(msg)
+	event.Str("stack", stackTrace()).Msg(msg)
+}
+
+func stackTrace() string {
+	return strings.TrimSpace(string(debug.Stack()))
 }

@@ -7,14 +7,12 @@ import (
 
 var ErrInvalidToken = errors.New("invalid auth token")
 
-// Claims holds the minimal data we track from JWTs.
 type Claims struct {
 	UserID  string
 	Role    string
 	StoreID string
 }
 
-// ParseAuthToken accepts Authorization header values like "Bearer user|role|store".
 func ParseAuthToken(raw string) (Claims, error) {
 	if raw == "" {
 		return Claims{}, ErrInvalidToken
