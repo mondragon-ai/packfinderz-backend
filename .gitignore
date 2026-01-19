@@ -1,3 +1,6 @@
-.gocache
+# Go
+.gocache/
 
+# Docs / agent config (DO NOT COMMIT)
 AGENTS.md
+docs/prompt_template.md
