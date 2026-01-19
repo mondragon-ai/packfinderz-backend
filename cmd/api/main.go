@@ -3,7 +3,6 @@ package main
 import (
 	"log"
 	"net/http"
-	"os"
 
 	"github.com/angelmondragon/packfinderz-backend/api"
 	"github.com/angelmondragon/packfinderz-backend/pkg/config"
@@ -15,9 +14,6 @@ func main() {
 	if err := godotenv.Load(); err != nil {
 		log.Println(`{"level":"warn","msg":".env file not found, relying on environment"}`)
 	}
-	log.Printf("ENV PREFIX = %q", config.EnvPrefix)
-	log.Printf("PACKFINDERZ_APP_ENV = %q", os.Getenv("PACKFINDERZ_APP_ENV"))
-	log.Printf("APP_ENV = %q", os.Getenv("APP_ENV"))
 
 	cfg, err := config.Load()
 	if err != nil {

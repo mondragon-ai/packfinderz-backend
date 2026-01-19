@@ -1,4 +1,6 @@
-## [PF-000] Initialize Go Monorepo with API and Worker Binaries
+## Title (number 0-N) => [PF-000]
+
+Initialize Go monorepo with `cmd/api` and `cmd/worker` binaries
 
 ## Type
 
@@ -6,41 +8,43 @@ Infra
 
 ## Description
 
-Initialize a single Go monorepo with multiple binaries to support the PackFinderz API and background workers. This establishes the foundation for synchronous API logic and async/event-driven processing.
+Create the PackFinderz Go monorepo foundation with two primary binaries: the HTTP API (`cmd/api`) and the async worker (`cmd/worker`). This establishes the build/deploy model (Heroku web + worker dynos) and the executable entrypoints for future modules (outbox publisher, schedulers, Pub/Sub consumers).
 
 ## Scope
 
-* Create Go module
-* Add `cmd/api` binary for HTTP API
-* Add `cmd/worker` binary for async workers (outbox publisher, schedulers, consumers)
-* Shared module versioning and dependency management
+* Create Go module and pin Go version
+* Add `cmd/api/main.go` placeholder that boots and blocks
+* Add `cmd/worker/main.go` placeholder that boots and blocks
+* Ensure binaries compile independently (`go build ./cmd/api`, `go build ./cmd/worker`)
 
 ## Acceptance Criteria
 
-* [ ] `go mod init` completed with reproducible builds
-* [ ] `cmd/api/main.go` builds and starts
-* [ ] `cmd/worker/main.go` builds and starts
-* [ ] Binaries can be built independently
+* [ ] Repo builds with pinned Go version (e.g., `go.mod` + toolchain directive if used)
+* [ ] `go build ./cmd/api` succeeds
+* [ ] `go build ./cmd/worker` succeeds
+* [ ] Both binaries run and exit cleanly on SIGINT/SIGTERM (placeholder shutdown hooks ok)
 
 ## Dependencies
 
 * Blocked by: none
-* Blocks: all other Phase 0 tickets
+* Blocks: PF-001+
 
 ## Technical Notes
 
-* Go version pinned (e.g. 1.22.x)
-* No business logic yet
-* **ASSUMPTION:** single repo, no microservices split
+* **ASSUMPTION:** Go 1.22.x
+* No business logic, routes, or workers implemented here.
 
 ## Out of Scope
 
-* Any API routes
-* Any workers beyond placeholders
+* Any domain modules
+* Any HTTP routing/middleware
+* Any Pub/Sub integration
 
 ---
 
-## [PF-001] Define Canonical Project Layout and Module Boundaries
+## Title (number 1-N) => [PF-001]
+
+Define canonical project layout + module boundaries (`cmd/`, `api/`, `internal/`, `pkg/`)
 
 ## Type
 
@@ -48,43 +52,51 @@ Task
 
 ## Description
 
-Define and document the canonical PackFinderz Go project layout to enforce consistency across domains, binaries, and shared infrastructure.
+Establish the canonical PackFinderz repo structure and enforce ownership boundaries so shared code is discoverable (in `pkg/`) and domain code remains isolated (`internal/<domain>`). This prevents duplication of enums/types/helpers and avoids circular dependencies as the codebase grows.
 
 ## Scope
 
-* Define directories:
+* Create directories:
 
-  * `cmd/`
-  * `internal/`
-  * `pkg/`
-  * `api/`
-* Establish ownership rules for shared vs domain-specific code
-* Add README explaining structure
+  * `cmd/` (binaries)
+  * `api/` (HTTP wiring: routes/controllers/middleware/validators/responses)
+  * `internal/` (domain modules: services/repos/DTOs)
+  * `pkg/` (global: enums/types/errors/infra helpers)
+* Add documentation describing:
+
+  * what goes in each folder
+  * import rules (who can import whom)
+  * where “global helpers” live (networking, geocoding, etc.)
+* Add skeleton packages for:
+
+  * `pkg/enums`, `pkg/types`, `pkg/errors`
 
 ## Acceptance Criteria
 
-* [ ] Directory structure committed
-* [ ] README documents allowed imports and boundaries
-* [ ] No circular dependencies between internal modules
+* [ ] Repo contains the canonical directory layout
+* [ ] A README (or `docs/structure.md`) documents module boundaries and import rules
+* [ ] `pkg/enums`, `pkg/types`, `pkg/errors` exist and are referenced as the canonical home for shared shapes
 
 ## Dependencies
 
 * Blocked by: PF-000
-* Blocks: all feature work
+* Blocks: PF-004, PF-005, PF-006, domain feature work
 
 ## Technical Notes
 
-* `internal/<domain>` holds services, repos, DTOs
-* `pkg/` holds shared infra (db, redis, logging, auth utils)
-* `api/` holds HTTP wiring only (handlers, middleware)
+* Shared concerns SHOULD live in `pkg/*`; API-only concerns live in `api/*`.
+* **ASSUMPTION:** tooling/docs live in `docs/` (or root README) as preferred.
 
 ## Out of Scope
 
-* Business logic implementation
+* Implementing business logic or schemas
+* Implementing any specific API endpoints beyond placeholders
 
 ---
 
-## [PF-002] Environment-Only Typed Config Loader
+## Title (number 2-N) => [PF-002]
+
+Add env-only typed config loader used by API + worker
 
 ## Type
 
@@ -92,38 +104,45 @@ Task
 
 ## Description
 
-Add a typed configuration system that loads **only from environment variables**, shared across API and worker binaries.
+Implement a typed configuration loader that reads from environment variables only, validates required values, and is shared by both `cmd/api` and `cmd/worker`. This is the single source of truth for runtime configuration.
 
 ## Scope
 
-* Typed `Config` struct
-* Env parsing with validation
-* Fail-fast on missing required vars
-* Separate config sections (DB, Redis, JWT, GCP, Stripe)
+* Create `pkg/config` with:
+
+  * typed `Config` struct (nested sections: DB, Redis, Auth/JWT, GCP, Logging, Runtime)
+  * env parsing + validation
+  * fail-fast behavior on missing/invalid required vars
+* Provide a single constructor (e.g., `config.Load()`) used by both binaries
+* Support “service account JSON as env text” pattern:
+
+  * load JSON string from env
+  * optionally write to temp file when a library requires a path (**ASSUMPTION:** required for Cloud SQL Proxy auth or GCP SDK in some cases)
 
 ## Acceptance Criteria
 
-* [ ] App fails on startup if required env missing
-* [ ] Config is injectable into binaries
-* [ ] No `.env` files checked into repo
+* [ ] `cmd/api` and `cmd/worker` both load config via `pkg/config`
+* [ ] Process exits with clear error messages when required env vars are missing/invalid
+* [ ] No config values are hard-coded in code
 
 ## Dependencies
 
 * Blocked by: PF-001
-* Blocks: DB, Redis, API startup
+* Blocks: PF-003, PF-004, PF-006, PF-009, PF-010, PF-016
 
 ## Technical Notes
 
-* Use `envconfig` or equivalent
-* **ASSUMPTION:** no dynamic config reload in MVP
+* **ASSUMPTION:** configuration is not hot-reloaded in MVP.
+* Avoid logging secrets; only log which keys are missing.
 
 ## Out of Scope
 
-* Secrets management implementation (handled by platform)
+* Secrets manager integration (Heroku config vars / GCP Secret Manager handled later)
+* `.env` file tooling (allowed locally but not committed)
 
 ---
 
-## [PF-003] Define Environment Variable Manifest (Dev vs Prod)
+## Define required env var manifest (dev vs prod)
 
 ## Type
 
@@ -131,37 +150,40 @@ Chore
 
 ## Description
 
-Create a documented manifest of required environment variables for development and production.
+Create a clear manifest of required environment variables for dev and prod that matches `pkg/config`. This is used for onboarding, CI, and deploy safety.
 
 ## Scope
 
-* List required env vars
-* Indicate dev-only vs prod-only
-* Document example values (non-secret)
+* Add `ENV_VARS.md` (or `docs/env.md`) that:
+
+  * lists all required env vars
+  * indicates dev-only/prod-only
+  * provides non-secret example formats
+  * documents the “service account JSON as text” convention and temp-file behavior
+* Ensure it stays synchronized with `pkg/config` fields
 
 ## Acceptance Criteria
 
-* [ ] `ENV_VARS.md` exists
-* [ ] Variables grouped by subsystem
-* [ ] Matches config loader exactly
+* [ ] Env var manifest exists and matches config loader keys exactly
+* [ ] Manifest clearly distinguishes dev vs prod variables
+* [ ] No secrets are included in the manifest
 
 ## Dependencies
 
 * Blocked by: PF-002
-* Blocks: CI, onboarding contributors
+* Blocks: PF-015, PF-017
 
 ## Technical Notes
 
-* Do not include secrets
-* Reference Heroku/GCP conventions
+* Include sections for: DB, Redis, JWT/Auth, GCP, Logging, Runtime, Proxy settings.
 
 ## Out of Scope
 
-* Automated env provisioning
+* Automated env provisioning scripts
 
 ---
 
-## [PF-004] Structured JSON Logger with Request ID Propagation
+##  [PF-004] Implement structured JSON logger (global) with request/job correlation + optional stack traces
 
 ## Type
 
@@ -169,38 +191,54 @@ Task
 
 ## Description
 
-Implement a structured JSON logger used across API and workers, with request/job correlation via `request_id`.
+Add a structured JSON logger usable across the entire codebase (API + workers), with request/job correlation and optional stack traces for warnings during debugging. This enables consistent observability and faster debugging without ad-hoc `fmt.Println`.
 
 ## Scope
 
-* JSON log format
-* Logger initialization in binaries
-* Request ID middleware for API
-* Propagation into workers via payload
+* Create `pkg/observability/logger`:
+
+  * initialization from config (level, dev/prod mode)
+  * structured JSON output
+  * `log.Error(ctx, msg, err)`-style API (ctx-aware)
+  * helpers to attach fields: `request_id`, `user_id`, `store_id`, `actor_role`, etc.
+* API integration:
+
+  * middleware generates/propagates `request_id`
+  * ensures all request logs include `request_id`
+* Worker integration:
+
+  * standard way to set “job context” fields (e.g., `request_id` from outbox payload when present)
+* Stack traces:
+
+  * included on `Error` by default
+  * **optionally** attachable to `Warn` via config flag (debug mode)
 
 ## Acceptance Criteria
 
-* [ ] All logs are structured JSON
-* [ ] API logs include `request_id`
-* [ ] Worker logs include originating `request_id` when available
+* [ ] Logs are JSON across API and workers (no unstructured default output)
+* [ ] `request_id` is present on all HTTP request logs
+* [ ] Worker logs can include `request_id` when available from upstream event payloads
+* [ ] Stack traces appear on `Error`, and can be enabled for `Warn` via config toggle
 
 ## Dependencies
 
-* Blocked by: PF-002
-* Blocks: observability, debugging
+* Blocked by: PF-002, PF-001
+* Blocks: PF-006, runtime debugging for all future work
 
 ## Technical Notes
 
-* Use `zap` or `zerolog`
-* **ASSUMPTION:** request_id generated at edge if missing
+* Location: `pkg/observability/logger` (per your preference).
+* Recommend `zap` or `zerolog` (implementation choice).
+* **ASSUMPTION:** `request_id` stored in `context.Context`.
 
 ## Out of Scope
 
-* Log aggregation setup
+* Log shipping/aggregation setup
+* Distributed tracing (later; request_id propagation is the MVP baseline)
 
 ---
 
-## [PF-005] Standard API Error & Response Envelope Helpers
+## [PF-005] Create global error code system + standard API response/error envelopes
 
 ## Type
 
@@ -208,38 +246,55 @@ Task
 
 ## Description
 
-Create reusable helpers to enforce the canonical API response and error envelope across all handlers.
+Implement a shared error model (global) with typed error codes + metadata (HTTP status, retryable, safe message), and provide API helpers that map domain errors into the canonical HTTP error envelope. This ensures consistent client behavior and avoids leaking internal errors.
 
 ## Scope
 
-* Success response helpers
-* Error response helpers
-* Mapping internal errors → HTTP codes
-* Consistent JSON schema
+* Global error system in `pkg/errors`:
+
+  * typed error code enum (or strongly-typed string type)
+  * metadata: `http_status`, `retryable`, `public_message`, optional `details_allowed`
+  * helper constructors: `errors.New(code, msg)`, `errors.Wrap(code, err, msg)`
+* Global/shared response shapes in `pkg/types` as needed (only non-API-specific)
+* API envelope helpers in `api/responses`:
+
+  * success envelope helpers
+  * error envelope writer that takes a `pkg/errors` error and produces:
+
+    ```json
+    { "error": { "code": "...", "message": "...", "details": {...} } }
+    ```
+* Define canonical mapping rules:
+
+  * untrusted errors default to `500` with safe message
+  * validation errors → `400`
+  * auth errors → `401/403`
+  * conflicts/state errors → `409/422`
 
 ## Acceptance Criteria
 
-* [ ] All handlers return standard envelope
-* [ ] Error codes match API spec
-* [ ] No raw errors leaked to clients
+* [ ] `pkg/errors` defines typed error codes with metadata including HTTP status + retryable
+* [ ] API can return canonical error envelope without leaking raw stack traces/messages
+* [ ] At least one demo handler shows mapping from domain error → HTTP response using these helpers
 
 ## Dependencies
 
 * Blocked by: PF-001
-* Blocks: API handlers
+* Blocks: PF-006 and all endpoint implementations
 
 ## Technical Notes
 
-* Centralize in `api/respond`
-* Error codes as constants/enums
+* You indicated: “API should map domain errors → HTTP responses” — this ticket implements that pattern.
+* **ASSUMPTION:** domain services return `pkg/errors`-typed errors (or wrap them) rather than ad-hoc errors.
 
 ## Out of Scope
 
-* Localization or error translation
+* Localization/i18n
+* Full error taxonomy for every endpoint (will expand organically as features land)
 
 ---
 
-## [PF-006] HTTP Server Bootstrap with Chi + Middleware Stack
+## [PF-006] Bootstrap Chi HTTP server + router groups with middleware, controllers, validators, responses
 
 ## Type
 
@@ -247,47 +302,62 @@ Task
 
 ## Description
 
-Set up the Chi-based HTTP server with a layered middleware stack supporting auth, idempotency, validation, and rate limiting.
+Create the API HTTP server using Chi with a clear separation of concerns (`routes/`, `controllers/`, `middleware/`, `validators/`, `responses/`) and route groups for health/public/private/admin/agent endpoints. Middleware must attach per group (not via allowlists) and support the project’s auth + idempotency complexity.
 
 ## Scope
 
-* Chi router setup
-* Global middleware:
+* Implement Chi server bootstrap in `cmd/api/main.go` (per your preference)
+* Create folder structure:
 
-  * request_id
-  * logging
-  * panic recovery
-* Route-grouped middleware:
+  * `api/routes`
+  * `api/controllers`
+  * `api/middleware`
+  * `api/validators`
+  * `api/responses`
+* Route groups (LOCKED):
 
-  * JWT auth
-  * permissions
-  * idempotency
-  * rate limiting
-* Separation of protected vs unprotected routes
+  * `/health/*` (no auth)
+  * `/api/public/*` (no auth)
+  * `/api/private/*` (JWT + store context)
+  * `/api/admin/*` (admin role)
+  * `/api/agent/*` (agent role)
+* Middleware approach:
+
+  * global: request_id, logging, panic recovery
+  * per-group: JWT auth, store context enforcement, RBAC/role enforcement
+  * placeholders for idempotency + rate limit middleware (wired but may be no-op until PF-010/PF-007)
+* Controllers:
+
+  * controllers register handlers but rely on validators + responses helpers
+* Clear middleware ordering documented
 
 ## Acceptance Criteria
 
-* [ ] Auth routes accessible without JWT
-* [ ] Protected routes enforce JWT + store context
-* [ ] Middleware ordering documented and tested
+* [ ] Server starts and mounts all route groups
+* [ ] `/health/live` and `/health/ready` routes are reachable without auth (handlers can be stubs until PF-008)
+* [ ] `/api/private/*` rejects requests without JWT (401)
+* [ ] `/api/admin/*` enforces admin role (403 if non-admin)
+* [ ] `/api/agent/*` enforces agent role (403 if non-agent)
+* [ ] Middleware is attached per-router group (not centralized allowlist)
 
 ## Dependencies
 
 * Blocked by: PF-004, PF-005
-* Blocks: all API endpoints
+* Blocks: PF-007, PF-008, all endpoint implementations
 
 ## Technical Notes
 
-* Middleware split into files by concern
-* **ASSUMPTION:** Chi v5
+* **ASSUMPTION:** JWT middleware initially validates signature/exp only; store membership checks can be added when auth module exists.
+* Bootstrap stays localized in `cmd/api` to avoid premature abstraction.
 
 ## Out of Scope
 
-* Business authorization rules
+* Implementing real auth flows/endpoints
+* Implementing idempotency logic (wired later)
 
 ---
 
-## [PF-007] Request Validation Layer (Body + Query)
+## [PF-007] Standard request validation layer for body + query (API)
 
 ## Type
 
@@ -295,37 +365,48 @@ Task
 
 ## Description
 
-Add a standardized validation layer for request bodies and query params to prevent invalid input and injection vectors.
+Implement a reusable request validation layer so all endpoints validate input early (before controller logic), reduce injection risk, and provide consistent `400` responses with details.
 
 ## Scope
 
-* Struct-based validation
-* Query param validation helpers
-* Early rejection before handler logic
+* `api/validators`:
+
+  * body parsing helpers (JSON)
+  * query parsing helpers (typed parsing with defaults)
+  * struct validation rules (e.g., required, min/max, email)
+  * sanitization helpers where appropriate (e.g., trimming, normalizing)
+* Integrate with `api/controllers` pattern:
+
+  * validators called at start of each controller handler
+  * controller receives validated typed input
+* Standardized validation error mapping via `pkg/errors` + `api/responses`
 
 ## Acceptance Criteria
 
-* [ ] Invalid payloads return 400 with details
-* [ ] Validators reusable across endpoints
-* [ ] No handler manually validates raw input
+* [ ] Invalid JSON body returns `400` with canonical error envelope and field-level details
+* [ ] Invalid query params return `400` with canonical error envelope
+* [ ] Controllers follow a consistent pattern: validate → service → respond (no ad-hoc parsing scattered)
 
 ## Dependencies
 
-* Blocked by: PF-006
-* Blocks: endpoint implementation
+* Blocked by: PF-006, PF-005
+* Blocks: implementing API endpoints safely
 
 ## Technical Notes
 
-* Use `go-playground/validator`
-* Sanitize strings where applicable
+* Recommend `go-playground/validator` (implementation choice).
+* **ASSUMPTION:** sanitize “dangerous” strings minimally (trim, length caps) and rely on parameterized queries/ORM for SQL safety.
 
 ## Out of Scope
 
-* Advanced WAF or IDS logic
+* Full anti-XSS/WAF solutions
+* Rate limiting (separate ticket scope)
 
 ---
 
-## [PF-008] Health Endpoints for API Binary
+## Title (number 8-N) => [PF-008]
+
+Health endpoints for API (liveness + readiness with DB+Redis checks)
 
 ## Type
 
@@ -333,37 +414,51 @@ Infra
 
 ## Description
 
-Expose liveness and readiness endpoints for the API binary.
+Implement health endpoints for the API binary. Liveness must only reflect process health, while readiness must check dependencies and report which dependency failed (Postgres, Redis, or both).
 
 ## Scope
 
-* `/health/live`
-* `/health/ready`
-* Readiness checks DB + Redis connectivity
+* Add endpoints (no auth):
+
+  * `GET /health/live`
+  * `GET /health/ready`
+* Liveness:
+
+  * always `200` if process is running and router is serving
+* Readiness:
+
+  * checks Postgres connectivity
+  * checks Redis connectivity
+  * fails if either fails
+  * response includes reason(s) and which dependency failed
 
 ## Acceptance Criteria
 
-* [ ] Liveness returns 200 if process alive
-* [ ] Readiness fails if DB unavailable
-* [ ] No auth required
+* [ ] `GET /health/live` returns 200 even if DB/Redis are down
+* [ ] `GET /health/ready` returns non-200 if Postgres is down, Redis is down, or both
+* [ ] `GET /health/ready` response includes explicit reasons (e.g., `postgres=false`, `redis=true`)
+* [ ] Endpoints are mounted under `/health/*` and require no auth
 
 ## Dependencies
 
-* Blocked by: PF-009, PF-010
-* Blocks: deployment
+* Blocked by: PF-009, PF-010, PF-006
+* Blocks: deployment readiness checks
 
 ## Technical Notes
 
-* Fast checks only
-* **ASSUMPTION:** no deep dependency checks
+* Per your guidance, this ticket is scheduled after DB/Redis integration.
+* **ASSUMPTION:** readiness uses short timeouts (e.g., 250–500ms) to avoid hanging.
 
 ## Out of Scope
 
-* Kubernetes-specific probes
+* Deep checks (Pub/Sub, GCS, BigQuery)
+* Kubernetes-specific probe configs
 
 ---
 
-## [PF-009] Postgres Bootstrap (Cloud SQL Compatible)
+## Title (number 9-N) => [PF-009]
+
+Postgres bootstrap (Cloud SQL + Heroku-compatible) and dev proxy automation
 
 ## Type
 
@@ -371,37 +466,49 @@ Infra
 
 ## Description
 
-Add Postgres connection bootstrap compatible with local Docker and Cloud SQL.
+Implement Postgres connectivity for API/worker with a dev experience that can automatically start Cloud SQL Proxy (ideally without manual `gcloud auth login`), while also supporting a straightforward TCP connection string for Heroku-style deployments.
 
 ## Scope
 
-* Connection pooling
-* SSL config
-* Health check integration
+* `pkg/db` connection bootstrap that supports:
+
+  * direct TCP DSN (e.g., `DATABASE_URL`) for Heroku/standard Postgres
+  * Cloud SQL Proxy mode for dev (proxy runs locally and DB connects via localhost port)
+* Dev proxy automation:
+
+  * Make target starts Cloud SQL Proxy using service account JSON (provided via env; may be written to temp file)
+  * No manual `gcloud auth login` required (service-account auth)
+* Connection pooling, timeouts, and graceful shutdown hooks
+* Expose a `Ping(ctx)`/health check function consumed by PF-008
 
 ## Acceptance Criteria
 
-* [ ] API and worker can connect to Postgres
-* [ ] Connection config driven by env
-* [ ] Graceful shutdown closes pools
+* [ ] API and worker can connect to Postgres via direct TCP DSN
+* [ ] `make dev` (or a dedicated target) can start Cloud SQL Proxy using service-account auth without `gcloud auth login` (**best-effort; see assumptions**)
+* [ ] DB bootstrap supports Cloud SQL via proxy for local dev
+* [ ] DB health check returns explicit failure errors used by readiness endpoint
 
 ## Dependencies
 
-* Blocked by: PF-002
-* Blocks: migrations, repos
+* Blocked by: PF-002, PF-001
+* Blocks: PF-012, PF-014, PF-008
 
 ## Technical Notes
 
-* Use `pgx` under GORM
-* **ASSUMPTION:** Cloud SQL Proxy used in dev/prod
+* **ASSUMPTION:** Best practice for Heroku is direct TCP via `DATABASE_URL`. Cloud SQL connectivity in prod via proxy is optional; we will not force it if Heroku provides managed Postgres or external Postgres.
+* **ASSUMPTION:** Cloud SQL Proxy can authenticate via service account JSON without interactive login.
+* If Cloud SQL Proxy auth requires additional setup on your machine, document it in `ENV_VARS.md` and Make targets.
 
 ## Out of Scope
 
 * Read replicas
+* DB migrations execution policy (handled in PF-012)
 
 ---
 
-## [PF-010] Redis Client Bootstrap (Idempotency + Counters)
+## Title (number 10-N) => [PF-010]
+
+Redis bootstrap in `pkg/redis` for idempotency, rate limits, counters, and refresh-token sessions
 
 ## Type
 
@@ -409,37 +516,54 @@ Infra
 
 ## Description
 
-Initialize Redis client for idempotency keys, rate limits, and counters.
+Add a Redis client bootstrap in `pkg/redis` that supports the core infra use cases: idempotency, rate limiting, counters, and refresh-token session storage/rotation. This will power protected endpoints (idempotency) and auth session workflows.
 
 ## Scope
 
-* Redis connection bootstrap
-* Namespaced key helpers
-* Health check integration
+* `pkg/redis`:
+
+  * client initialization (timeouts, pooling)
+  * namespaced key builders (by concern: idempotency, rate_limit, counters, sessions)
+  * helper functions for common patterns (GET/SET with TTL, SETNX, INCR)
+* Refresh token session storage:
+
+  * store refresh token string with TTL slightly beyond JWT expiry (per your model)
+  * rotate refresh token when access token expires and refresh is used
+  * ability to revoke refresh tokens (logout / forced rotation)
+* Integrate Redis health checks used by PF-008 readiness
+* Compatibility notes for Heroku Redis (URL-based auth)
 
 ## Acceptance Criteria
 
-* [ ] Redis reachable from API and worker
-* [ ] Connection reused safely
-* [ ] Timeouts configured
+* [ ] API and worker can connect to Redis (Heroku Redis compatible)
+* [ ] `pkg/redis` exposes helpers for:
+
+  * idempotency storage (keyed by scope)
+  * counters (INCR with TTL)
+  * rate limiting primitives (token bucket or fixed window primitives)
+  * refresh-token session set/get/revoke with TTL
+* [ ] Redis health check function is usable by readiness endpoint
 
 ## Dependencies
 
-* Blocked by: PF-002
-* Blocks: idempotency, ads
+* Blocked by: PF-002, PF-001
+* Blocks: PF-008, idempotency middleware integration, auth session management
 
 ## Technical Notes
 
-* Use `go-redis`
-* **ASSUMPTION:** single Redis instance
+* **ASSUMPTION:** One Redis instance; logical separation via key prefixes.
+* Refresh token details (exact key scheme) will align with the idempotency rules later (store scope includes userId/storeId where relevant).
 
 ## Out of Scope
 
-* Redis clustering
+* Redis cluster/sentinel
+* Full auth implementation (endpoints/services)
 
 ---
 
-## [PF-011] Docker Compose for Local Dev (Postgres + Redis)
+## Title (number 11-N) => [PF-011]
+
+Docker Compose for local Postgres + Redis
 
 ## Type
 
@@ -447,37 +571,41 @@ Infra
 
 ## Description
 
-Provide Docker Compose configuration for local development dependencies.
+Provide a Docker Compose stack for local development dependencies (Postgres + Redis) with stable versions and persistent volumes, supporting a “local-only” mode without Cloud SQL.
 
 ## Scope
 
-* Postgres service
-* Redis service
-* Volume persistence
-* Port mappings
+* `docker-compose.yml` (or `compose.yaml`) with:
+
+  * Postgres service + volume
+  * Redis service + volume (optional)
+  * exposed ports for local dev
+* Document how to run in local mode vs Cloud SQL Proxy mode
 
 ## Acceptance Criteria
 
-* [ ] `docker compose up` starts services
-* [ ] Matches prod-compatible versions
-* [ ] Devs can run API locally
+* [ ] `docker compose up -d` starts Postgres and Redis
+* [ ] Default local env values allow API/worker to connect
+* [ ] Versions are pinned (no `latest`)
 
 ## Dependencies
 
 * Blocked by: none
-* Blocks: local dev
+* Blocks: PF-015 (one-command dev)
 
 ## Technical Notes
 
-* Use official images only
+* **ASSUMPTION:** Postgres image version aligns with Cloud SQL major version used.
 
 ## Out of Scope
 
-* App containers
+* Running the API/worker as containers (optional later)
 
 ---
 
-## [PF-012] Goose Migration Runner Binary (cmd/migrate)
+## Title (number 12-N) => [PF-012]
+
+Migrations: `cmd/migrate` runner + hybrid policy (auto in dev, manual in prod)
 
 ## Type
 
@@ -485,36 +613,51 @@ Task
 
 ## Description
 
-Add a dedicated migration runner binary to apply DB migrations safely.
+Implement migrations using Goose with a `cmd/migrate` runner and a hybrid execution policy: safe auto-migrate in dev (blocking startup on failure) and manual migrations in production. This addresses Heroku constraints and prevents accidental prod schema changes.
 
 ## Scope
 
-* `cmd/migrate` binary
-* Up/down support
-* Env-driven DB config
+* Create `cmd/migrate` binary that runs Goose migrations (`up`, optional `down`)
+* Define migration execution policy:
+
+  * Dev: API startup MAY auto-run migrations (blocking if failure)
+  * Prod: migrations MUST be manual (via `cmd/migrate` invoked outside app startup)
+* Add feature flag / env gate:
+
+  * e.g., `DB_AUTO_MIGRATE=true|false` or `APP_ENV=dev|prod`
+  * API uses this to decide whether to run migrations on startup
+* Document Heroku strategy:
+
+  * keep `cmd/migrate` in repo for local/CI/manual use
+  * do not require Heroku to run it as a dyno type
 
 ## Acceptance Criteria
 
-* [ ] Migrations runnable locally and in CI
-* [ ] Fails loudly on error
-* [ ] Compatible with Cloud SQL
+* [ ] `go build ./cmd/migrate` succeeds
+* [ ] Local dev can run migrations via `make migrate-up` (calls `cmd/migrate`)
+* [ ] In dev mode, API can be configured to auto-run migrations and fails startup if migrations fail
+* [ ] In prod mode, API does NOT auto-run migrations by default
+* [ ] Policy is documented in the deploy checklist/release notes ticket
 
 ## Dependencies
 
-* Blocked by: PF-009
-* Blocks: schema setup
+* Blocked by: PF-009, PF-002
+* Blocks: PF-013, future schema work
 
 ## Technical Notes
 
-* Goose SQL migrations only
+* Addresses your prior Heroku issue by not requiring Heroku to “run migrate dyno”; keep it as a tool.
+* **ASSUMPTION:** In prod, migrations are executed manually (local machine/CI job) against prod DB before deploying API changes.
 
 ## Out of Scope
 
-* Auto-migrate at app startup
+* Full CD pipeline that runs migrations automatically on deploy
 
 ---
 
-## [PF-013] Base DB Migrations (pgcrypto, postgis)
+## Title (number 13-N) => [PF-013]
+
+Base migrations: enable `pgcrypto` + `postgis` extensions
 
 ## Type
 
@@ -522,34 +665,40 @@ Task
 
 ## Description
 
-Add base Postgres extensions required by the system.
+Add the initial Goose migrations to enable required Postgres extensions (`pgcrypto`, `postgis`) used by UUID generation and geo queries.
 
 ## Scope
 
-* Enable `pgcrypto`
-* Enable `postgis`
+* Create first/early migration(s) to:
+
+  * `CREATE EXTENSION IF NOT EXISTS pgcrypto;`
+  * `CREATE EXTENSION IF NOT EXISTS postgis;`
+* Ensure migrations are safe to re-run
 
 ## Acceptance Criteria
 
-* [ ] Extensions enabled via Goose
-* [ ] Safe to re-run
+* [ ] Running migrations enables both extensions successfully
+* [ ] Migration is idempotent and re-runnable without error
+* [ ] Verified via a simple SQL check or integration test step in dev docs
 
 ## Dependencies
 
 * Blocked by: PF-012
-* Blocks: schema migrations
+* Blocks: schema/table migrations later
 
 ## Technical Notes
 
-* First migration only
+* Keep as early migration(s) to avoid later churn.
 
 ## Out of Scope
 
-* Any tables
+* Any table creation (will come in later phases)
 
 ---
 
-## [PF-014] Add GORM ORM and Base Repo Pattern
+## Title (number 14-N) => [PF-014]
+
+GORM integration via `pkg/db` + base repo pattern (global DB instance, tx + raw SQL helpers)
 
 ## Type
 
@@ -557,37 +706,52 @@ Task
 
 ## Description
 
-Integrate GORM and establish a base repository pattern for domain persistence.
+Integrate GORM (v2) using `pkg/db` as the initializer/exporter of the global `*gorm.DB`, with constructor injection into domain repositories and helpers for transactions and raw SQL where needed (e.g., atomic inventory updates).
 
 ## Scope
 
-* GORM setup
-* Base repo helpers
-* Transaction helpers
+* In `pkg/db`:
+
+  * initialize `*gorm.DB` using config/DSN (from PF-009/PF-002)
+  * disable auto-migrate
+  * configure connection pool + logger integration
+  * expose:
+
+    * `DB()` accessor (or return from bootstrap)
+    * `WithTx(ctx, fn)` helper
+    * raw SQL helpers (e.g., `Exec`, `Raw` wrappers with context)
+* Define a base repository pattern used by future `internal/<domain>/repo` packages:
+
+  * constructor takes `*gorm.DB`
+  * consistent context passing
 
 ## Acceptance Criteria
 
-* [ ] GORM initialized with Postgres
-* [ ] Transactions usable across services
-* [ ] No models yet required
+* [ ] API and worker can initialize and share a single `*gorm.DB` instance
+* [ ] Domain repos can receive `*gorm.DB` via constructor injection pattern (example skeleton)
+* [ ] Transaction helper works and rolls back/commits correctly
+* [ ] Auto-migrate is disabled (schema changes only through Goose)
 
 ## Dependencies
 
-* Blocked by: PF-009
-* Blocks: domain work
+* Blocked by: PF-009, PF-002
+* Blocks: domain repos + DB-backed services
 
 ## Technical Notes
 
-* Disable auto-migrate
-* **ASSUMPTION:** GORM v2
+* Yes: tx + raw SQL helpers are intended for use inside internal domain repos/services.
+* **ASSUMPTION:** GORM v2; Postgres driver backed by `pgx` where possible.
 
 ## Out of Scope
 
-* Model definitions
+* Defining full models/tables (comes later)
+* Implementing any specific repositories beyond pattern skeleton
 
 ---
 
-## [PF-015] Makefile + Dev Tooling Targets
+## Title (number 15-N) => [PF-015]
+
+Makefile + dev tooling: one-command startup (background), proxy, migrate, api, worker
 
 ## Type
 
@@ -595,38 +759,52 @@ Chore
 
 ## Description
 
-Add Makefile targets to standardize local development and CI commands.
+Create a Makefile that provides a consistent developer workflow, including a single target to start dependencies and app components in the background (preferably via docker compose + optional Cloud SQL Proxy), plus standard targets for build/test/lint/migrate.
 
 ## Scope
 
-* build
-* test
-* lint
-* migrate
-* run-api
-* run-worker
+* Add Make targets:
+
+  * `make dev` (starts deps + api + worker; background where possible)
+  * `make down` (stops dev stack)
+  * `make logs` (tail relevant logs)
+  * `make build`, `make test`, `make lint`
+  * `make migrate-up`, `make migrate-down` (if supported)
+* Refactor Cloud SQL Proxy start/stop into reusable targets
+* Support local mode:
+
+  * docker compose Postgres + Redis
+* Support Cloud SQL mode:
+
+  * start proxy if configured
+* Document expected workflow in README
 
 ## Acceptance Criteria
 
-* [ ] One-command local startup
-* [ ] Targets documented
+* [ ] `make dev` starts docker compose dependencies and launches API + worker without blocking the terminal (best-effort)
+* [ ] `make down` stops all services started by `make dev`
+* [ ] `make migrate-up` runs Goose migrations via `cmd/migrate`
+* [ ] Dev workflow is documented and reproducible
 
 ## Dependencies
 
-* Blocked by: previous infra tickets
-* Blocks: CI
+* Blocked by: PF-011, PF-009, PF-010, PF-012
+* Blocks: PF-016, contributor onboarding velocity
 
 ## Technical Notes
 
-* Use gcloud + Cloud SQL Proxy where needed
+* “Background + logs via docker” is preferred; if API/worker run outside docker, provide `make logs-api`/`make logs-worker` best-effort.
+* **ASSUMPTION:** macOS/Linux primary; Windows not required.
 
 ## Out of Scope
 
-* Windows support
+* Full dockerized app runtime (optional later)
 
 ---
 
-## [PF-016] CI Pipeline + Secret Scanning
+## Title (number 16-N) => [PF-016]
+
+Single GitHub Actions CI pipeline: lint, test, build, secret scanning (DB tests skipped for now)
 
 ## Type
 
@@ -634,39 +812,53 @@ Infra
 
 ## Description
 
-Add CI pipeline to enforce quality and prevent secret leakage.
+Add a single GitHub Actions workflow that enforces code quality and blocks merges on failures. Include secret scanning gates. Skip DB-dependent tests for now to avoid early pipeline friction.
 
 ## Scope
 
-* Lint
-* Tests
-* Build
-* Secret scanning
-* PR gating
+* Create a single workflow (e.g., `.github/workflows/ci.yml`) that runs on:
+
+  * pull requests
+  * pushes to main
+* Steps:
+
+  * checkout
+  * setup Go (pinned)
+  * restore cache
+  * `go fmt` / formatting check
+  * `golangci-lint` (or equivalent)
+  * `go test ./...` (DB-dependent tests excluded/skipped)
+  * `go build ./...` (or at least `cmd/api`, `cmd/worker`, `cmd/migrate`)
+  * secret scanning (e.g., gitleaks) with fail gate
+* Enforce required checks (document in repo settings notes)
 
 ## Acceptance Criteria
 
-* [ ] CI fails on lint/test failure
-* [ ] Secrets cause build failure
-* [ ] Runs on PRs
+* [ ] One workflow exists and runs on PRs
+* [ ] CI fails on lint/test/build failure
+* [ ] CI fails if secrets are detected
+* [ ] DB-dependent tests are skipped or isolated (documented)
 
 ## Dependencies
 
 * Blocked by: PF-015
-* Blocks: team scaling
+* Blocks: safe team scaling / PR gating
 
 ## Technical Notes
 
-* GitHub Actions
-* **ASSUMPTION:** use Gitleaks or similar
+* **ASSUMPTION:** DB tests are tagged (e.g., build tags) or structured so they can be excluded until infra is ready.
+* Keep workflow single as requested.
 
 ## Out of Scope
 
-* CD to prod
+* CD to production
+* Automated migrations against prod DB
 
 ---
 
-## [PF-017] Heroku Procfile + Release Checklist
+## Title (number 17-N) => [PF-017]
+
+Heroku Procfile (web + worker) + release notes + deploy checklist (hybrid migrations)
 
 ## Type
 
@@ -674,102 +866,44 @@ Infra
 
 ## Description
 
-Prepare Heroku deployment config and operational checklist.
+Add Heroku deployment wiring for API and worker dynos and document an operational release/deploy checklist including the hybrid migration policy (manual in prod, optional auto in dev).
 
 ## Scope
 
-* Procfile (web + worker)
-* Release checklist doc
+* Add `Procfile`:
+
+  * `web: ./bin/api` (or equivalent buildpack output)
+  * `worker: ./bin/worker`
+* Add docs:
+
+  * `RELEASE.md` (release notes template)
+  * `DEPLOY_CHECKLIST.md` including:
+
+    * env var verification
+    * migration steps (manual in prod using `cmd/migrate`)
+    * deploy order and rollback notes
+* Ensure checklist mentions:
+
+  * readiness endpoints
+  * what to verify post-deploy
 
 ## Acceptance Criteria
 
-* [ ] Heroku can run API + worker
-* [ ] Checklist covers migrations, envs
+* [ ] Procfile exists and runs API + worker on Heroku
+* [ ] Deploy checklist explicitly documents prod migration approach and sequence
+* [ ] Release notes template exists and is usable for each deploy
 
 ## Dependencies
 
-* Blocked by: infra setup
-* Blocks: first deploy
+* Blocked by: PF-000, PF-003, PF-015
+* Blocks: first deploy readiness
 
 ## Technical Notes
 
-* Separate dynos for worker
+* **ASSUMPTION:** buildpack produces binaries into a known path; Procfile commands match that.
+* Keep `cmd/migrate` as a tool; do not require Heroku dyno type for it.
 
 ## Out of Scope
 
 * Staging environment
-
----
-
-## [PF-018] Internal CLI Scripts for Flow Testing (Dev)
-
-## Type
-
-Task
-
-## Description
-
-Add internal CLI scripts to exercise core flows without UI.
-
-## Scope
-
-* Login
-* Checkout
-* Order transitions
-
-## Acceptance Criteria
-
-* [ ] Scripts run against dev API
-* [ ] Useful for smoke testing
-
-## Dependencies
-
-* Blocked by: API scaffolding
-* Blocks: QA velocity
-
-## Technical Notes
-
-* Bash or Go-based CLI
-* **ASSUMPTION:** no auth UI yet
-
-## Out of Scope
-
-* End-user tooling
-
----
-
-## [PF-019] Admin & Agent CLI Utilities (Temporary Ops)
-
-## Type
-
-Task
-
-## Description
-
-Provide CLI utilities for admin and agent actions until UI exists.
-
-## Scope
-
-* Inspect outbox
-* Inspect DLQ
-* Adjust licenses
-* Confirm payouts
-
-## Acceptance Criteria
-
-* [ ] Admin actions possible without UI
-* [ ] All actions audited
-
-## Dependencies
-
-* Blocked by: core infra
-* Blocks: ops readiness
-
-## Technical Notes
-
-* Guarded by admin credentials
-* **ASSUMPTION:** temporary tooling
-
-## Out of Scope
-
-* Long-term admin UX
+* Automated CD pipeline
