@@ -363,6 +363,7 @@ Manifest approach (MVP):
 * Single repo, multiple binaries under `cmd/*`.
 * Local: Docker Compose.
 * Environments: dev + prod; staging later.
+* `pkg/redis` boots go-redis with well-scoped prefixes for idempotency, rate limits, counters, and refresh tokens while adding Redis to the `/health/ready` dependency check.
 * `pkg/db` governs the GORM bootstrap for API/worker, exposing pooled connections and the `Ping` helper used by readiness probes.
 
 ---

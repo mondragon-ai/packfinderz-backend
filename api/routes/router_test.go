@@ -21,7 +21,7 @@ func (stubPinger) Ping(context.Context) error {
 func newTestRouter() http.Handler {
 	cfg := &config.Config{App: config.AppConfig{Env: "test", Port: "0"}}
 	logg := logger.New(logger.Options{ServiceName: "test-routing", Level: logger.ParseLevel("debug"), Output: io.Discard})
-	return NewRouter(cfg, logg, stubPinger{})
+	return NewRouter(cfg, logg, stubPinger{}, stubPinger{})
 }
 
 func TestHealthGroupAccessible(t *testing.T) {

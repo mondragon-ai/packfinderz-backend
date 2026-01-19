@@ -502,9 +502,7 @@ Implement Postgres connectivity for API/worker with a dev experience that can au
 
 ---
 
-## Title (number 10-N) => [PF-010]
-
-Redis bootstrap in `pkg/redis` for idempotency, rate limits, counters, and refresh-token sessions
+## [PF-010] Redis bootstrap in `pkg/redis` for idempotency, rate limits, counters, and refresh-token sessions
 
 ## Type
 

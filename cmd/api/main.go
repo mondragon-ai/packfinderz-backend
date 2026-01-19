@@ -10,6 +10,7 @@ import (
 	"github.com/angelmondragon/packfinderz-backend/pkg/db"
 	"github.com/angelmondragon/packfinderz-backend/pkg/instance"
 	"github.com/angelmondragon/packfinderz-backend/pkg/logger"
+	"github.com/angelmondragon/packfinderz-backend/pkg/redis"
 	"github.com/joho/godotenv"
 )
 
@@ -26,6 +27,12 @@ func main() {
 		os.Exit(1)
 	}
 
+	logg = logger.New(logger.Options{
+		ServiceName: "api",
+		Level:       logger.ParseLevel(cfg.App.LogLevel),
+		WarnStack:   cfg.App.LogWarnStack,
+	})
+
 	dbClient, err := db.New(context.Background(), cfg.DB, logg)
 	if err != nil {
 		logg.Error(context.Background(), "failed to bootstrap database", err)
@@ -37,11 +44,16 @@ func main() {
 		}
 	}()
 
-	logg = logger.New(logger.Options{
-		ServiceName: "api",
-		Level:       logger.ParseLevel(cfg.App.LogLevel),
-		WarnStack:   cfg.App.LogWarnStack,
-	})
+	redisClient, err := redis.New(context.Background(), cfg.Redis, logg)
+	if err != nil {
+		logg.Error(context.Background(), "failed to bootstrap redis", err)
+		os.Exit(1)
+	}
+	defer func() {
+		if err := redisClient.Close(); err != nil {
+			logg.Error(context.Background(), "error closing redis", err)
+		}
+	}()
 
 	addr := ":" + cfg.App.Port
 	ctx := logg.WithFields(context.Background(), map[string]any{
@@ -53,7 +65,7 @@ func main() {
 
 	server := &http.Server{
 		Addr:    addr,
-		Handler: routes.NewRouter(cfg, logg, dbClient),
+		Handler: routes.NewRouter(cfg, logg, dbClient, redisClient),
 	}
 
 	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {

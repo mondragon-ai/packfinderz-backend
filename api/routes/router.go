@@ -10,9 +10,10 @@ import (
 	"github.com/angelmondragon/packfinderz-backend/pkg/config"
 	"github.com/angelmondragon/packfinderz-backend/pkg/db"
 	"github.com/angelmondragon/packfinderz-backend/pkg/logger"
+	"github.com/angelmondragon/packfinderz-backend/pkg/redis"
 )
 
-func NewRouter(cfg *config.Config, logg *logger.Logger, pinger db.Pinger) http.Handler {
+func NewRouter(cfg *config.Config, logg *logger.Logger, dbP db.Pinger, redisP redis.Pinger) http.Handler {
 	r := chi.NewRouter()
 	r.Use(
 		middleware.Recoverer(logg),
@@ -22,7 +23,7 @@ func NewRouter(cfg *config.Config, logg *logger.Logger, pinger db.Pinger) http.H
 
 	r.Route("/health", func(r chi.Router) {
 		r.Get("/live", controllers.HealthLive(cfg))
-		r.Get("/ready", controllers.HealthReady(cfg, logg, pinger))
+		r.Get("/ready", controllers.HealthReady(cfg, logg, dbP, redisP))
 	})
 
 	r.Route("/api/public", func(r chi.Router) {
