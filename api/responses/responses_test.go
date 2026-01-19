@@ -13,7 +13,7 @@ import (
 
 func TestWriteSuccess(t *testing.T) {
 	w := httptest.NewRecorder()
-	WriteSuccess(w, map[string]string{"hello": "world"})
+	WriteSuccess(w, http.StatusOK, map[string]string{"hello": "world"})
 
 	if got := w.Code; got != http.StatusOK {
 		t.Fatalf("expected status 200 but got %d", got)
