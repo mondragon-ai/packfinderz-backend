@@ -38,37 +38,42 @@ func Load() (*Config, error) {
 }
 
 type AppConfig struct {
-	Env          string `required:"true"`
-	Port         string `required:"true"`
+	Env          string `envconfig:"PACKFINDERZ_APP_ENV" required:"true"`
+	Port         string `envconfig:"PACKFINDERZ_APP_PORT" required:"true"`
 	LogLevel     string `envconfig:"PACKFINDERZ_LOG_LEVEL" default:"info"`
 	LogWarnStack bool   `envconfig:"PACKFINDERZ_LOG_WARN_STACK" default:"false"`
 }
-
 type ServiceConfig struct {
-	Kind string
+	Kind string `envconfig:"PACKFINDERZ_SERVICE_KIND" default:"api"`
 }
 
 type DBConfig struct {
-	DSN            string
-	Driver         string `default:"postgres"`
-	LegacyHost     string `envconfig:"DB_HOST"`
-	LegacyPort     int    `envconfig:"DB_PORT" default:"5432"`
-	LegacyUser     string `envconfig:"DB_USER"`
-	LegacyPassword string `envconfig:"DB_PASSWORD"`
-	LegacyName     string `envconfig:"DB_NAME"`
-	LegacySSLMode  string `envconfig:"DB_SSLMODE" default:"disable"`
+	DSN    string `envconfig:"PACKFINDERZ_DB_DSN"`
+	Driver string `envconfig:"PACKFINDERZ_DB_DRIVER" default:"postgres"`
+
+	LegacyHost     string `envconfig:"PACKFINDERZ_DB_HOST"`
+	LegacyPort     int    `envconfig:"PACKFINDERZ_DB_PORT" default:"5432"`
+	LegacyUser     string `envconfig:"PACKFINDERZ_DB_USER"`
+	LegacyPassword string `envconfig:"PACKFINDERZ_DB_PASSWORD"`
+	LegacyName     string `envconfig:"PACKFINDERZ_DB_NAME"`
+	LegacySSLMode  string `envconfig:"PACKFINDERZ_DB_SSLMODE" default:"disable"`
+
+	MaxOpenConns    int           `envconfig:"PACKFINDERZ_DB_MAX_OPEN_CONNS" default:"20"`
+	MaxIdleConns    int           `envconfig:"PACKFINDERZ_DB_MAX_IDLE_CONNS" default:"10"`
+	ConnMaxLifetime time.Duration `envconfig:"PACKFINDERZ_DB_CONN_MAX_LIFETIME" default:"1h"`
+	ConnMaxIdleTime time.Duration `envconfig:"PACKFINDERZ_DB_CONN_MAX_IDLE_TIME" default:"10m"`
 }
 
 type RedisConfig struct {
-	URL      string `required:"true"`
-	Address  string
-	Password string
-	DB       int `default:"0"`
+	URL      string `envconfig:"PACKFINDERZ_REDIS_URL" required:"true"`
+	Address  string `envconfig:"PACKFINDERZ_REDIS_ADDR"`
+	Password string `envconfig:"PACKFINDERZ_REDIS_PASSWORD"`
+	DB       int    `envconfig:"PACKFINDERZ_REDIS_DB" default:"0"`
 }
 
 type JWTConfig struct {
-	Secret            string `equired:"true"`
-	Issuer            string `required:"true"`
+	Secret            string `envconfig:"PACKFINDERZ_JWT_SECRET" required:"true"` // also fixes your typo
+	Issuer            string `envconfig:"PACKFINDERZ_JWT_ISSUER" required:"true"`
 	ExpirationMinutes int    `envconfig:"PACKFINDERZ_JWT_EXPIRATION_MINUTES" required:"true"`
 }
 

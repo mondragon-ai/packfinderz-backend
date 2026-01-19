@@ -29,6 +29,12 @@
 2. Keep shared utilities in `pkg/` so they can be reused across binaries without creating circular dependencies.
 3. If you need a new directory pattern, document it here and update this README.
 
+## Database & Dev Proxy
+
+`pkg/db` is the central GORM v2 bootstrap for both API and worker binaries. It reads `PACKFINDERZ_DB_DSN` (or the legacy host/port vars) and configures connection pooling/timeouts via the supplemental `PACKFINDERZ_DB_MAX_*` and `PACKFINDERZ_DB_CONN_*` env vars before exposing helpers like `Ping`/`WithTx` for services and readiness checks.
+
+
+
 ## Canonical Responses
 
 - Use `pkg/errors` to build typed errors (`pkg/errors.New` / `pkg/errors.Wrap`) so metadata (http status, retryable flag, safe public message, optional `details`) routes responses consistently.
