@@ -1,0 +1,46 @@
+package responses
+
+import (
+	"encoding/json"
+	"errors"
+	"log"
+	"net/http"
+
+	pkgerrors "github.com/angelmondragon/packfinderz-backend/pkg/errors"
+	"github.com/angelmondragon/packfinderz-backend/pkg/types"
+)
+
+func WriteSuccess(w http.ResponseWriter, status int, data any) {
+	writeJSON(w, status, types.SuccessEnvelope{Data: data})
+}
+
+func WriteError(w http.ResponseWriter, err error) {
+	if err == nil {
+		err = errors.New("unknown error")
+	}
+	typed := pkgerrors.As(err)
+	if typed == nil {
+		typed = pkgerrors.Wrap(pkgerrors.CodeInternal, err, "unexpected error")
+	}
+	meta := pkgerrors.MetadataFor(typed.Code())
+	payload := types.ErrorEnvelope{
+		Error: types.APIError{
+			Code:    string(typed.Code()),
+			Message: meta.PublicMessage,
+		},
+	}
+	if meta.DetailsAllowed {
+		if details := typed.Details(); details != nil {
+			payload.Error.Details = details
+		}
+	}
+	writeJSON(w, meta.HTTPStatus, payload)
+}
+
+func writeJSON(w http.ResponseWriter, status int, payload any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	if err := json.NewEncoder(w).Encode(payload); err != nil {
+		log.Printf(`{"level":"error","msg":"failed to encode response","err":"%v"}`, err)
+	}
+}

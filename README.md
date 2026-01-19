@@ -28,3 +28,9 @@
 1. Add domain packages under `internal/` with `service.go`, `repo.go`, `dto.go`, and `mapper.go` before wiring them in `api/`.
 2. Keep shared utilities in `pkg/` so they can be reused across binaries without creating circular dependencies.
 3. If you need a new directory pattern, document it here and update this README.
+
+## Canonical Responses
+
+- Use `pkg/errors` to build typed errors (`pkg/errors.New` / `pkg/errors.Wrap`) so metadata (http status, retryable flag, safe public message, optional `details`) routes responses consistently.
+- Shared shapes in `pkg/types` (`SuccessEnvelope`, `ErrorEnvelope`, `APIError`) back the JSON contracts; `api/responses.WriteSuccess` and `WriteError` set HTTP headers/status and enforce the envelope.
+- Validation/auth/conflict/internal codes map to `400`/`401`/`403`/`409`/`422`/`500` respectively, never leaking internal stack traces. A demo handler at `/demo-error` exercises the canonical flow.

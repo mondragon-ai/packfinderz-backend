@@ -389,6 +389,16 @@ Manifest approach (MVP):
 
 ---
 
+## 16) Error Handling (Canonical)
+
+* A global `pkg/errors` package holds typed `Code` values plus metadata (`http_status`, `retryable`, `public_message`, `details_allowed`); domain services must build errors with `pkg/errors.New`/`Wrap` so API handlers can rely on known semantics instead of ad-hoc strings.
+* `pkg/types` defines `SuccessEnvelope`, `APIError`, and `ErrorEnvelope` while `api/responses.WriteSuccess` / `WriteError` set HTTP headers/status and wrap payloads into the canonical envelope (`{"data":…}` or `{"error":{…}}`).
+* Metadata drives canonical mapping: validation → `400`, authentication/authorization → `401`/`403`, not found → `404`, conflicts/state → `409`/`422`, and all unknown/internal errors → `500` with the safe public message defined in metadata.
+* Only expose `details` when `details_allowed` is true to avoid leaking internal diagnostics, and default untrusted errors to `INTERNAL_ERROR` so clients never see raw stacks.
+* A `/demo-error` handler exists as a working example; future controllers should reuse `api/responses.WriteError` so the API remains the authoritative source of synchronous decisions.
+
+---
+
 ## Checkout grouping decision (chosen)
 
 We will use a **CheckoutGroup** (recommended) rather than only a cart flag.

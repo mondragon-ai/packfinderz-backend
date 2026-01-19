@@ -1,28 +1,31 @@
 package api
 
 import (
-	"encoding/json"
-	"log"
 	"net/http"
 
+	"github.com/angelmondragon/packfinderz-backend/api/responses"
 	"github.com/angelmondragon/packfinderz-backend/pkg/config"
+	pkgerrors "github.com/angelmondragon/packfinderz-backend/pkg/errors"
 )
 
 // NewHandler returns the HTTP handler that cmd/api wires into its server.
 func NewHandler(cfg *config.Config) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", healthzHandler(cfg))
+	mux.HandleFunc("/demo-error", demoErrorHandler())
 	return mux
 }
 
 func healthzHandler(cfg *config.Config) http.HandlerFunc {
 	return func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("X-PackFinderz-Env", cfg.App.Env)
-		response := map[string]string{"status": "ok"}
-		if err := json.NewEncoder(w).Encode(response); err != nil {
-			log.Printf(`{"level":"error","msg":"failed to write health response","err":"%v"}`, err)
-			http.Error(w, `{"status":"error"}`, http.StatusInternalServerError)
-		}
+		responses.WriteSuccess(w, http.StatusOK, map[string]string{"status": "ok"})
+	}
+}
+
+func demoErrorHandler() http.HandlerFunc {
+	return func(w http.ResponseWriter, _ *http.Request) {
+		demoErr := pkgerrors.New(pkgerrors.CodeValidation, "missing demo payload").WithDetails(map[string]string{"field": "demo"})
+		responses.WriteError(w, demoErr)
 	}
 }
