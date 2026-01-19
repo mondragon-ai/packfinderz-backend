@@ -1,0 +1,30 @@
+# PackFinderz Go Layout
+
+## Directory ownership
+
+| Directory | Purpose | Import rules |
+| --- | --- | --- |
+| `cmd/` | Entrypoints for each binary (API server, worker, etc). | May only import from `api/`, `internal/`, and `pkg/`. Should not contain business logic. |
+| `api/` | HTTP wiring: routers, handlers, middleware, validators, responses, and adapters to domain services. | May import `internal/*` services and `pkg/*` helpers. No command-specific logic. |
+| `internal/<domain>/` | Domain services, repositories, DTO mappings, and any package that should stay private to this module. | Only imports `pkg/*` or sibling `internal/*` packages; never import from `cmd/` or `api/`. |
+| `pkg/` | Shared infrastructure (database, redis, logging, config, bootstrap helpers). | Leaf layer—no imports from `internal/` or `api/`. |
+
+## Module boundaries
+
+* `cmd/<binary>/` should only bootstrap its dependencies and exit quickly, delegating HTTP/shutdown logic to `api/` and domain work to `internal/`.
+* `api/` does not reach into `cmd/`, keeping HTTP wiring reusable across binaries. Shared middleware should live under `api/middleware` when a router is present.
+* Domain packages under `internal/` can depend on each other but must avoid circular references by keeping public interfaces coarse and layering dependencies carefully.
+* `pkg/` exposes only primitives that `internal/`, `api/`, and `cmd/` can compose; it never imports domain-specific code.
+
+## Allowed imports checklist
+
+1. `cmd/` → `api/`, `internal/`, `pkg/`
+2. `api/` → `internal/`, `pkg/`
+3. `internal/` → `pkg/`, other `internal/` packages
+4. `pkg/` → standard library only
+
+## Getting started
+
+1. Add domain packages under `internal/` with `service.go`, `repo.go`, `dto.go`, and `mapper.go` before wiring them in `api/`.
+2. Keep shared utilities in `pkg/` so they can be reused across binaries without creating circular dependencies.
+3. If you need a new directory pattern, document it here and update this README.

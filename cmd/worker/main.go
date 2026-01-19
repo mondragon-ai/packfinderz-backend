@@ -6,13 +6,15 @@ import (
 	"os"
 	"os/signal"
 	"time"
+
+	"github.com/angelmondragon/packfinderz-backend/pkg/instance"
 )
 
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
 
-	log.Printf(`{"level":"info","msg":"starting worker","instance":"%s"}`, getInstanceID())
+	log.Printf(`{"level":"info","msg":"starting worker","instance":"%s"}`, instance.GetID())
 
 	runWorker(ctx)
 	log.Printf(`{"level":"info","msg":"worker shutting down gracefully"}`)
@@ -30,11 +32,4 @@ func runWorker(ctx context.Context) {
 			log.Printf(`{"level":"debug","msg":"worker heartbeat"}`)
 		}
 	}
-}
-
-func getInstanceID() string {
-	if id := os.Getenv("WORKER_ID"); id != "" {
-		return id
-	}
-	return "worker-0"
 }
