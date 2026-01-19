@@ -35,6 +35,12 @@
 - Shared shapes in `pkg/types` (`SuccessEnvelope`, `ErrorEnvelope`, `APIError`) back the JSON contracts; `api/responses.WriteSuccess` and `WriteError` set HTTP headers/status and enforce the envelope.
 - Validation/auth/conflict/internal codes map to `400`/`401`/`403`/`409`/`422`/`500` respectively, never leaking internal stack traces. A demo handler at `/demo-error` exercises the canonical flow.
 
+## API Routing & Validation
+
+- The API is driven by `chi` and `api/routes.NewRouter`, which mounts `/health/*`, `/api/public/*`, `/api/private/*`, `/api/admin/*`, and `/api/agent/*` groups with group-specific middleware (auth, store context, role checks, idempotency/rate-limit placeholders). 
+- Controllers live under `api/controllers`, validators under `api/validators`, and responses under `api/responses`. Each controller starts by validating body/query inputs via `validators.DecodeJSONBody`/`ParseQueryInt`, sanitizes strings, and then calls the shared responses helpers.
+- Invalid input always raises `pkg/errors.CodeValidation`, so the API returns a canonical `{"error":{...}}` payload with field-level details and `400` status instead of panics or ad-hoc parsing.
+
 ## Structured Logging
 
 - `pkg/logger` exposes context-aware helpers (`Info`, `Warn`, `Error`) and can attach fields like `request_id`, `user_id`, `store_id`, and `actor_role`.

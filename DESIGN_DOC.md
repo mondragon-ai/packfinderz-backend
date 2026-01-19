@@ -398,7 +398,16 @@ Manifest approach (MVP):
 
 ---
 
-## 17) Error Handling (Canonical)
+## 17) HTTP Routing & Validation
+
+* The API boots `api/routes.NewRouter` (chi) with route groups for `/health`, `/api/public`, `/api`, `/api/admin`, and `/api/agent`, each wired with the middleware chain (recoverer → request_id → logging → auth/store context → role guard → idempotency → rate-limit placeholders).
+* Controllers under `api/controllers` get validated inputs from `api/validators` (e.g., `DecodeJSONBody`, `ParseQueryInt`, `SanitizeString`) before any business logic runs; validation failures surface as `pkg/errors.CodeValidation`.
+* Validation errors (malformed JSON, missing required fields, query params out of bounds) map to the canonical error envelope so clients always receive `400` + `{ "error": { "details": {...} } }`.
+* Each route group enforces its own auth/role requirements and should be covered by tests for 401/403, plus validation tests that assert the 400 envelope contains field-level messages.
+
+---
+
+## 18) Error Handling (Canonical)
 * A global `pkg/errors` package holds typed `Code` values plus metadata (`http_status`, `retryable`, `public_message`, `details_allowed`); domain services must build errors with `pkg/errors.New`/`Wrap` so API handlers can rely on known semantics instead of ad-hoc strings.
 * `pkg/types` defines `SuccessEnvelope`, `APIError`, and `ErrorEnvelope` while `api/responses.WriteSuccess` / `WriteError` set HTTP headers/status and wrap payloads into the canonical envelope (`{"data":…}` or `{"error":{…}}`).
 * Metadata drives canonical mapping: validation → `400`, authentication/authorization → `401`/`403`, not found → `404`, conflicts/state → `409`/`422`, and all unknown/internal errors → `500` with the safe public message defined in metadata.
