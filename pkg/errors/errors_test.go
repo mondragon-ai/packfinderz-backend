@@ -21,6 +21,7 @@ func TestMetadataForKnownCodes(t *testing.T) {
 		{code: CodeConflict, status: http.StatusConflict, publicMsg: "conflict detected"},
 		{code: CodeStateConflict, status: http.StatusUnprocessableEntity, publicMsg: "state transition disallowed", detailsOK: true},
 		{code: CodeInternal, status: http.StatusInternalServerError, publicMsg: "internal server error", retryable: true},
+		{code: CodeDependency, status: http.StatusServiceUnavailable, publicMsg: "dependency unavailable", retryable: true, detailsOK: true},
 	}
 
 	for _, tt := range tests {

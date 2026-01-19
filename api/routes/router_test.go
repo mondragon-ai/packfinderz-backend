@@ -1,6 +1,7 @@
 package routes
 
 import (
+	"context"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -11,10 +12,16 @@ import (
 	"github.com/angelmondragon/packfinderz-backend/pkg/logger"
 )
 
+type stubPinger struct{}
+
+func (stubPinger) Ping(context.Context) error {
+	return nil
+}
+
 func newTestRouter() http.Handler {
 	cfg := &config.Config{App: config.AppConfig{Env: "test", Port: "0"}}
 	logg := logger.New(logger.Options{ServiceName: "test-routing", Level: logger.ParseLevel("debug"), Output: io.Discard})
-	return NewRouter(cfg, logg)
+	return NewRouter(cfg, logg, stubPinger{})
 }
 
 func TestHealthGroupAccessible(t *testing.T) {

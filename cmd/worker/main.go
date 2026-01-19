@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/angelmondragon/packfinderz-backend/pkg/config"
+	"github.com/angelmondragon/packfinderz-backend/pkg/db"
 	"github.com/angelmondragon/packfinderz-backend/pkg/logger"
 	"github.com/joho/godotenv"
 )
@@ -24,6 +25,17 @@ func main() {
 		os.Exit(1)
 	}
 
+	dbClient, err := db.New(context.Background(), cfg.DB, logg)
+	if err != nil {
+		logg.Error(context.Background(), "failed to bootstrap database", err)
+		os.Exit(1)
+	}
+	defer func() {
+		if err := dbClient.Close(); err != nil {
+			logg.Error(context.Background(), "error closing database", err)
+		}
+	}()
+
 	logg = logger.New(logger.Options{
 		ServiceName: "worker",
 		Level:       logger.ParseLevel(cfg.App.LogLevel),
@@ -40,15 +52,20 @@ func main() {
 	})
 	logg.Info(ctx, "starting worker")
 
-	runWorker(ctx, cfg, logg)
+	runWorker(ctx, cfg, logg, dbClient)
 	logg.Info(ctx, "worker shutting down gracefully")
 }
 
-func runWorker(ctx context.Context, cfg *config.Config, logg *logger.Logger) {
+func runWorker(ctx context.Context, cfg *config.Config, logg *logger.Logger, dbClient *db.Client) {
 	ctx = logg.WithFields(ctx, map[string]any{
 		"job":          "heartbeat",
 		"pubsub_media": cfg.PubSub.MediaTopic,
 	})
+	if err := dbClient.Ping(ctx); err != nil {
+		logg.Error(ctx, "database ping failed", err)
+	} else {
+		logg.Info(ctx, "database ping succeeded")
+	}
 	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
 

@@ -16,6 +16,7 @@ const (
 	CodeConflict      Code = "CONFLICT"
 	CodeStateConflict Code = "STATE_CONFLICT"
 	CodeInternal      Code = "INTERNAL_ERROR"
+	CodeDependency    Code = "DEPENDENCY_ERROR"
 )
 
 type Metadata struct {
@@ -67,6 +68,12 @@ var metadataByCode = map[Code]Metadata{
 		Retryable:      true,
 		PublicMessage:  "internal server error",
 		DetailsAllowed: false,
+	},
+	CodeDependency: {
+		HTTPStatus:     http.StatusServiceUnavailable,
+		Retryable:      true,
+		PublicMessage:  "dependency unavailable",
+		DetailsAllowed: true,
 	},
 }
 
