@@ -1,34 +1,51 @@
 package main
 
 import (
-	"log"
+	"context"
 	"net/http"
+	"os"
 
 	"github.com/angelmondragon/packfinderz-backend/api"
 	"github.com/angelmondragon/packfinderz-backend/pkg/config"
+	"github.com/angelmondragon/packfinderz-backend/pkg/logger"
 	"github.com/joho/godotenv"
 )
 
 func main() {
+	logg := logger.New(logger.Options{ServiceName: "api"})
 
 	if err := godotenv.Load(); err != nil {
-		log.Println(`{"level":"warn","msg":".env file not found, relying on environment"}`)
+		logg.Warn(context.Background(), ".env file not found, relying on environment")
 	}
 
 	cfg, err := config.Load()
 	if err != nil {
-		log.Fatalf(`{"level":"fatal","msg":"failed to load config","err":"%v"}`, err)
+		logg.Error(context.Background(), "failed to load config", err)
+		os.Exit(1)
 	}
 
+	logg = logger.New(logger.Options{
+		ServiceName: "api",
+		Level:       logger.ParseLevel(cfg.App.LogLevel),
+		WarnStack:   cfg.App.LogWarnStack,
+	})
+
 	addr := ":" + cfg.App.Port
-	log.Printf(`{"level":"info","msg":"starting api server","env":"%s","addr":"%s"}`, cfg.App.Env, addr)
+	ctx := context.Background()
+	ctx = logg.WithFields(ctx, map[string]any{
+		"env":  cfg.App.Env,
+		"addr": addr,
+		// "instance": instance.GetID(),
+	})
+	logg.Info(ctx, "starting api server")
 
 	server := &http.Server{
 		Addr:    addr,
-		Handler: api.NewHandler(cfg),
+		Handler: api.NewHandler(cfg, logg),
 	}
 
 	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-		log.Fatalf(`{"level":"error","msg":"api server stopped unexpectedly","err":"%v"}`, err)
+		logg.Error(ctx, "api server stopped unexpectedly", err)
+		os.Exit(1)
 	}
 }

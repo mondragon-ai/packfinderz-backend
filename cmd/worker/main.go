@@ -2,37 +2,53 @@ package main
 
 import (
 	"context"
-	"log"
 	"os"
 	"os/signal"
 	"time"
 
 	"github.com/angelmondragon/packfinderz-backend/pkg/config"
-	"github.com/angelmondragon/packfinderz-backend/pkg/instance"
+	"github.com/angelmondragon/packfinderz-backend/pkg/logger"
 	"github.com/joho/godotenv"
 )
 
 func main() {
+	logg := logger.New(logger.Options{ServiceName: "worker"})
 
 	if err := godotenv.Load(); err != nil {
-		log.Println(`{"level":"warn","msg":".env file not found, relying on environment"}`)
+		logg.Warn(context.Background(), ".env file not found, relying on environment")
 	}
+
+	cfg, err := config.Load()
+	if err != nil {
+		logg.Error(context.Background(), "failed to load config", err)
+		os.Exit(1)
+	}
+
+	logg = logger.New(logger.Options{
+		ServiceName: "worker",
+		Level:       logger.ParseLevel(cfg.App.LogLevel),
+		WarnStack:   cfg.App.LogWarnStack,
+	})
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
 
-	cfg, err := config.Load()
-	if err != nil {
-		log.Fatalf(`{"level":"fatal","msg":"failed to load config","err":"%v"}`, err)
-	}
+	ctx = logg.WithFields(ctx, map[string]any{
+		// "instance":    instance.GetID(),
+		"env":         cfg.App.Env,
+		"serviceKind": cfg.Service.Kind,
+	})
+	logg.Info(ctx, "starting worker")
 
-	log.Printf(`{"level":"info","msg":"starting worker","instance":"%s","env":"%s","serviceKind":"%s"}`, instance.GetID(), cfg.App.Env, cfg.Service.Kind)
-
-	runWorker(ctx, cfg)
-	log.Printf(`{"level":"info","msg":"worker shutting down gracefully"}`)
+	runWorker(ctx, cfg, logg)
+	logg.Info(ctx, "worker shutting down gracefully")
 }
 
-func runWorker(ctx context.Context, cfg *config.Config) {
+func runWorker(ctx context.Context, cfg *config.Config, logg *logger.Logger) {
+	ctx = logg.WithFields(ctx, map[string]any{
+		"job":          "heartbeat",
+		"pubsub_media": cfg.PubSub.MediaTopic,
+	})
 	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
 
@@ -41,7 +57,7 @@ func runWorker(ctx context.Context, cfg *config.Config) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			log.Printf(`{"level":"debug","msg":"worker heartbeat","env":"%s","pubsubMedia":"%s"}`, cfg.App.Env, cfg.PubSub.MediaTopic)
+			logg.Info(ctx, "worker.heartbeat")
 		}
 	}
 }

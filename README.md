@@ -34,3 +34,10 @@
 - Use `pkg/errors` to build typed errors (`pkg/errors.New` / `pkg/errors.Wrap`) so metadata (http status, retryable flag, safe public message, optional `details`) routes responses consistently.
 - Shared shapes in `pkg/types` (`SuccessEnvelope`, `ErrorEnvelope`, `APIError`) back the JSON contracts; `api/responses.WriteSuccess` and `WriteError` set HTTP headers/status and enforce the envelope.
 - Validation/auth/conflict/internal codes map to `400`/`401`/`403`/`409`/`422`/`500` respectively, never leaking internal stack traces. A demo handler at `/demo-error` exercises the canonical flow.
+
+## Structured Logging
+
+- `pkg/logger` exposes context-aware helpers (`Info`, `Warn`, `Error`) and can attach fields like `request_id`, `user_id`, `store_id`, and `actor_role`.
+- API middleware generates `request_id`, sends it back via `X-Request-Id`, and ensures all logs for a request include method, path, and duration.
+- Workers reuse the same logger, enrich contexts with job metadata, and can include upstream `request_id` if available.
+- Control verbosity with `PACKFINDERZ_LOG_LEVEL` (default `info`) and enable warning stacks via `PACKFINDERZ_LOG_WARN_STACK`.
