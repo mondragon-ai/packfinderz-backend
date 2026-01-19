@@ -9,6 +9,7 @@ import (
 	"github.com/angelmondragon/packfinderz-backend/pkg/config"
 	"github.com/angelmondragon/packfinderz-backend/pkg/db"
 	"github.com/angelmondragon/packfinderz-backend/pkg/logger"
+	"github.com/angelmondragon/packfinderz-backend/pkg/redis"
 	"github.com/joho/godotenv"
 )
 
@@ -25,6 +26,12 @@ func main() {
 		os.Exit(1)
 	}
 
+	logg = logger.New(logger.Options{
+		ServiceName: "worker",
+		Level:       logger.ParseLevel(cfg.App.LogLevel),
+		WarnStack:   cfg.App.LogWarnStack,
+	})
+
 	dbClient, err := db.New(context.Background(), cfg.DB, logg)
 	if err != nil {
 		logg.Error(context.Background(), "failed to bootstrap database", err)
@@ -36,11 +43,16 @@ func main() {
 		}
 	}()
 
-	logg = logger.New(logger.Options{
-		ServiceName: "worker",
-		Level:       logger.ParseLevel(cfg.App.LogLevel),
-		WarnStack:   cfg.App.LogWarnStack,
-	})
+	redisClient, err := redis.New(context.Background(), cfg.Redis, logg)
+	if err != nil {
+		logg.Error(context.Background(), "failed to bootstrap redis", err)
+		os.Exit(1)
+	}
+	defer func() {
+		if err := redisClient.Close(); err != nil {
+			logg.Error(context.Background(), "error closing redis", err)
+		}
+	}()
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
@@ -52,11 +64,11 @@ func main() {
 	})
 	logg.Info(ctx, "starting worker")
 
-	runWorker(ctx, cfg, logg, dbClient)
+	runWorker(ctx, cfg, logg, dbClient, redisClient)
 	logg.Info(ctx, "worker shutting down gracefully")
 }
 
-func runWorker(ctx context.Context, cfg *config.Config, logg *logger.Logger, dbClient *db.Client) {
+func runWorker(ctx context.Context, cfg *config.Config, logg *logger.Logger, dbClient *db.Client, redisClient *redis.Client) {
 	ctx = logg.WithFields(ctx, map[string]any{
 		"job":          "heartbeat",
 		"pubsub_media": cfg.PubSub.MediaTopic,
@@ -65,6 +77,11 @@ func runWorker(ctx context.Context, cfg *config.Config, logg *logger.Logger, dbC
 		logg.Error(ctx, "database ping failed", err)
 	} else {
 		logg.Info(ctx, "database ping succeeded")
+	}
+	if err := redisClient.Ping(ctx); err != nil {
+		logg.Error(ctx, "redis ping failed", err)
+	} else {
+		logg.Info(ctx, "redis ping succeeded")
 	}
 	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()

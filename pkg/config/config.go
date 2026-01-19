@@ -65,10 +65,15 @@ type DBConfig struct {
 }
 
 type RedisConfig struct {
-	URL      string `envconfig:"PACKFINDERZ_REDIS_URL" required:"true"`
-	Address  string `envconfig:"PACKFINDERZ_REDIS_ADDR"`
-	Password string `envconfig:"PACKFINDERZ_REDIS_PASSWORD"`
-	DB       int    `envconfig:"PACKFINDERZ_REDIS_DB" default:"0"`
+	URL          string        `envconfig:"PACKFINDERZ_REDIS_URL" required:"true"`
+	Address      string        `envconfig:"PACKFINDERZ_REDIS_ADDR"`
+	Password     string        `envconfig:"PACKFINDERZ_REDIS_PASSWORD"`
+	DB           int           `envconfig:"PACKFINDERZ_REDIS_DB" default:"0"`
+	PoolSize     int           `envconfig:"PACKFINDERZ_REDIS_POOL_SIZE" default:"10"`
+	MinIdleConns int           `envconfig:"PACKFINDERZ_REDIS_MIN_IDLE_CONNS" default:"2"`
+	DialTimeout  time.Duration `envconfig:"PACKFINDERZ_REDIS_DIAL_TIMEOUT" default:"5s"`
+	ReadTimeout  time.Duration `envconfig:"PACKFINDERZ_REDIS_READ_TIMEOUT" default:"5s"`
+	WriteTimeout time.Duration `envconfig:"PACKFINDERZ_REDIS_WRITE_TIMEOUT" default:"5s"`
 }
 
 type JWTConfig struct {

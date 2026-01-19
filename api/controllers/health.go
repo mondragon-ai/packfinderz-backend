@@ -1,6 +1,7 @@
 package controllers
 
 import (
+	"errors"
 	"net/http"
 
 	"github.com/angelmondragon/packfinderz-backend/api/responses"
@@ -8,6 +9,7 @@ import (
 	"github.com/angelmondragon/packfinderz-backend/pkg/db"
 	pkgerrors "github.com/angelmondragon/packfinderz-backend/pkg/errors"
 	"github.com/angelmondragon/packfinderz-backend/pkg/logger"
+	"github.com/angelmondragon/packfinderz-backend/pkg/redis"
 )
 
 func HealthLive(cfg *config.Config) http.HandlerFunc {
@@ -17,12 +19,23 @@ func HealthLive(cfg *config.Config) http.HandlerFunc {
 	}
 }
 
-func HealthReady(cfg *config.Config, logg *logger.Logger, pinger db.Pinger) http.HandlerFunc {
+func HealthReady(cfg *config.Config, logg *logger.Logger, dbP db.Pinger, redisP redis.Pinger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 		w.Header().Set("X-PackFinderz-Env", cfg.App.Env)
-		if err := pinger.Ping(ctx); err != nil {
-			responses.WriteError(ctx, logg, w, pkgerrors.Wrap(pkgerrors.CodeDependency, err, "database connectivity failed"))
+		failures := map[string]string{}
+		if err := dbP.Ping(ctx); err != nil {
+			failures["postgres"] = err.Error()
+		}
+		if err := redisP.Ping(ctx); err != nil {
+			failures["redis"] = err.Error()
+		}
+		if len(failures) > 0 {
+			err := pkgerrors.New(pkgerrors.CodeDependency, "dependencies unavailable").WithDetails(failures)
+			if logg != nil {
+				logg.Error(ctx, "readiness failed", errors.New("dependency check failed"))
+			}
+			responses.WriteError(ctx, logg, w, err)
 			return
 		}
 		responses.WriteSuccess(w, map[string]string{"status": "ready"})

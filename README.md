@@ -1,55 +1,386 @@
-# PackFinderz Go Layout
-
-## Directory ownership
-
-| Directory | Purpose | Import rules |
-| --- | --- | --- |
-| `cmd/` | Entrypoints for each binary (API server, worker, etc). | May only import from `api/`, `internal/`, and `pkg/`. Should not contain business logic. |
-| `api/` | HTTP wiring: routers, handlers, middleware, validators, responses, and adapters to domain services. | May import `internal/*` services and `pkg/*` helpers. No command-specific logic. |
-| `internal/<domain>/` | Domain services, repositories, DTO mappings, and any package that should stay private to this module. | Only imports `pkg/*` or sibling `internal/*` packages; never import from `cmd/` or `api/`. |
-| `pkg/` | Shared infrastructure (database, redis, logging, config, bootstrap helpers). | Leaf layer—no imports from `internal/` or `api/`. |
-
-## Module boundaries
-
-* `cmd/<binary>/` should only bootstrap its dependencies and exit quickly, delegating HTTP/shutdown logic to `api/` and domain work to `internal/`.
-* `api/` does not reach into `cmd/`, keeping HTTP wiring reusable across binaries. Shared middleware should live under `api/middleware` when a router is present.
-* Domain packages under `internal/` can depend on each other but must avoid circular references by keeping public interfaces coarse and layering dependencies carefully.
-* `pkg/` exposes only primitives that `internal/`, `api/`, and `cmd/` can compose; it never imports domain-specific code.
-
-## Allowed imports checklist
-
-1. `cmd/` → `api/`, `internal/`, `pkg/`
-2. `api/` → `internal/`, `pkg/`
-3. `internal/` → `pkg/`, other `internal/` packages
-4. `pkg/` → standard library only
-
-## Getting started
-
-1. Add domain packages under `internal/` with `service.go`, `repo.go`, `dto.go`, and `mapper.go` before wiring them in `api/`.
-2. Keep shared utilities in `pkg/` so they can be reused across binaries without creating circular dependencies.
-3. If you need a new directory pattern, document it here and update this README.
-
-## Database & Dev Proxy
-
-`pkg/db` is the central GORM v2 bootstrap for both API and worker binaries. It reads `PACKFINDERZ_DB_DSN` (or the legacy host/port vars) and configures connection pooling/timeouts via the supplemental `PACKFINDERZ_DB_MAX_*` and `PACKFINDERZ_DB_CONN_*` env vars before exposing helpers like `Ping`/`WithTx` for services and readiness checks.
 
 
+# PackFinderz — B2B Cannabis Marketplace
 
-## Canonical Responses
+> **A compliant, multi-vendor B2B cannabis operating system**
+> Supports licensed buyers and vendors with **correct inventory reservation**, **multi-vendor checkout**, **cash-at-delivery (MVP)**, **agent delivery**, **append-only ledger**, **ads + analytics**, and a **future-proof async architecture**.
 
-- Use `pkg/errors` to build typed errors (`pkg/errors.New` / `pkg/errors.Wrap`) so metadata (http status, retryable flag, safe public message, optional `details`) routes responses consistently.
-- Shared shapes in `pkg/types` (`SuccessEnvelope`, `ErrorEnvelope`, `APIError`) back the JSON contracts; `api/responses.WriteSuccess` and `WriteError` set HTTP headers/status and enforce the envelope.
-- Validation/auth/conflict/internal codes map to `400`/`401`/`403`/`409`/`422`/`500` respectively, never leaking internal stack traces. A demo handler at `/demo-error` exercises the canonical flow.
+---
 
-## API Routing & Validation
+## Table of Contents
 
-- The API is driven by `chi` and `api/routes.NewRouter`, which mounts `/health/*`, `/api/public/*`, `/api/private/*`, `/api/admin/*`, and `/api/agent/*` groups with group-specific middleware (auth, store context, role checks, idempotency/rate-limit placeholders). 
-- Controllers live under `api/controllers`, validators under `api/validators`, and responses under `api/responses`. Each controller starts by validating body/query inputs via `validators.DecodeJSONBody`/`ParseQueryInt`, sanitizes strings, and then calls the shared responses helpers.
-- Invalid input always raises `pkg/errors.CodeValidation`, so the API returns a canonical `{"error":{...}}` payload with field-level details and `400` status instead of panics or ad-hoc parsing.
+1. [Overview](#overview)
+2. [Repository Conventions](#repository-conventions)
+3. [Grounding Rules](#grounding-rules)
+4. [Development Setup](#development-setup)
+5. [Core Components](#core-components)
+6. [Storage Schema](#storage-schema)
+7. [Testing & Quality](#testing--quality)
+8. [API Usage](#api-usage)
+9. [Configuration](#configuration)
+10. [Development Workflow](#development-workflow)
+11. [Safety Boundaries](#safety-boundaries)
+12. [Documentation](#documentation)
+13. [Makefile Reference](#makefile-reference)
+14. [Quick Reference](#quick-reference)
 
-## Structured Logging
+---
 
-- `pkg/logger` exposes context-aware helpers (`Info`, `Warn`, `Error`) and can attach fields like `request_id`, `user_id`, `store_id`, and `actor_role`.
-- API middleware generates `request_id`, sends it back via `X-Request-Id`, and ensures all logs for a request include method, path, and duration.
-- Workers reuse the same logger, enrich contexts with job metadata, and can include upstream `request_id` if available.
-- Control verbosity with `PACKFINDERZ_LOG_LEVEL` (default `info`) and enable warning stacks via `PACKFINDERZ_LOG_WARN_STACK`.
+## Overview
+
+### Purpose
+
+**PackFinderz** is a **two-sided B2B marketplace** for regulated cannabis commerce, designed to be:
+
+* **Correct by construction** (no overselling, auditable money flow)
+* **Compliance-first** (licenses, verification, admin oversight)
+* **Multi-tenant** (buyer & vendor stores, multi-store users)
+* **Async-safe** (Outbox → Pub/Sub, idempotent workers)
+* **Extensible** (ads, analytics, ACH, multi-state)
+
+### Key Capabilities (MVP)
+
+* Multi-vendor checkout via **CheckoutGroup**
+* Atomic inventory reservation (optimistic + retry)
+* Vendor accept/reject at **order and line-item level**
+* Internal agent delivery with **cash-at-delivery**
+* Append-only **ledger events**
+* Subscription-gated vendor visibility
+* Ads with **last-click attribution**
+* BigQuery analytics (analytics-only)
+
+### Architecture Summary
+
+* **API Monolith (Go)**: all synchronous decisions
+* **Postgres (Cloud SQL)**: authoritative source of truth
+* **PostGIS**: geo-search & delivery radius filtering
+* **Redis**: idempotency + ad budget gating (ephemeral only)
+* **Outbox Pattern** → **Pub/Sub** → **Workers**
+* **BigQuery**: analytics warehouse (never authoritative)
+* **GCS**: licenses, COAs, manifests, media
+
+## Infrastructure Bootstraps
+
+### Database & Cloud SQL Proxy
+
+`pkg/db` is the shared GORM bootstrap that both the API and worker binaries consume. It honors `PACKFINDERZ_DB_DSN` (or the legacy host/port vars) and exposes knobs (`PACKFINDERZ_DB_MAX_*`, `PACKFINDERZ_DB_CONN_*`) for pooling/timeouts before returning helpers such as `Ping`, `WithTx`, and context-bound raw SQL executions. `make dev` (`scripts/dev.sh`) handles Cloud SQL Proxy startup (service-account JSON + `PACKFINDERZ_CLOUD_SQL_INSTANCE`) prior to launching the API and worker, so you can stay in the REPL instead of rerunning `gcloud auth login`.
+
+### Redis & Readiness
+
+`pkg/redis` wraps the Heroku-friendly go-redis client, enforces sensible dial/read/write timeouts, and exposes key builders for idempotency, counters, rate-limits, and refresh-token sessions. Its `Ping` method is now part of `/health/ready`, so the readiness endpoint verifies both Postgres and Redis before advertising readiness. Configure Redis via `PACKFINDERZ_REDIS_URL` (or address/password) plus the optional pooling/timeouts (`POOL_SIZE`, `MIN_IDLE_CONNS`, `DIAL_TIMEOUT`, `READ_TIMEOUT`, `WRITE_TIMEOUT`).
+
+---
+
+## Repository Conventions
+
+### Code Style
+
+* Go (idiomatic, explicit error handling)
+* DTOs separate from DB models
+* Structured JSON logging
+* No secrets in logs
+* Minimal, additive changes only
+
+### Folder Layout (Canonical)
+
+```
+cmd/
+  api/               # API binary (authoritative decisions)
+  worker/            # Async workers (side effects only)
+
+api/
+  routes/            # chi router wiring
+  controllers/       # thin HTTP handlers
+  middleware/        # auth, RBAC, idempotency
+  validators/        # request validation
+  responses/         # canonical JSON envelopes
+
+internal/
+  auth/
+  stores/
+  users/
+  licenses/
+  products/
+  inventory/
+  cart/
+  checkout/
+  orders/
+  payments/
+  ledger/
+  ads/
+  analytics/
+  notifications/
+  agents/
+  admin/
+  outbox/
+  schedulers/
+
+pkg/
+  config/
+  db/
+  redis/
+  geo/
+  logging/
+  errs/
+  security/
+
+docs/                # architecture, ADRs, runbooks
+```
+
+---
+
+## Grounding Rules
+
+**READ BEFORE CHANGING CODE**
+
+* Work **only** within this repo.
+* **Do not invent scope** or env vars.
+* Prefer **additive changes**; refactors require ADRs.
+* **Correctness > performance**.
+* LOCKED sections require explicit ADR approval.
+
+---
+
+## Development Setup
+
+### Quick Start
+
+```bash
+make dev
+```
+
+Runs:
+
+* API (`cmd/api`)
+* Worker (`cmd/worker`)
+* Assumes infra already running
+
+### Infrastructure (Local)
+
+* Postgres + PostGIS
+* Redis
+* Pub/Sub (emulator if needed)
+
+Migrations are managed via **Goose**.
+
+---
+
+## Core Components
+
+### Tenancy & Identity
+
+* Canonical tenant = **Store**
+* Users may belong to multiple stores
+* JWT includes `activeStoreId`
+* Store switching mints a new token
+
+### Checkout & Orders
+
+* Client cart → server `CartRecord`
+* Checkout creates:
+
+  * `CheckoutGroup`
+  * N `VendorOrder`s
+* Partial success allowed **across vendors**
+* Inventory reserved atomically per line item
+
+### Payments & Ledger
+
+* MVP: **cash at delivery**
+* `LedgerEvent` is append-only
+* Payment lifecycle:
+  `unpaid → settled → paid`
+
+### Async & Eventing
+
+* API writes business data + `OutboxEvent` in same transaction
+* Worker publishes to Pub/Sub
+* Consumers **must be idempotent**
+
+### Ads & Analytics
+
+* Vendor visibility gated by:
+
+  * license verified
+  * subscription active
+* Last-click attribution (30d)
+* BigQuery used for analytics only
+
+---
+
+## Storage Schema
+
+### Postgres (Authoritative)
+
+* Stores, users, memberships
+* Products, inventory, orders
+* Payments, ledger events
+* Ads, subscriptions
+* Outbox events
+* Audit logs
+
+### Redis (Ephemeral)
+
+* Idempotency keys
+* Ad budget counters
+
+### BigQuery
+
+* Marketplace events
+* Ad telemetry
+* KPI rollups
+
+---
+
+## Testing & Quality
+
+### Unit Tests
+
+* Domain logic
+* State transitions
+* RBAC enforcement
+* Inventory reservation
+
+### Integration Tests
+
+* Checkout end-to-end
+* Outbox publishing
+* Idempotency replay
+* Ads budget gating
+
+### Failure Tests
+
+* Duplicate events
+* Partial checkout
+* Worker retries
+* Scheduler idempotency
+
+---
+
+## API Usage
+
+### Health
+
+```bash
+GET /health
+GET /health/ready
+```
+
+### API Versioning
+
+* All endpoints under `/api/v1`
+* Breaking changes require `/api/v2`
+
+### Error Contract
+
+```json
+{
+  "error": {
+    "code": "string",
+    "message": "string",
+    "details": {}
+  }
+}
+```
+
+---
+
+## Configuration
+
+### Core Environment Variables
+
+```bash
+PACKFINDERZ_APP_ENV=development
+PACKFINDERZ_APP_PORT=8080
+
+PACKFINDERZ_DB_DSN=postgres://...
+PACKFINDERZ_DB_DRIVER=postgres
+
+REDIS_ADDR=localhost:6379
+
+PACKFINDERZ_LOG_LEVEL=info
+PACKFINDERZ_LOG_WARN_STACK=false
+```
+
+> **Rule:** Do not add new env vars without documentation.
+
+---
+
+## Development Workflow
+
+### First-Time Setup
+
+1. Start infra
+2. Run migrations
+3. Seed minimal data
+4. Run `make dev`
+5. Verify `/health/ready`
+
+### Daily Workflow
+
+1. Pull latest
+2. Run migrations
+3. Run tests
+4. Make additive changes
+5. Verify RBAC + idempotency
+6. Update docs if behavior changes
+
+---
+
+## Safety Boundaries
+
+### MUST NOT
+
+* Log passwords, tokens, license docs
+* Mutate ledger rows
+* Bypass RBAC or `activeStoreId`
+* Add RedisTimeSeries
+* Introduce new storage without ADR
+
+### MUST
+
+* Hash passwords (Argon2id)
+* Use idempotency for money actions
+* Append-only audit logs
+* Signed URLs for media access
+
+---
+
+## Documentation
+
+Additional docs live in `docs/`:
+
+* Architecture overview
+* Data design
+* Security & ops
+* ADRs
+* Runbooks
+
+**AGENTS.md** is authoritative for repo-aware edits.
+
+---
+
+## Makefile Reference
+
+### Development
+
+```makefile
+make dev        # Run API + worker
+make api        # Run API only
+make worker     # Run worker only
+```
+
+### Behavior
+
+* API and worker run concurrently
+* Graceful shutdown via SIGINT
+* Go tooling only (no wrappers)
+
+---
+
+## Quick Reference
+
+```bash
+make dev                # Run API + worker
+go test ./...           # Run tests
+```
