@@ -1,7 +1,13 @@
 setup:
   addons:
-    - plan: heroku-postgresql:hobby-basic
-    - plan: heroku-redis:hobby-dev
+    - plan: heroku-postgresql:essential-0
+    - plan: rediscloud:30
+
+build:
+  docker:
+    web: Dockerfile
+    worker: Dockerfile
+
 run:
   web: ./bin/api
   worker: ./bin/worker
