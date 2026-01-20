@@ -365,6 +365,8 @@ Manifest approach (MVP):
 * Environments: dev + prod; staging later.
 * `pkg/redis` boots go-redis with well-scoped prefixes for idempotency, rate limits, counters, and refresh tokens while adding Redis to the `/health/ready` dependency check.
 * `pkg/db` governs the GORM bootstrap for API/worker, exposing pooled connections and the `Ping` helper used by readiness probes.
+* The base repository pattern (`internal/repo.Base`) ensures domain repos always accept the injected `*gorm.DB`, stay context-aware, and tap into `pkg/db` helpers for transactions/raw SQL.
+* GitHub Actions workflow (`.github/workflows/ci.yml`) now enforces gofmt, `golangci-lint`, `go test`, `go build`, and gitleaks secret scanning on PRs and `main` pushes; DB tests must use `//go:build db` so they stay excluded until the infra is ready.
 
 ---
 
@@ -2354,6 +2356,7 @@ Ownership rules (high level):
 
 **Version:** v1.0 (MVP+, Architecture-Locked)
 **Scope:** Postgres authoritative + PostGIS for geo + BigQuery for analytics events
+**Postgres readiness:** The earliest Goose migrations enable `pgcrypto` and `postgis` in Cloud SQL; they are idempotent (`CREATE EXTENSION IF NOT EXISTS`) so downstream schema work can rely on UUID helpers and geo queries without extra churn. Verify both extensions via `SELECT extname FROM pg_extension WHERE extname IN ('pgcrypto', 'postgis');` before progressing with later migrations.
 **ORM:** ignored for table shapes (per request)
 **Principles:** normalize by default; use JSONB only where structurally justified.
 
