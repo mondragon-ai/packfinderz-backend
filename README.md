@@ -63,7 +63,11 @@
 
 ### Database & Cloud SQL Proxy
 
-`pkg/db` is the shared GORM bootstrap that both the API and worker binaries consume. It honors `PACKFINDERZ_DB_DSN` (or the legacy host/port vars) and exposes knobs (`PACKFINDERZ_DB_MAX_*`, `PACKFINDERZ_DB_CONN_*`) for pooling/timeouts before returning helpers such as `Ping`, `WithTx`, and context-bound raw SQL executions. Domain repositories should accept `*gorm.DB` via constructor injection (see `internal/repo.Base`) and call `WithTx` or the raw SQL helpers for atomic operations, while schema work stays in Goose migrations. `make dev`
+`pkg/db` is the shared GORM bootstrap that both the API and worker binaries consume. It honors `PACKFINDERZ_DB_DSN` (or the legacy host/port vars) and exposes knobs (`PACKFINDERZ_DB_MAX_*`, `PACKFINDERZ_DB_CONN_*`) for pooling/timeouts before returning helpers such as `Ping`, `WithTx`, and context-bound raw SQL executions. Domain repositories should accept `*gorm.DB` via constructor injection (see `internal/repo.Base`) and call `WithTx` or the raw SQL helpers for atomic operations, while schema work stays in Goose migrations. `make dev` (`scripts/dev.sh`) handles Cloud SQL Proxy startup (service-account JSON + `PACKFINDERZ_CLOUD_SQL_INSTANCE`) prior to launching the API and worker, so you can stay in the REPL instead of rerunning `gcloud auth login`.
+
+### Heroku Deployment
+
+`heroku.yml` wires the `web` dyno to `./bin/api` and the `worker` dyno to `./bin/worker`, matching the Go binaries produced by the Buildpack. Follow the [Heroku release & deploy checklist](docs/heroku_deploy.md) before pushing to production so migrations, readiness checks, and post-deploy verifications happen consistently.
 
 ### Redis & Readiness
 
