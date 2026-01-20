@@ -8,7 +8,6 @@ import (
 	"github.com/angelmondragon/packfinderz-backend/api/routes"
 	"github.com/angelmondragon/packfinderz-backend/pkg/config"
 	"github.com/angelmondragon/packfinderz-backend/pkg/db"
-	"github.com/angelmondragon/packfinderz-backend/pkg/instance"
 	"github.com/angelmondragon/packfinderz-backend/pkg/logger"
 	"github.com/angelmondragon/packfinderz-backend/pkg/migrate"
 	"github.com/angelmondragon/packfinderz-backend/pkg/redis"
@@ -61,11 +60,19 @@ func main() {
 		}
 	}()
 
-	addr := ":" + cfg.App.Port
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = cfg.App.Port
+	}
+	addr := ":" + port
+	id := os.Getenv("DYNO")
+	if id == "" {
+		id = "local"
+	}
 	ctx := logg.WithFields(context.Background(), map[string]any{
 		"env":      cfg.App.Env,
 		"addr":     addr,
-		"instance": instance.GetID(),
+		"instance": id,
 	})
 	logg.Info(ctx, "starting api server")
 
