@@ -1,7 +1,7 @@
 # ---------- Builder ----------
 FROM golang:1.25-bookworm AS builder
 
-WORKDIR /src
+WORKDIR /app
 
 # Build deps for CGO + libwebp headers
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -17,11 +17,10 @@ RUN go mod download
 # Copy source
 COPY . .
 
-# Build binaries into /out/bin (we'll copy to /app/bin)
-RUN mkdir -p /out/bin
+# Build binaries
+RUN CGO_ENABLED=1 GOOS=linux go build -o /bin/api ./cmd/api
+RUN CGO_ENABLED=1 GOOS=linux go build -o /bin/worker ./cmd/worker
 
-RUN CGO_ENABLED=1 GOOS=linux go build -o /out/bin/api ./cmd/api
-RUN CGO_ENABLED=1 GOOS=linux go build -o /out/bin/worker ./cmd/worker
 
 # ---------- Runtime ----------
 FROM debian:bookworm-slim
@@ -34,21 +33,19 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libwebp7 \
   && rm -rf /var/lib/apt/lists/*
 
-# Run as non-root
+# Non-root user (recommended on Heroku too)
 RUN useradd -m -u 10001 appuser
 
-# Copy binaries into /app/bin so ./bin/* works
-RUN mkdir -p /app/bin
-COPY --from=builder /out/bin/api /app/bin/api
-COPY --from=builder /out/bin/worker /app/bin/worker
+COPY --from=builder /bin/api /bin/api
+COPY --from=builder /bin/worker /bin/worker
 
-# Ensure executables (usually already, but safe)
-RUN chmod +x /app/bin/api /app/bin/worker
+# Make sure they're executable (usually already are, but belt+suspenders)
+RUN chmod +x /bin/api /bin/worker
 
 USER appuser
 
-# Heroku injects PORT at runtime; keep a default for local runs
+# Heroku injects PORT; keep default for local runs
 ENV PORT=8080
 
-# Not used by Heroku (heroku.yml run: overrides), but helpful locally
-CMD ["/app/bin/api"]
+# Not used by heroku.yml, but helpful locally
+CMD ["/bin/api"]
