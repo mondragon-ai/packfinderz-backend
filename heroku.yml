@@ -3,6 +3,11 @@ build:
     web: Dockerfile
     worker: Dockerfile
 
+# run:
+#   web: /bin/api
+#   worker: /bin/worker
+
 run:
-  web: /bin/api
-  worker: /bin/worker
+  web: sh -lc 'PACKFINDERZ_SERVICE_KIND=api /bin/api'
+  worker: sh -lc 'PACKFINDERZ_SERVICE_KIND=worker /bin/worker'
+

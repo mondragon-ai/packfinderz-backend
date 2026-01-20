@@ -52,7 +52,7 @@
 ### Architecture Summary
 
 * **API Monolith (Go)**: all synchronous decisions
-* **Postgres (Cloud SQL)**: authoritative source of truth
+* **Postgres (Heroku SQL)**: authoritative source of truth
 * **PostGIS**: geo-search & delivery radius filtering
 * **Redis**: idempotency + ad budget gating (ephemeral only)
 * **Outbox Pattern** → **Pub/Sub** → **Workers**
@@ -61,9 +61,9 @@
 
 ## Infrastructure Bootstraps
 
-### Database & Cloud SQL Proxy
+### Database & Heroku SQL
 
-`pkg/db` is the shared GORM bootstrap that both the API and worker binaries consume. It honors `PACKFINDERZ_DB_DSN` (or the legacy host/port vars) and exposes knobs (`PACKFINDERZ_DB_MAX_*`, `PACKFINDERZ_DB_CONN_*`) for pooling/timeouts before returning helpers such as `Ping`, `WithTx`, and context-bound raw SQL executions. Domain repositories should accept `*gorm.DB` via constructor injection (see `internal/repo.Base`) and call `WithTx` or the raw SQL helpers for atomic operations, while schema work stays in Goose migrations. `make dev` (`scripts/dev.sh`) handles Cloud SQL Proxy startup (service-account JSON + `PACKFINDERZ_CLOUD_SQL_INSTANCE`) prior to launching the API and worker, so you can stay in the REPL instead of rerunning `gcloud auth login`.
+`pkg/db` is the shared GORM bootstrap that both the API and worker binaries consume. It honors `PACKFINDERZ_DB_DSN` (or the legacy host/port vars) and exposes knobs (`PACKFINDERZ_DB_MAX_*`, `PACKFINDERZ_DB_CONN_*`) for pooling/timeouts before returning helpers such as `Ping`, `WithTx`, and context-bound raw SQL executions. Domain repositories should accept `*gorm.DB` via constructor injection (see `internal/repo.Base`) and call `WithTx` or the raw SQL helpers for atomic operations, while schema work stays in Goose migrations. `make dev` handles Heroku SQL startup & redis Startup
 
 ### Heroku Deployment
 
@@ -338,6 +338,16 @@ PACKFINDERZ_LOG_WARN_STACK=false
 ```
 
 > **Rule:** Do not add new env vars without documentation.
+
+### Password Hashing Configuration
+
+Argon2id parameters are configurable so production can tune memory/time while defaults remain safe for local development.
+
+* `PACKFINDERZ_ARGON_MEMORY_KB` (default `65536`)
+* `PACKFINDERZ_ARGON_TIME` (default `3`)
+* `PACKFINDERZ_ARGON_PARALLELISM` (default `2`)
+* `PACKFINDERZ_ARGON_SALT_LEN` (default `16`)
+* `PACKFINDERZ_ARGON_KEY_LEN` (default `32`)
 
 ---
 
