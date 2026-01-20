@@ -37,6 +37,11 @@ type Manager struct {
 	ttl   time.Duration
 }
 
+// AccessSessionChecker exposes the read-only surface needed by middleware.
+type AccessSessionChecker interface {
+	HasSession(ctx context.Context, accessID string) (bool, error)
+}
+
 // NewManager constructs a session manager backed by Redis.
 func NewManager(client *redisclient.Client, cfg config.JWTConfig) (*Manager, error) {
 	if client == nil {
@@ -123,4 +128,19 @@ func wrapNotFound(err error) error {
 		return ErrInvalidRefreshToken
 	}
 	return err
+}
+
+// HasSession reports whether the provided access ID still has an active refresh session.
+func (m *Manager) HasSession(ctx context.Context, accessID string) (bool, error) {
+	if strings.TrimSpace(accessID) == "" {
+		return false, fmt.Errorf("access id is required")
+	}
+	key := m.keyer.AccessSessionKey(accessID)
+	if _, err := m.store.Get(ctx, key); err != nil {
+		if errors.Is(err, redislib.Nil) {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
 }

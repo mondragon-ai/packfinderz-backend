@@ -6,6 +6,10 @@ import (
 	"os"
 
 	"github.com/angelmondragon/packfinderz-backend/api/routes"
+	"github.com/angelmondragon/packfinderz-backend/internal/auth"
+	"github.com/angelmondragon/packfinderz-backend/internal/memberships"
+	"github.com/angelmondragon/packfinderz-backend/internal/users"
+	"github.com/angelmondragon/packfinderz-backend/pkg/auth/session"
 	"github.com/angelmondragon/packfinderz-backend/pkg/config"
 	"github.com/angelmondragon/packfinderz-backend/pkg/db"
 	"github.com/angelmondragon/packfinderz-backend/pkg/logger"
@@ -60,6 +64,23 @@ func main() {
 		}
 	}()
 
+	sessionManager, err := session.NewManager(redisClient, cfg.JWT)
+	if err != nil {
+		logg.Error(context.Background(), "failed to create session manager", err)
+		os.Exit(1)
+	}
+
+	authService, err := auth.NewService(auth.ServiceParams{
+		UserRepo:        users.NewRepository(dbClient.DB()),
+		MembershipsRepo: memberships.NewRepository(dbClient.DB()),
+		SessionManager:  sessionManager,
+		JWTConfig:       cfg.JWT,
+	})
+	if err != nil {
+		logg.Error(context.Background(), "failed to create auth service", err)
+		os.Exit(1)
+	}
+
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = cfg.App.Port
@@ -78,7 +99,7 @@ func main() {
 
 	server := &http.Server{
 		Addr:    addr,
-		Handler: routes.NewRouter(cfg, logg, dbClient, redisClient),
+		Handler: routes.NewRouter(cfg, logg, dbClient, redisClient, sessionManager, authService),
 	}
 
 	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
