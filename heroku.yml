@@ -9,5 +9,5 @@ build:
     worker: Dockerfile
 
 run:
-  web: ./bin/api
-  worker: ./bin/worker
+  web: /bin/api
+  worker: /bin/worker
