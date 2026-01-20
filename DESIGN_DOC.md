@@ -2485,6 +2485,8 @@ Fields
 * `created_at timestamptz not null default now()`
 * `updated_at timestamptz not null default now()`
 
+> **Note:** `store_ids` is deprecated in favor of the canonical `store_memberships` join table (PF-103). Do not attempt to keep the array synchronized with the join table; resolve memberships from `store_memberships` and treat the array as legacy-only until it can be removed.
+
 Indexes
 
 * `unique(email)`
@@ -2538,7 +2540,7 @@ Constraints
 
 ### 2.3 `store_memberships`
 
-**Purpose:** multi-store users + RBAC per store (preferred vs arrays).
+**Purpose:** multi-store RBAC anchor that captures invite lifecycle data.
 
 Fields
 
@@ -2546,18 +2548,29 @@ Fields
 * `store_id uuid not null`
 * `user_id uuid not null`
 * `role member_role not null`
+* `status membership_status not null`
+* `invited_by_user_id uuid null`
 * `created_at timestamptz not null default now()`
+* `updated_at timestamptz not null default now()`
 
 Indexes
 
 * `unique(store_id, user_id)`
 * `(user_id)`
 * `(store_id, role)`
+* `(store_id, status)`
 
 FKs
 
 * `store_id -> stores(id) on delete cascade`
 * `user_id -> users(id) on delete cascade`
+* `invited_by_user_id -> users(id) on delete set null`
+
+**Note:** `member_role` captures store-scoped permissions; it is distinct from `users.system_role` (platform-level `admin`).
+
+`member_role` values: `owner`, `admin`, `manager`, `viewer`, `agent`, `staff`, `ops`.
+
+`membership_status` values: `invited`, `active`, `removed`, `pending` (invites start `invited`, transition to `active`, `removed` represents explicit removals, and `pending` covers in-flight approvals).
 
 ---
 
