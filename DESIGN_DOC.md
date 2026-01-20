@@ -725,18 +725,16 @@ The system MUST:
   "active_store_id": "uuid",
   "role": "owner | manager | staff | ops | agent | admin",
   "store_type": "buyer | vendor",
-  "kyc_status": "pending | verified | suspended",
-  "latitude": 0.0,
-  "longitude": 0.0,
-  "issued_at": 0,
-  "expires_at": 0
+  "kyc_status": "pending_verification | verified | suspended",
+  "iat": 0,
+  "exp": 0
 }
 ```
 
 Notes:
 
 * `store_type` MAY be derived server-side from `active_store_id`, but including it in the token is allowed as a convenience.
-* `latitude/longitude` in token are optional; if present they MUST be treated as cached and non-authoritative.
+* Tokens are minted with a TTL configured via `PACKFINDERZ_JWT_EXPIRATION_MINUTES` and must respect signature/expiry validation on every parse.
 
 ---
 
@@ -3766,10 +3764,13 @@ WHERE published_at IS NOT NULL
   "active_store_id": "uuid",
   "role": "owner|manager|staff|ops|agent|admin",
   "store_type": "buyer|vendor",
+  "kyc_status": "pending_verification|verified|suspended",
   "iat": 0,
   "exp": 0
 }
 ```
+
+Tokens MUST be signed with the configured secret, expire per `PACKFINDERZ_JWT_EXPIRATION_MINUTES`, and be rejected if the signature/expiry validation fails.
 
 **Rules**
 
