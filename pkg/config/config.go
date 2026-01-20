@@ -15,6 +15,7 @@ type Config struct {
 	DB           DBConfig
 	Redis        RedisConfig
 	JWT          JWTConfig
+	Password     PasswordConfig
 	FeatureFlags FeatureFlagsConfig
 	OpenAI       OpenAIConfig
 	GoogleMaps   GoogleMapsConfig
@@ -89,6 +90,14 @@ type JWTConfig struct {
 	Secret            string `envconfig:"PACKFINDERZ_JWT_SECRET" required:"true"` // also fixes your typo
 	Issuer            string `envconfig:"PACKFINDERZ_JWT_ISSUER" required:"true"`
 	ExpirationMinutes int    `envconfig:"PACKFINDERZ_JWT_EXPIRATION_MINUTES" required:"true"`
+}
+
+type PasswordConfig struct {
+	ArgonMemoryKB    int `envconfig:"PACKFINDERZ_ARGON_MEMORY_KB" default:"65536"`
+	ArgonTime        int `envconfig:"PACKFINDERZ_ARGON_TIME" default:"3"`
+	ArgonParallelism int `envconfig:"PACKFINDERZ_ARGON_PARALLELISM" default:"2"`
+	ArgonSaltLen     int `envconfig:"PACKFINDERZ_ARGON_SALT_LEN" default:"16"`
+	ArgonKeyLen      int `envconfig:"PACKFINDERZ_ARGON_KEY_LEN" default:"32"`
 }
 
 type FeatureFlagsConfig struct {

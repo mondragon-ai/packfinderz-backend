@@ -273,7 +273,7 @@ Payout authority (MVP):
 
 * Search origin = buyer store lat/lng.
 * Vendor delivery radius per vendor store (statewide option later).
-* PostGIS used for geo filtering.
+* PostGIS used for geo filtering (later phases add on)
 
 Store address mutability (MVP policy):
 
@@ -359,7 +359,7 @@ Manifest approach (MVP):
 ## 14) Infra & Deployment
 
 * MVP: Heroku for API + workers + Redis.
-* GCP: Pub/Sub, Storage, BigQuery, Postgres/Cloud SQL.
+* GCP: Pub/Sub, Storage, BigQuery.
 * Single repo, multiple binaries under `cmd/*`.
 * Local: Docker Compose.
 * Environments: dev + prod; staging later.
@@ -367,7 +367,7 @@ Manifest approach (MVP):
 * `pkg/db` governs the GORM bootstrap for API/worker, exposing pooled connections and the `Ping` helper used by readiness probes.
 * The base repository pattern (`internal/repo.Base`) ensures domain repos always accept the injected `*gorm.DB`, stay context-aware, and tap into `pkg/db` helpers for transactions/raw SQL.
 * GitHub Actions workflow (`.github/workflows/ci.yml`) now enforces gofmt, `golangci-lint`, `go test`, `go build`, and gitleaks secret scanning on PRs and `main` pushes; DB tests must use `//go:build db` so they stay excluded until the infra is ready.
-* Heroku release wiring (`heroku.yml`) binds `./bin/api` to the web dyno and `./bin/worker` to the worker dyno; refer to `docs/heroku_deploy.md` for the release checklist, readiness, and hybrid migration policy.
+* Heroku release wiring (`heroku.yml`) binds `./bin/api` to the web dyno and `./bin/worker` to the worker dyno; refer to `docs/heroku_deploy.md` for the release checklist, readiness, and hybrid migration policy.  Postgres (heroku) & Redis (heroku)
 
 ---
 
@@ -1005,7 +1005,7 @@ MVP is complete when:
 
 **Version:** v1 (FINAL)
 **Scope:** MVP+ (Architecture-Locked)
-**Constraints:** Single repo, multiple binaries, Heroku MVP, GCP Pub/Sub / BigQuery / Storage / Cloud SQL
+**Constraints:** Single repo, multiple binaries, Heroku MVP, GCP Pub/Sub / BigQuery / Storage / Heroku SQL / Heroku Redis
 **Goal:** Define system structure, workflows, async/eventing, failure handling, and architectural tradeoffs.
 
 ---
@@ -1056,7 +1056,7 @@ flowchart LR
   end
 
   subgraph Data
-    PG[("Postgres / Cloud SQL")]
+    PG[("Postgres / Heroku")]
     R[("Redis")]
     GCS[("GCS Bucket")]
     BQ[("BigQuery")]
@@ -1137,10 +1137,13 @@ flowchart LR
 
 ### 3.2 GCP Resources
 
-* **Cloud SQL (Postgres):** authoritative data
 * **Pub/Sub:** event transport + DLQ
 * **BigQuery:** analytics warehouse
 * **GCS:** licenses, COAs, manifests, media
+
+### 3.3 GCP Resources
+* **Heroku Redis (Redis):**  Idempotency, rate limiting, JWT refreshing, etc 
+* **Heroku SQL (Postgres):** authoritative data
 
 ---
 
@@ -2353,11 +2356,11 @@ Ownership rules (high level):
 
 ---
 
-# Doc 4: Data Design — Postgres + PostGIS + BigQuery (PackFinderz)
+# Doc 4: Data Design — Postgres + PostGIS (later add on) + BigQuery (PackFinderz)
 
 **Version:** v1.0 (MVP+, Architecture-Locked)
-**Scope:** Postgres authoritative + PostGIS for geo + BigQuery for analytics events
-**Postgres readiness:** The earliest Goose migrations enable `pgcrypto` and `postgis` in Cloud SQL; they are idempotent (`CREATE EXTENSION IF NOT EXISTS`) so downstream schema work can rely on UUID helpers and geo queries without extra churn. Verify both extensions via `SELECT extname FROM pg_extension WHERE extname IN ('pgcrypto', 'postgis');` before progressing with later migrations.
+**Scope:** Postgres authoritative + PostGIS for geo (later phase add on) + BigQuery for analytics events
+**Postgres readiness:** The earliest Goose migrations enable `pgcrypto` and `postgis` in Heroku SQL (later add on); they are idempotent (`CREATE EXTENSION IF NOT EXISTS`) so downstream schema work can rely on UUID helpers and geo queries without extra churn. Verify both extensions via `SELECT extname FROM pg_extension WHERE extname IN ('pgcrypto', 'postgis');`  (later add on postgis) before progressing with later migrations.
 **ORM:** ignored for table shapes (per request)
 **Principles:** normalize by default; use JSONB only where structurally justified.
 
@@ -2450,7 +2453,7 @@ erDiagram
 * `country text` (default `US`)
 * `lat double precision`
 * `lng double precision`
-* `geohash text` (optional; PostGIS remains source for geo)
+* `geohash text` (optional; PostGIS remains source for geo) (later add on)
 
 **`social_t`**
 
@@ -2478,6 +2481,7 @@ Fields
 * `is_active boolean not null default true`
 * `last_login_at timestamptz null`
 * `system_role text null` (**ASSUMPTION:** null for normal users; `agent|admin` for system users)
+* `store_ids uuid[] not null default ARRAY[]::uuid[]` (user’s store memberships for fast joins)
 * `created_at timestamptz not null default now()`
 * `updated_at timestamptz not null default now()`
 

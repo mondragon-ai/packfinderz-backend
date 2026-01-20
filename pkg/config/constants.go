@@ -38,6 +38,11 @@ const (
 	EnvAutoMigrate       = "PACKFINDERZ_AUTO_MIGRATE"
 	EnvAVScan            = "PACKFINDERZ_AV_SCAN"
 	EnvGCSMode           = "PACKFINDERZ_GCS_ACCESS_MODE"
+	EnvArgonMemoryKB     = "PACKFINDERZ_ARGON_MEMORY_KB"
+	EnvArgonTime         = "PACKFINDERZ_ARGON_TIME"
+	EnvArgonParallelism  = "PACKFINDERZ_ARGON_PARALLELISM"
+	EnvArgonSaltLen      = "PACKFINDERZ_ARGON_SALT_LEN"
+	EnvArgonKeyLen       = "PACKFINDERZ_ARGON_KEY_LEN"
 
 	EnvOpenAIKey         = "PACKFINDERZ_OPENAI_API_KEY"
 	EnvGoogleMapsKey     = "PACKFINDERZ_GOOGLE_MAPS_API_KEY"
