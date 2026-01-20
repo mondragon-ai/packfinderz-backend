@@ -555,9 +555,7 @@ Add a Redis client bootstrap in `pkg/redis` that supports the core infra use cas
 
 ---
 
-## Title (number 11-N) => [PF-011]
-
-Docker Compose for local Postgres + Redis
+## [PF-011]: Docker Compose for local Postgres + Redis
 
 ## Type
 
@@ -597,9 +595,7 @@ Provide a Docker Compose stack for local development dependencies (Postgres + Re
 
 ---
 
-## Title (number 12-N) => [PF-012]
-
-Migrations: `cmd/migrate` runner + hybrid policy (auto in dev, manual in prod)
+## [PF-012]: Migrations: `cmd/migrate` runner + hybrid policy (auto in dev, manual in prod)
 
 ## Type
 
@@ -649,9 +645,7 @@ Implement migrations using Goose with a `cmd/migrate` runner and a hybrid execut
 
 ---
 
-## Title (number 13-N) => [PF-013]
-
-Base migrations: enable `pgcrypto` + `postgis` extensions
+## [PF-013] Base migrations: enable `pgcrypto` + `postgis` extensions
 
 ## Type
 
@@ -690,9 +684,7 @@ Add the initial Goose migrations to enable required Postgres extensions (`pgcryp
 
 ---
 
-## Title (number 14-N) => [PF-014]
-
-GORM integration via `pkg/db` + base repo pattern (global DB instance, tx + raw SQL helpers)
+## [PF-014]: GORM integration via `pkg/db` + base repo pattern (global DB instance, tx + raw SQL helpers)
 
 ## Type
 
@@ -796,9 +788,7 @@ Create a Makefile that provides a consistent developer workflow, including a sin
 
 ---
 
-## Title (number 16-N) => [PF-016]
-
-Single GitHub Actions CI pipeline: lint, test, build, secret scanning (DB tests skipped for now)
+## [PF-016]: Single GitHub Actions CI pipeline: lint, test, build, secret scanning (DB tests skipped for now)
 
 ## Type
 
@@ -850,9 +840,7 @@ Add a single GitHub Actions workflow that enforces code quality and blocks merge
 
 ---
 
-## Title (number 17-N) => [PF-017]
-
-Heroku Procfile (web + worker) + release notes + deploy checklist (hybrid migrations)
+## Heroku Procfile (web + worker) + release notes + deploy checklist (hybrid migrations)
 
 ## Type
 
@@ -864,18 +852,10 @@ Add Heroku deployment wiring for API and worker dynos and document an operationa
 
 ## Scope
 
-* Add `Procfile`:
+* Add `heroku.yml`:
 
   * `web: ./bin/api` (or equivalent buildpack output)
   * `worker: ./bin/worker`
-* Add docs:
-
-  * `RELEASE.md` (release notes template)
-  * `DEPLOY_CHECKLIST.md` including:
-
-    * env var verification
-    * migration steps (manual in prod using `cmd/migrate`)
-    * deploy order and rollback notes
 * Ensure checklist mentions:
 
   * readiness endpoints

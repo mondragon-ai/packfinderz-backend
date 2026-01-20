@@ -63,3 +63,21 @@ func setMinimalEnv(t *testing.T) {
 	t.Setenv(EnvPubSubBillingTopic, "billing-topic")
 	t.Setenv(EnvPubSubBillingSub, "billing-sub")
 }
+
+func TestAppConfigEnvHelpers(t *testing.T) {
+	devConfig := AppConfig{Env: "DEV"}
+	if !devConfig.IsDev() {
+		t.Fatalf("expected IsDev true for %q", devConfig.Env)
+	}
+	if devConfig.IsProd() {
+		t.Fatalf("expected IsProd false for %q", devConfig.Env)
+	}
+
+	prodConfig := AppConfig{Env: "prod"}
+	if !prodConfig.IsProd() {
+		t.Fatalf("expected IsProd true for %q", prodConfig.Env)
+	}
+	if prodConfig.IsDev() {
+		t.Fatalf("expected IsDev false for %q", prodConfig.Env)
+	}
+}

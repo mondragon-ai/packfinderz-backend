@@ -3,6 +3,9 @@ package config
 const (
 	EnvPrefix = "PACKFINDERZ"
 
+	AppEnvDev  = "dev"
+	AppEnvProd = "prod"
+
 	EnvAppEnv  = "PACKFINDERZ_APP_ENV"
 	EnvPort    = "PACKFINDERZ_APP_PORT"
 	EnvSvcKind = "PACKFINDERZ_SERVICE_KIND"

@@ -3508,6 +3508,12 @@ Index: `(status, updated_at)` (**ASSUMPTION:** add)
 * `ALTER TYPE ... ADD VALUE` only (safe).
 * Never remove enum values in place; migrate to new enum type if needed (**ASSUMPTION**).
 
+### 5.4 Execution policy
+
+* Migration files live under `migrations/` and `cmd/migrate` (reachable via `make migrate-up`) is the single CLI entry point for Goose (`up`, `down`, `status`, etc.).
+* API + worker binaries MAY auto-run migrations when `PACKFINDERZ_APP_ENV=dev` **and** `PACKFINDERZ_AUTO_MIGRATE=true`; the startup sequence fails if Goose cannot apply the pending steps. This keeps the dev loop fast without hiding schema drift.
+* In `prod` mode the auto-run path is disabled so schema changes must be applied manually (local machine or CI job) ahead of deploying related code. `cmd/migrate` targets the same DSN/configuration the services use, and Heroku deployments should keep it around for manual invocation rather than spinning up a dedicated migrate dyno.
+
 ---
 
 ## 6) BigQuery Event Schema
