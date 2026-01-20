@@ -840,7 +840,7 @@ Add a single GitHub Actions workflow that enforces code quality and blocks merge
 
 ---
 
-## Heroku Procfile (web + worker) + release notes + deploy checklist (hybrid migrations)
+## [PF-017]: Heroku Procfile (web + worker) + release notes + deploy checklist (hybrid migrations)
 
 ## Type
 
