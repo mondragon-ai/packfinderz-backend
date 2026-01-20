@@ -63,7 +63,7 @@
 
 ### Database & Cloud SQL Proxy
 
-`pkg/db` is the shared GORM bootstrap that both the API and worker binaries consume. It honors `PACKFINDERZ_DB_DSN` (or the legacy host/port vars) and exposes knobs (`PACKFINDERZ_DB_MAX_*`, `PACKFINDERZ_DB_CONN_*`) for pooling/timeouts before returning helpers such as `Ping`, `WithTx`, and context-bound raw SQL executions. `make dev` (`scripts/dev.sh`) handles Cloud SQL Proxy startup (service-account JSON + `PACKFINDERZ_CLOUD_SQL_INSTANCE`) prior to launching the API and worker, so you can stay in the REPL instead of rerunning `gcloud auth login`.
+`pkg/db` is the shared GORM bootstrap that both the API and worker binaries consume. It honors `PACKFINDERZ_DB_DSN` (or the legacy host/port vars) and exposes knobs (`PACKFINDERZ_DB_MAX_*`, `PACKFINDERZ_DB_CONN_*`) for pooling/timeouts before returning helpers such as `Ping`, `WithTx`, and context-bound raw SQL executions. Domain repositories should accept `*gorm.DB` via constructor injection (see `internal/repo.Base`) and call `WithTx` or the raw SQL helpers for atomic operations, while schema work stays in Goose migrations. `make dev`
 
 ### Redis & Readiness
 
@@ -178,6 +178,18 @@ API and workers auto-run migrations **only when**:
 
 The startup path blocks on Goose failures in dev. In `prod` mode the auto-run path is disabled, so run `cmd/migrate` manually (local machine or CI job) ahead of deploying schema changes. Heroku deployments do not need—or want—a dedicated migration dyno; keep `cmd/migrate` as the manual tool instead.
 
+### Postgres Extensions
+
+The earliest migrations configure Postgres for the stack by enabling `pgcrypto` (UUID helpers) and `postgis` (geo queries). Once you run `make migrate-up`, verify both extensions are active with:
+
+```sql
+SELECT extname
+FROM pg_extension
+WHERE extname IN ('pgcrypto', 'postgis');
+```
+
+Re-running the migration is safe because the statements use `CREATE EXTENSION IF NOT EXISTS`.
+
 ---
 
 ## Core Components
@@ -269,6 +281,10 @@ The startup path blocks on Goose failures in dev. In `prod` mode the auto-run pa
 * Partial checkout
 * Worker retries
 * Scheduler idempotency
+
+### CI Pipeline
+
+The GitHub Actions workflow (`.github/workflows/ci.yml`) runs gofmt, `golangci-lint`, `go test ./...`, `go build ./cmd/api ./cmd/worker ./cmd/migrate`, and a gitleaks secret scan on every pull request and push to `main`; branch protection should require the `CI` job to pass before merging. DB-dependent tests must use `//go:build db` so they stay excluded from this pipeline (run them locally with `go test -tags=db ./...` once infrastructure is ready), and any secrets caught by gitleaks fail the workflow.
 
 ---
 
