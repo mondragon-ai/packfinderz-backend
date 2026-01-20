@@ -12,9 +12,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-go@v4
+      - uses: actions/setup-go@v5
         with:
-          go-version: 1.25.5
+          go-version-file: go.mod
           cache: true
 
       - name: Install modules
@@ -32,9 +32,7 @@ jobs:
       - name: Run GolangCI-Lint
         uses: golangci/golangci-lint-action@v8
         with:
-          version: v1.66.1
           args: run ./...
-
 
       - name: Run tests (DB-excluded)
         run: go test ./...
