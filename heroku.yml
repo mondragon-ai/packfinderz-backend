@@ -1,0 +1,7 @@
+setup:
+  addons:
+    - plan: heroku-postgresql:hobby-basic
+    - plan: heroku-redis:hobby-dev
+run:
+  web: ./bin/api
+  worker: ./bin/worker
