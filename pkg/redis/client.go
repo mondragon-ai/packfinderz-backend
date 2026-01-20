@@ -175,6 +175,11 @@ func (c *Client) RefreshTokenKey(userID, storeID string) string {
 	return c.buildKey(sessionPrefix, userID, storeID)
 }
 
+// AccessSessionKey builds a namespaced key for access-token-based sessions.
+func (c *Client) AccessSessionKey(accessID string) string {
+	return c.buildKey(sessionPrefix, "access", accessID)
+}
+
 // StoreRefreshToken writes a refresh token with the provided TTL.
 func (c *Client) StoreRefreshToken(ctx context.Context, userID, storeID, token string, ttl time.Duration) error {
 	key := c.RefreshTokenKey(userID, storeID)
@@ -193,6 +198,14 @@ func (c *Client) RevokeRefreshToken(ctx context.Context, userID, storeID string)
 	}
 	_, err := c.store.Del(ctx, c.RefreshTokenKey(userID, storeID)).Result()
 	return err
+}
+
+// Del removes the provided keys.
+func (c *Client) Del(ctx context.Context, keys ...string) error {
+	if c.store == nil {
+		return errors.New("redis client not initialized")
+	}
+	return c.store.Del(ctx, keys...).Err()
 }
 
 // Ping verifies the connection.

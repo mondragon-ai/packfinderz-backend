@@ -2,10 +2,12 @@ package auth
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/angelmondragon/packfinderz-backend/pkg/config"
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/google/uuid"
 )
 
 var jwtSigningMethod = jwt.SigningMethodHS256
@@ -34,6 +36,11 @@ func MintAccessToken(cfg config.JWTConfig, now time.Time, payload AccessTokenPay
 	issuedAt := jwt.NewNumericDate(now)
 	expiry := jwt.NewNumericDate(now.Add(time.Duration(cfg.ExpirationMinutes) * time.Minute))
 
+	jti := strings.TrimSpace(payload.JTI)
+	if jti == "" {
+		jti = uuid.NewString()
+	}
+
 	claims := AccessTokenClaims{
 		UserID:        payload.UserID,
 		ActiveStoreID: payload.ActiveStoreID,
@@ -44,6 +51,7 @@ func MintAccessToken(cfg config.JWTConfig, now time.Time, payload AccessTokenPay
 			Issuer:    cfg.Issuer,
 			IssuedAt:  issuedAt,
 			ExpiresAt: expiry,
+			ID:        jti,
 		},
 	}
 

@@ -204,6 +204,7 @@ Re-running the migration is safe because the statements use `CREATE EXTENSION IF
 * Users may belong to multiple stores
 * JWT includes `activeStoreId`, `role`, optional `store_type`/`kyc_status`, and standard `iat`/`exp`
 * Tokens respect `PACKFINDERZ_JWT_EXPIRATION_MINUTES` and are refreshed when the store changes
+* Refresh tokens are opaque, rotate on each exchange, and are stored in Redis under `pf:session:access:<jti>` whose TTL is governed by `PACKFINDERZ_REFRESH_TOKEN_TTL_MINUTES`
 
 ### Checkout & Orders
 

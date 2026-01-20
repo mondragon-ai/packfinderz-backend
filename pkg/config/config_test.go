@@ -52,6 +52,7 @@ func setMinimalEnv(t *testing.T) {
 	t.Setenv(EnvJWTSecret, "secret")
 	t.Setenv(EnvJWTIssuer, "packfinderz")
 	t.Setenv(EnvJWTExpMins, "60")
+	t.Setenv(EnvRefreshTokenTTLMinutes, "43200")
 	t.Setenv(EnvGCPProjectID, "project-123")
 	t.Setenv(EnvGCSBucket, "bucket")
 	t.Setenv(EnvGCSUploadExpiry, "15m")
