@@ -10,6 +10,7 @@ import (
 	"github.com/angelmondragon/packfinderz-backend/pkg/db"
 	"github.com/angelmondragon/packfinderz-backend/pkg/instance"
 	"github.com/angelmondragon/packfinderz-backend/pkg/logger"
+	"github.com/angelmondragon/packfinderz-backend/pkg/migrate"
 	"github.com/angelmondragon/packfinderz-backend/pkg/redis"
 	"github.com/joho/godotenv"
 )
@@ -43,6 +44,11 @@ func main() {
 			logg.Error(context.Background(), "error closing database", err)
 		}
 	}()
+
+	if err := migrate.MaybeRunDev(context.Background(), cfg, logg, dbClient); err != nil {
+		logg.Error(context.Background(), "failed to run dev migrations", err)
+		os.Exit(1)
+	}
 
 	redisClient, err := redis.New(context.Background(), cfg.Redis, logg)
 	if err != nil {

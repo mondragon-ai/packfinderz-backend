@@ -43,6 +43,15 @@ type AppConfig struct {
 	LogLevel     string `envconfig:"PACKFINDERZ_LOG_LEVEL" default:"info"`
 	LogWarnStack bool   `envconfig:"PACKFINDERZ_LOG_WARN_STACK" default:"false"`
 }
+
+func (a AppConfig) IsDev() bool {
+	return strings.EqualFold(a.Env, AppEnvDev)
+}
+
+func (a AppConfig) IsProd() bool {
+	return strings.EqualFold(a.Env, AppEnvProd)
+}
+
 type ServiceConfig struct {
 	Kind string `envconfig:"PACKFINDERZ_SERVICE_KIND" default:"api"`
 }

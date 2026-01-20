@@ -161,7 +161,22 @@ Runs:
 * Redis
 * Pub/Sub (emulator if needed)
 
-Migrations are managed via **Goose**.
+### Database Migrations
+
+Schema changes live in `migrations/` and are executed via Goose through the `cmd/migrate` binary.
+
+```bash
+make migrate-up
+```
+
+The helper maps to `go run ./cmd/migrate up` but you can pass any Goose command (`down`, `status`, etc.) directly to the binary (`go run ./cmd/migrate status`).
+
+API and workers auto-run migrations **only when**:
+
+* `PACKFINDERZ_APP_ENV=dev`
+* `PACKFINDERZ_AUTO_MIGRATE=true`
+
+The startup path blocks on Goose failures in dev. In `prod` mode the auto-run path is disabled, so run `cmd/migrate` manually (local machine or CI job) ahead of deploying schema changes. Heroku deployments do not need—or want—a dedicated migration dyno; keep `cmd/migrate` as the manual tool instead.
 
 ---
 
