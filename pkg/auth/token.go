@@ -88,3 +88,32 @@ func ParseAccessToken(cfg config.JWTConfig, tokenString string) (*AccessTokenCla
 
 	return claims, nil
 }
+
+// ParseAccessTokenAllowExpired parses the JWT without validating exp/nbf so refresh can inspect jti.
+func ParseAccessTokenAllowExpired(cfg config.JWTConfig, tokenString string) (*AccessTokenClaims, error) {
+	if cfg.Secret == "" {
+		return nil, fmt.Errorf("jwt secret is required")
+	}
+
+	claims := &AccessTokenClaims{}
+	parser := jwt.NewParser(
+		jwt.WithoutClaimsValidation(),
+		jwt.WithValidMethods([]string{jwtSigningMethod.Alg()}),
+		jwt.WithIssuer(cfg.Issuer),
+	)
+	_, err := parser.ParseWithClaims(
+		tokenString,
+		claims,
+		func(token *jwt.Token) (interface{}, error) {
+			if token.Method != jwtSigningMethod {
+				return nil, fmt.Errorf("unexpected signing method %s", token.Header["alg"])
+			}
+			return []byte(cfg.Secret), nil
+		},
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	return claims, nil
+}

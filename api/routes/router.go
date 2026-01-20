@@ -1,6 +1,7 @@
 package routes
 
 import (
+	"context"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -15,7 +16,13 @@ import (
 	"github.com/angelmondragon/packfinderz-backend/pkg/redis"
 )
 
-func NewRouter(cfg *config.Config, logg *logger.Logger, dbP db.Pinger, redisP redis.Pinger, sessionVerifier session.AccessSessionChecker, authService auth.Service, registerService auth.RegisterService) http.Handler {
+type sessionManager interface {
+	session.AccessSessionChecker
+	Rotate(context.Context, string, string) (string, string, error)
+	Revoke(context.Context, string) error
+}
+
+func NewRouter(cfg *config.Config, logg *logger.Logger, dbP db.Pinger, redisP redis.Pinger, sessionManager sessionManager, authService auth.Service, registerService auth.RegisterService) http.Handler {
 	r := chi.NewRouter()
 	r.Use(
 		middleware.Recoverer(logg),
@@ -36,10 +43,12 @@ func NewRouter(cfg *config.Config, logg *logger.Logger, dbP db.Pinger, redisP re
 	r.Route("/api/v1/auth", func(r chi.Router) {
 		r.Post("/login", controllers.AuthLogin(authService, logg))
 		r.Post("/register", controllers.AuthRegister(registerService, authService, logg))
+		r.Post("/logout", controllers.AuthLogout(sessionManager, cfg.JWT, logg))
+		r.Post("/refresh", controllers.AuthRefresh(sessionManager, cfg.JWT, logg))
 	})
 
 	r.Route("/api", func(r chi.Router) {
-		r.Use(middleware.Auth(cfg.JWT, sessionVerifier, logg))
+		r.Use(middleware.Auth(cfg.JWT, sessionManager, logg))
 		r.Use(middleware.StoreContext(logg))
 		r.Use(middleware.Idempotency())
 		r.Use(middleware.RateLimit())
@@ -47,7 +56,7 @@ func NewRouter(cfg *config.Config, logg *logger.Logger, dbP db.Pinger, redisP re
 	})
 
 	r.Route("/api/admin", func(r chi.Router) {
-		r.Use(middleware.Auth(cfg.JWT, sessionVerifier, logg))
+		r.Use(middleware.Auth(cfg.JWT, sessionManager, logg))
 		r.Use(middleware.StoreContext(logg))
 		r.Use(middleware.RequireRole("admin", logg))
 		r.Use(middleware.Idempotency())
@@ -56,7 +65,7 @@ func NewRouter(cfg *config.Config, logg *logger.Logger, dbP db.Pinger, redisP re
 	})
 
 	r.Route("/api/agent", func(r chi.Router) {
-		r.Use(middleware.Auth(cfg.JWT, sessionVerifier, logg))
+		r.Use(middleware.Auth(cfg.JWT, sessionManager, logg))
 		r.Use(middleware.StoreContext(logg))
 		r.Use(middleware.RequireRole("agent", logg))
 		r.Use(middleware.Idempotency())

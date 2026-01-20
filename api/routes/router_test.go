@@ -37,10 +37,18 @@ func (stubRegisterService) Register(ctx context.Context, req auth.RegisterReques
 	return nil
 }
 
-type stubSessionVerifier struct{}
+type stubSessionManager struct{}
 
-func (stubSessionVerifier) HasSession(ctx context.Context, accessID string) (bool, error) {
+func (stubSessionManager) HasSession(ctx context.Context, accessID string) (bool, error) {
 	return true, nil
+}
+
+func (stubSessionManager) Rotate(ctx context.Context, oldAccessID, provided string) (string, string, error) {
+	return "", "", nil
+}
+
+func (stubSessionManager) Revoke(ctx context.Context, accessID string) error {
+	return nil
 }
 
 func testConfig() *config.Config {
@@ -57,7 +65,7 @@ func testConfig() *config.Config {
 
 func newTestRouter(cfg *config.Config) http.Handler {
 	logg := logger.New(logger.Options{ServiceName: "test-routing", Level: logger.ParseLevel("debug"), Output: io.Discard})
-	return NewRouter(cfg, logg, stubPinger{}, stubPinger{}, stubSessionVerifier{}, stubAuthService{}, stubRegisterService{})
+	return NewRouter(cfg, logg, stubPinger{}, stubPinger{}, stubSessionManager{}, stubAuthService{}, stubRegisterService{})
 }
 
 func TestHealthGroupAccessible(t *testing.T) {

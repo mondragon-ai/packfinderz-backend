@@ -110,6 +110,14 @@ func (m *Manager) Rotate(ctx context.Context, oldAccessID, provided string) (str
 	return newAccessID, newToken, nil
 }
 
+// Revoke deletes the refresh mapping tied to the access identifier.
+func (m *Manager) Revoke(ctx context.Context, accessID string) error {
+	if strings.TrimSpace(accessID) == "" {
+		return fmt.Errorf("access id is required")
+	}
+	return m.store.Del(ctx, m.keyer.AccessSessionKey(accessID))
+}
+
 // NewAccessID produces a stable identifier used as the JWT jti/Redis key.
 func NewAccessID() string {
 	return uuid.NewString()

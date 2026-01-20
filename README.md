@@ -325,6 +325,22 @@ POST /api/v1/auth/login
 
 Validates email/password, collects the store memberships, and returns `200` with tokens plus `stores[]` (for multi-store selection). Each response also sets `X-PF-Token` to the latest access token.
 
+#### Logout
+
+```
+POST /api/v1/auth/logout
+```
+
+Requires an Authorization bearer token; revokes the refresh mapping so the session cannot be renewed. Returns `200` when the session is terminated.
+
+#### Refresh
+
+```
+POST /api/v1/auth/refresh
+```
+
+Accepts a JSON body with `refresh_token` and the outgoing access token in the Authorization header (even if expired). Returns `200` with a rotated refresh token plus a new access token set in both the response body and `X-PF-Token`.
+
 ### Error Contract
 
 ```json
