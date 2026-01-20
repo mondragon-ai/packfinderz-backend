@@ -89,3 +89,19 @@ func (r *Repository) UserHasRole(ctx context.Context, userID, storeID uuid.UUID,
 	}
 	return count > 0, nil
 }
+
+// GetMembershipWithStore returns membership details joined with store metadata.
+func (r *Repository) GetMembershipWithStore(ctx context.Context, userID, storeID uuid.UUID) (*MembershipWithStore, error) {
+	var row membershipWithStoreRow
+	err := r.db.WithContext(ctx).
+		Model(&models.StoreMembership{}).
+		Select("store_memberships.*, stores.company_name AS store_name, stores.type AS store_type").
+		Joins("JOIN stores ON stores.id = store_memberships.store_id").
+		Where("store_memberships.user_id = ? AND store_memberships.store_id = ?", userID, storeID).
+		Scan(&row).Error
+	if err != nil {
+		return nil, err
+	}
+	dto := membershipWithStoreFromRow(row)
+	return &dto, nil
+}

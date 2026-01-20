@@ -341,6 +341,14 @@ POST /api/v1/auth/refresh
 
 Accepts a JSON body with `refresh_token` and the outgoing access token in the Authorization header (even if expired). Returns `200` with a rotated refresh token plus a new access token set in both the response body and `X-PF-Token`.
 
+#### Switch Store
+
+```
+POST /api/v1/auth/switch-store
+```
+
+Requires both the current Authorization bearer token and the existing `refresh_token`. Validates that the user belongs to `store_id`, rotates the session, and returns `200` with a new access token (in the body + `X-PF-Token`) preconfigured with `activeStoreId`.
+
 ### Error Contract
 
 ```json
