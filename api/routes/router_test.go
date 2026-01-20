@@ -2,14 +2,21 @@ package routes
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/angelmondragon/packfinderz-backend/internal/auth"
+	pkgAuth "github.com/angelmondragon/packfinderz-backend/pkg/auth"
+	"github.com/angelmondragon/packfinderz-backend/pkg/auth/session"
 	"github.com/angelmondragon/packfinderz-backend/pkg/config"
+	"github.com/angelmondragon/packfinderz-backend/pkg/enums"
 	"github.com/angelmondragon/packfinderz-backend/pkg/logger"
+	"github.com/google/uuid"
 )
 
 type stubPinger struct{}
@@ -18,14 +25,37 @@ func (stubPinger) Ping(context.Context) error {
 	return nil
 }
 
-func newTestRouter() http.Handler {
-	cfg := &config.Config{App: config.AppConfig{Env: "test", Port: "0"}}
+type stubAuthService struct{}
+
+func (stubAuthService) Login(ctx context.Context, req auth.LoginRequest) (*auth.LoginResponse, error) {
+	return nil, fmt.Errorf("not implemented")
+}
+
+type stubSessionVerifier struct{}
+
+func (stubSessionVerifier) HasSession(ctx context.Context, accessID string) (bool, error) {
+	return true, nil
+}
+
+func testConfig() *config.Config {
+	return &config.Config{
+		App: config.AppConfig{Env: "test", Port: "0"},
+		JWT: config.JWTConfig{
+			Secret:                 "secret",
+			Issuer:                 "issuer",
+			ExpirationMinutes:      60,
+			RefreshTokenTTLMinutes: 120,
+		},
+	}
+}
+
+func newTestRouter(cfg *config.Config) http.Handler {
 	logg := logger.New(logger.Options{ServiceName: "test-routing", Level: logger.ParseLevel("debug"), Output: io.Discard})
-	return NewRouter(cfg, logg, stubPinger{}, stubPinger{})
+	return NewRouter(cfg, logg, stubPinger{}, stubPinger{}, stubSessionVerifier{}, stubAuthService{})
 }
 
 func TestHealthGroupAccessible(t *testing.T) {
-	router := newTestRouter()
+	router := newTestRouter(testConfig())
 	for _, path := range []string{"/health/live", "/health/ready"} {
 		req := httptest.NewRequest(http.MethodGet, path, nil)
 		resp := httptest.NewRecorder()
@@ -37,7 +67,7 @@ func TestHealthGroupAccessible(t *testing.T) {
 }
 
 func TestPrivateGroupRejectsMissingJWT(t *testing.T) {
-	router := newTestRouter()
+	router := newTestRouter(testConfig())
 	req := httptest.NewRequest(http.MethodGet, "/api/ping", nil)
 	resp := httptest.NewRecorder()
 	router.ServeHTTP(resp, req)
@@ -47,9 +77,11 @@ func TestPrivateGroupRejectsMissingJWT(t *testing.T) {
 }
 
 func TestAdminGroupRequiresAdminRole(t *testing.T) {
-	router := newTestRouter()
+	cfg := testConfig()
+	router := newTestRouter(cfg)
+
 	nonAdmin := httptest.NewRequest(http.MethodGet, "/api/admin/ping", nil)
-	nonAdmin.Header.Set("Authorization", "Bearer alice|buyer|store-1")
+	nonAdmin.Header.Set("Authorization", "Bearer "+buildToken(t, cfg, enums.MemberRoleViewer))
 	resp := httptest.NewRecorder()
 	router.ServeHTTP(resp, nonAdmin)
 	if resp.Code != http.StatusForbidden {
@@ -57,7 +89,7 @@ func TestAdminGroupRequiresAdminRole(t *testing.T) {
 	}
 
 	admin := httptest.NewRequest(http.MethodGet, "/api/admin/ping", nil)
-	admin.Header.Set("Authorization", "Bearer bob|admin|store-1")
+	admin.Header.Set("Authorization", "Bearer "+buildToken(t, cfg, enums.MemberRoleAdmin))
 	resp = httptest.NewRecorder()
 	router.ServeHTTP(resp, admin)
 	if resp.Code != http.StatusOK {
@@ -66,9 +98,10 @@ func TestAdminGroupRequiresAdminRole(t *testing.T) {
 }
 
 func TestAgentGroupRequiresAgentRole(t *testing.T) {
-	router := newTestRouter()
+	cfg := testConfig()
+	router := newTestRouter(cfg)
 	req := httptest.NewRequest(http.MethodGet, "/api/agent/ping", nil)
-	req.Header.Set("Authorization", "Bearer matt|agent|store-1")
+	req.Header.Set("Authorization", "Bearer "+buildToken(t, cfg, enums.MemberRoleAgent))
 	resp := httptest.NewRecorder()
 	router.ServeHTTP(resp, req)
 	if resp.Code != http.StatusOK {
@@ -77,9 +110,10 @@ func TestAgentGroupRequiresAgentRole(t *testing.T) {
 }
 
 func TestPrivateGroupSucceedsWithJWT(t *testing.T) {
-	router := newTestRouter()
+	cfg := testConfig()
+	router := newTestRouter(cfg)
 	req := httptest.NewRequest(http.MethodGet, "/api/ping", nil)
-	req.Header.Set("Authorization", "Bearer patti|buyer|store-xyz")
+	req.Header.Set("Authorization", "Bearer "+buildToken(t, cfg, enums.MemberRoleOwner))
 	resp := httptest.NewRecorder()
 	router.ServeHTTP(resp, req)
 	if resp.Code != http.StatusOK {
@@ -88,7 +122,7 @@ func TestPrivateGroupSucceedsWithJWT(t *testing.T) {
 }
 
 func TestPublicValidateRejectsBadJSON(t *testing.T) {
-	router := newTestRouter()
+	router := newTestRouter(testConfig())
 	req := httptest.NewRequest(http.MethodPost, "/api/public/validate", strings.NewReader("{"))
 	req.Header.Set("Content-Type", "application/json")
 	resp := httptest.NewRecorder()
@@ -99,7 +133,7 @@ func TestPublicValidateRejectsBadJSON(t *testing.T) {
 }
 
 func TestPublicValidateAcceptsGoodJSON(t *testing.T) {
-	router := newTestRouter()
+	router := newTestRouter(testConfig())
 	body := `{"name":"Zed","email":"zed@example.com"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/public/validate", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
@@ -108,4 +142,20 @@ func TestPublicValidateAcceptsGoodJSON(t *testing.T) {
 	if resp.Code != http.StatusOK {
 		t.Fatalf("expected 200 for valid payload got %d", resp.Code)
 	}
+}
+
+func buildToken(t *testing.T, cfg *config.Config, role enums.MemberRole) string {
+	t.Helper()
+	storeID := uuid.New()
+	accessID := session.NewAccessID()
+	token, err := pkgAuth.MintAccessToken(cfg.JWT, time.Now(), pkgAuth.AccessTokenPayload{
+		UserID:        uuid.New(),
+		ActiveStoreID: &storeID,
+		Role:          role,
+		JTI:           accessID,
+	})
+	if err != nil {
+		t.Fatalf("mint token: %v", err)
+	}
+	return token
 }

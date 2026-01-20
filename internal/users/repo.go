@@ -2,6 +2,7 @@ package users
 
 import (
 	"context"
+	"time"
 
 	"github.com/angelmondragon/packfinderz-backend/pkg/db/models"
 	"github.com/google/uuid"
@@ -43,4 +44,12 @@ func (r *Repository) FindByID(ctx context.Context, id uuid.UUID) (*models.User, 
 		return nil, err
 	}
 	return &user, nil
+}
+
+// UpdateLastLogin refreshes the user's last_login_at timestamp.
+func (r *Repository) UpdateLastLogin(ctx context.Context, id uuid.UUID, at time.Time) error {
+	return r.db.WithContext(ctx).
+		Model(&models.User{}).
+		Where("id = ?", id).
+		UpdateColumn("last_login_at", at).Error
 }

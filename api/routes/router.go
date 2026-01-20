@@ -7,13 +7,15 @@ import (
 
 	"github.com/angelmondragon/packfinderz-backend/api/controllers"
 	"github.com/angelmondragon/packfinderz-backend/api/middleware"
+	"github.com/angelmondragon/packfinderz-backend/internal/auth"
+	"github.com/angelmondragon/packfinderz-backend/pkg/auth/session"
 	"github.com/angelmondragon/packfinderz-backend/pkg/config"
 	"github.com/angelmondragon/packfinderz-backend/pkg/db"
 	"github.com/angelmondragon/packfinderz-backend/pkg/logger"
 	"github.com/angelmondragon/packfinderz-backend/pkg/redis"
 )
 
-func NewRouter(cfg *config.Config, logg *logger.Logger, dbP db.Pinger, redisP redis.Pinger) http.Handler {
+func NewRouter(cfg *config.Config, logg *logger.Logger, dbP db.Pinger, redisP redis.Pinger, sessionVerifier session.AccessSessionChecker, authService auth.Service) http.Handler {
 	r := chi.NewRouter()
 	r.Use(
 		middleware.Recoverer(logg),
@@ -31,8 +33,12 @@ func NewRouter(cfg *config.Config, logg *logger.Logger, dbP db.Pinger, redisP re
 		r.Post("/validate", controllers.PublicValidate(logg))
 	})
 
+	r.Route("/api/v1/auth", func(r chi.Router) {
+		r.Post("/login", controllers.AuthLogin(authService, logg))
+	})
+
 	r.Route("/api", func(r chi.Router) {
-		r.Use(middleware.Auth(logg))
+		r.Use(middleware.Auth(cfg.JWT, sessionVerifier, logg))
 		r.Use(middleware.StoreContext(logg))
 		r.Use(middleware.Idempotency())
 		r.Use(middleware.RateLimit())
@@ -40,7 +46,7 @@ func NewRouter(cfg *config.Config, logg *logger.Logger, dbP db.Pinger, redisP re
 	})
 
 	r.Route("/api/admin", func(r chi.Router) {
-		r.Use(middleware.Auth(logg))
+		r.Use(middleware.Auth(cfg.JWT, sessionVerifier, logg))
 		r.Use(middleware.StoreContext(logg))
 		r.Use(middleware.RequireRole("admin", logg))
 		r.Use(middleware.Idempotency())
@@ -49,7 +55,7 @@ func NewRouter(cfg *config.Config, logg *logger.Logger, dbP db.Pinger, redisP re
 	})
 
 	r.Route("/api/agent", func(r chi.Router) {
-		r.Use(middleware.Auth(logg))
+		r.Use(middleware.Auth(cfg.JWT, sessionVerifier, logg))
 		r.Use(middleware.StoreContext(logg))
 		r.Use(middleware.RequireRole("agent", logg))
 		r.Use(middleware.Idempotency())

@@ -410,6 +410,15 @@ Manifest approach (MVP):
 * Validation errors (malformed JSON, missing required fields, query params out of bounds) map to the canonical error envelope so clients always receive `400` + `{ "error": { "details": {...} } }`.
 * Each route group enforces its own auth/role requirements and should be covered by tests for 401/403, plus validation tests that assert the 400 envelope contains field-level messages.
 
+**Auth middleware (updated semantics)**
+
+* Middleware now:
+
+  * parses JWTs via `pkg/auth` (the old `api/validators/token.go` parser is deprecated and should be removed)
+  * checks `session.AccessSessionChecker.HasSession` (Redis-backed) to ensure token/session is still valid
+  * seeds request context (user/store/role fields)
+  * emits structured log fields consistently
+
 ---
 
 ## 18) Error Handling (Canonical)
@@ -1582,6 +1591,19 @@ Ownership rules (high level):
   * Returns tokens + store list; auto-picks `activeStoreId` if only 1 store.
   * Success: `200`
   * Errors: `400, 401`
+
+
+Headers:
+
+* `X-PF-Token: <access_jwt>` (access token is returned via header)
+
+
+**Notes**
+
+* Login now returns **store memberships** as `stores[]` (via `StoreSummary`) so the client can render the store switcher immediately.
+* `last_login_at` is updated **atomically on successful login**.
+* Access token is returned in **`X-PF-Token`** header (not in body), while refresh token is returned in the response body.
+
 
 **Logout**
 
@@ -3838,6 +3860,20 @@ type IdentityProvider interface {
   * Custom (current)
   * Cognito
   * Firebase Auth
+
+
+**Session-backed access tokens (MVP rule)**
+
+* API middleware MUST validate:
+
+  1. JWT signature + expiry (standard)
+  2. **session presence in Redis** via `session.AccessSessionChecker.HasSession(...)`
+* If Redis does not recognize the session, the request MUST be rejected as `401` (treat token as revoked/invalid).
+
+**Rationale**
+
+* Enables immediate revocation (logout / refresh rotation / forced invalidation) without relying solely on JWT expiry.
+
 
 ---
 
