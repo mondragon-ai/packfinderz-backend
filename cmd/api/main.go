@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"os"
 
+	"github.com/joho/godotenv"
+
 	"github.com/angelmondragon/packfinderz-backend/api/routes"
 	"github.com/angelmondragon/packfinderz-backend/internal/auth"
 	"github.com/angelmondragon/packfinderz-backend/internal/memberships"
@@ -15,7 +17,6 @@ import (
 	"github.com/angelmondragon/packfinderz-backend/pkg/logger"
 	"github.com/angelmondragon/packfinderz-backend/pkg/migrate"
 	"github.com/angelmondragon/packfinderz-backend/pkg/redis"
-	"github.com/joho/godotenv"
 )
 
 func main() {
@@ -117,8 +118,17 @@ func main() {
 	logg.Info(ctx, "starting api server")
 
 	server := &http.Server{
-		Addr:    addr,
-		Handler: routes.NewRouter(cfg, logg, dbClient, redisClient, sessionManager, authService, registerService, switchService),
+		Addr: addr,
+		Handler: routes.NewRouter(
+			cfg,
+			logg,
+			dbClient,
+			redisClient,
+			sessionManager,
+			authService,
+			registerService,
+			switchService,
+		),
 	}
 
 	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {

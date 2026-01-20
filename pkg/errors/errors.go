@@ -15,6 +15,7 @@ const (
 	CodeNotFound      Code = "NOT_FOUND"
 	CodeConflict      Code = "CONFLICT"
 	CodeStateConflict Code = "STATE_CONFLICT"
+	CodeIdempotency   Code = "IDEMPOTENCY_KEY_REUSED"
 	CodeInternal      Code = "INTERNAL_ERROR"
 	CodeDependency    Code = "DEPENDENCY_ERROR"
 )
@@ -61,6 +62,12 @@ var metadataByCode = map[Code]Metadata{
 		HTTPStatus:     http.StatusUnprocessableEntity,
 		Retryable:      false,
 		PublicMessage:  "state transition disallowed",
+		DetailsAllowed: true,
+	},
+	CodeIdempotency: {
+		HTTPStatus:     http.StatusConflict,
+		Retryable:      false,
+		PublicMessage:  "idempotency key reused",
 		DetailsAllowed: true,
 	},
 	CodeInternal: {

@@ -2340,6 +2340,8 @@ Headers:
   * Default TTL MUST be **24 hours**
   * For checkout + payment critical actions, TTL SHOULD be **7 days**.
 
+Implementation detail: The `api/middleware.Idempotency` middleware now enforces this contract by requiring the header for the listed routes, computing the `(user, store, method, path, key)` scope, storing the response (status/body/`Content-Type`) in Redis, replaying the stored payload on matching keys, and returning `409 IDEMPOTENCY_KEY_REUSED` when the incoming body differs. The TTLs above are applied per-route so that checkout/payment flows keep keys for seven days while others expire after 24 hours.
+
 ### 6.2 Endpoints requiring idempotency
 
 **24h TTL**

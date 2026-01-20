@@ -295,6 +295,12 @@ The GitHub Actions workflow (`.github/workflows/ci.yml`) runs gofmt, `golangci-l
 
 ## API Usage
 
+### Idempotency
+
+* Money-adjacent `POST` endpoints require an `Idempotency-Key` header; missing the header now yields a `400`.
+* `api/middleware.Idempotency` stores the first response (status, body, and `Content-Type`) in Redis per scope+key and replays it on matching keys; mismatched request bodies trigger `409 IDEMPOTENCY_KEY_REUSED`.
+* TTLs are 24h by default and 7 days for checkout/payment flows (see `DESIGN_DOC.md` section 6 for the complete endpoint list).
+
 ### Health
 
 ```bash
