@@ -243,7 +243,7 @@ Re-running the migration is safe because the statements use `CREATE EXTENSION IF
 
 ### Postgres (Authoritative)
 
-* Stores, users, memberships
+* Stores, users, memberships (store_memberships join + member_role/membership_status enums)
 * Products, inventory, orders
 * Payments, ledger events
 * Ads, subscriptions
