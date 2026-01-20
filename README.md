@@ -202,8 +202,8 @@ Re-running the migration is safe because the statements use `CREATE EXTENSION IF
 
 * Canonical tenant = **Store**
 * Users may belong to multiple stores
-* JWT includes `activeStoreId`
-* Store switching mints a new token
+* JWT includes `activeStoreId`, `role`, optional `store_type`/`kyc_status`, and standard `iat`/`exp`
+* Tokens respect `PACKFINDERZ_JWT_EXPIRATION_MINUTES` and are refreshed when the store changes
 
 ### Checkout & Orders
 
