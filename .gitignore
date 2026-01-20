@@ -8,4 +8,12 @@ docs/prompt_template.md
 
 # Env Vars
 .env
+
+
+# GCP credentials / keys
+*.json
 packfinderz-pf-app-sa.json
+*service-account*.json
+*sa*.json
+*.pem
+*.key

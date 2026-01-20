@@ -28,7 +28,9 @@ func newValidator() *validator.Validate {
 
 func DecodeJSONBody(r *http.Request, dest any) error {
 	defer func() {
-		io.Copy(io.Discard, r.Body)
+		if _, err := io.Copy(io.Discard, r.Body); err != nil {
+			return
+		}
 	}()
 	decoder := json.NewDecoder(r.Body)
 	decoder.DisallowUnknownFields()
