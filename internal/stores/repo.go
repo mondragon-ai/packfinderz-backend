@@ -1,0 +1,46 @@
+package stores
+
+import (
+	"context"
+
+	"github.com/angelmondragon/packfinderz-backend/pkg/db/models"
+	"github.com/google/uuid"
+	"gorm.io/gorm"
+)
+
+// Repository handles store persistence.
+type Repository struct {
+	db *gorm.DB
+}
+
+// NewRepository binds a GORM DB to store operations.
+func NewRepository(db *gorm.DB) *Repository {
+	return &Repository{db: db}
+}
+
+// Create persists a new store row.
+func (r *Repository) Create(ctx context.Context, dto CreateStoreDTO) (*models.Store, error) {
+	store := dto.ToModel()
+	if err := r.db.WithContext(ctx).Create(store).Error; err != nil {
+		return nil, err
+	}
+	return store, nil
+}
+
+// FindByID loads a store by its UUID.
+func (r *Repository) FindByID(ctx context.Context, id uuid.UUID) (*models.Store, error) {
+	var store models.Store
+	if err := r.db.WithContext(ctx).First(&store, "id = ?", id).Error; err != nil {
+		return nil, err
+	}
+	return &store, nil
+}
+
+// FindByOwner returns all stores owned by the provided user.
+func (r *Repository) FindByOwner(ctx context.Context, ownerID uuid.UUID) ([]models.Store, error) {
+	var stores []models.Store
+	if err := r.db.WithContext(ctx).Where("owner = ?", ownerID).Find(&stores).Error; err != nil {
+		return nil, err
+	}
+	return stores, nil
+}
