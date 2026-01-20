@@ -30,10 +30,11 @@ jobs:
           fi
 
       - name: Run GolangCI-Lint
-        uses: golangci/golangci-lint-action@v4
+        uses: golangci/golangci-lint-action@v8
         with:
-          version: v1.63.0
+          version: v1.66.1
           args: run ./...
+
 
       - name: Run tests (DB-excluded)
         run: go test ./...
