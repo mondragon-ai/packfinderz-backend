@@ -23,21 +23,40 @@ func HealthReady(cfg *config.Config, logg *logger.Logger, dbP db.Pinger, redisP 
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 		w.Header().Set("X-PackFinderz-Env", cfg.App.Env)
+
 		failures := map[string]string{}
-		if err := dbP.Ping(ctx); err != nil {
+
+		// ---- Postgres
+		if dbP == nil {
+			if cfg.App.Env != "test" {
+				failures["postgres"] = "not configured"
+			}
+		} else if err := dbP.Ping(ctx); err != nil {
 			failures["postgres"] = err.Error()
 		}
-		if err := redisP.Ping(ctx); err != nil {
+
+		// ---- Redis
+		if redisP == nil {
+			if cfg.App.Env != "test" {
+				failures["redis"] = "not configured"
+			}
+		} else if err := redisP.Ping(ctx); err != nil {
 			failures["redis"] = err.Error()
 		}
+
 		if len(failures) > 0 {
-			err := pkgerrors.New(pkgerrors.CodeDependency, "dependencies unavailable").WithDetails(failures)
+			err := pkgerrors.
+				New(pkgerrors.CodeDependency, "dependencies unavailable").
+				WithDetails(failures)
+
 			if logg != nil {
 				logg.Error(ctx, "readiness failed", errors.New("dependency check failed"))
 			}
+
 			responses.WriteError(ctx, logg, w, err)
 			return
 		}
+
 		responses.WriteSuccess(w, map[string]string{"status": "ready"})
 	}
 }

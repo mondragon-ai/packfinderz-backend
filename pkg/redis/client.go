@@ -41,6 +41,13 @@ type Pinger interface {
 	Ping(context.Context) error
 }
 
+// IdempotencyStore exposes minimal operations used by idempotency helpers.
+type IdempotencyStore interface {
+	Get(context.Context, string) (string, error)
+	SetNX(context.Context, string, any, time.Duration) (bool, error)
+	IdempotencyKey(scope, id string) string
+}
+
 // New bootstraps a Redis client with pooling/timeouts and verifies connectivity.
 func New(ctx context.Context, cfg config.RedisConfig, logg *logger.Logger) (*Client, error) {
 	opts, err := optionsFromConfig(cfg)
