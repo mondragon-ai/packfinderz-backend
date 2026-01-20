@@ -22,7 +22,7 @@ type sessionManager interface {
 	Revoke(context.Context, string) error
 }
 
-func NewRouter(cfg *config.Config, logg *logger.Logger, dbP db.Pinger, redisP redis.Pinger, sessionManager sessionManager, authService auth.Service, registerService auth.RegisterService) http.Handler {
+func NewRouter(cfg *config.Config, logg *logger.Logger, dbP db.Pinger, redisP redis.Pinger, sessionManager sessionManager, authService auth.Service, registerService auth.RegisterService, switchService auth.SwitchStoreService) http.Handler {
 	r := chi.NewRouter()
 	r.Use(
 		middleware.Recoverer(logg),
@@ -45,6 +45,7 @@ func NewRouter(cfg *config.Config, logg *logger.Logger, dbP db.Pinger, redisP re
 		r.Post("/register", controllers.AuthRegister(registerService, authService, logg))
 		r.Post("/logout", controllers.AuthLogout(sessionManager, cfg.JWT, logg))
 		r.Post("/refresh", controllers.AuthRefresh(sessionManager, cfg.JWT, logg))
+		r.Post("/switch-store", controllers.AuthSwitchStore(switchService, cfg.JWT, logg))
 	})
 
 	r.Route("/api", func(r chi.Router) {

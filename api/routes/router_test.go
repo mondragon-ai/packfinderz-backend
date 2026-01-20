@@ -51,6 +51,12 @@ func (stubSessionManager) Revoke(ctx context.Context, accessID string) error {
 	return nil
 }
 
+type stubSwitchService struct{}
+
+func (stubSwitchService) Switch(ctx context.Context, input auth.SwitchStoreInput) (*auth.SwitchStoreResult, error) {
+	return nil, nil
+}
+
 func testConfig() *config.Config {
 	return &config.Config{
 		App: config.AppConfig{Env: "test", Port: "0"},
@@ -65,7 +71,7 @@ func testConfig() *config.Config {
 
 func newTestRouter(cfg *config.Config) http.Handler {
 	logg := logger.New(logger.Options{ServiceName: "test-routing", Level: logger.ParseLevel("debug"), Output: io.Discard})
-	return NewRouter(cfg, logg, stubPinger{}, stubPinger{}, stubSessionManager{}, stubAuthService{}, stubRegisterService{})
+	return NewRouter(cfg, logg, stubPinger{}, stubPinger{}, stubSessionManager{}, stubAuthService{}, stubRegisterService{}, stubSwitchService{})
 }
 
 func TestHealthGroupAccessible(t *testing.T) {

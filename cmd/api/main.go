@@ -90,6 +90,16 @@ func main() {
 		os.Exit(1)
 	}
 
+	switchService, err := auth.NewSwitchStoreService(auth.SwitchStoreServiceParams{
+		MembershipsRepo: memberships.NewRepository(dbClient.DB()),
+		SessionManager:  sessionManager,
+		JWTConfig:       cfg.JWT,
+	})
+	if err != nil {
+		logg.Error(context.Background(), "failed to create switch store service", err)
+		os.Exit(1)
+	}
+
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = cfg.App.Port
@@ -108,7 +118,7 @@ func main() {
 
 	server := &http.Server{
 		Addr:    addr,
-		Handler: routes.NewRouter(cfg, logg, dbClient, redisClient, sessionManager, authService, registerService),
+		Handler: routes.NewRouter(cfg, logg, dbClient, redisClient, sessionManager, authService, registerService, switchService),
 	}
 
 	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
