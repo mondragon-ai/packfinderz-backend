@@ -81,6 +81,15 @@ func main() {
 		os.Exit(1)
 	}
 
+	registerService, err := auth.NewRegisterService(auth.RegisterServiceParams{
+		DB:             dbClient,
+		PasswordConfig: cfg.Password,
+	})
+	if err != nil {
+		logg.Error(context.Background(), "failed to create register service", err)
+		os.Exit(1)
+	}
+
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = cfg.App.Port
@@ -99,7 +108,7 @@ func main() {
 
 	server := &http.Server{
 		Addr:    addr,
-		Handler: routes.NewRouter(cfg, logg, dbClient, redisClient, sessionManager, authService),
+		Handler: routes.NewRouter(cfg, logg, dbClient, redisClient, sessionManager, authService, registerService),
 	}
 
 	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {

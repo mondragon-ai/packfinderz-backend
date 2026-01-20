@@ -53,3 +53,11 @@ func (r *Repository) UpdateLastLogin(ctx context.Context, id uuid.UUID, at time.
 		Where("id = ?", id).
 		UpdateColumn("last_login_at", at).Error
 }
+
+// UpdateStoreIDs overwrites the user's store_ids array.
+func (r *Repository) UpdateStoreIDs(ctx context.Context, id uuid.UUID, storeIDs []uuid.UUID) error {
+	return r.db.WithContext(ctx).
+		Model(&models.User{}).
+		Where("id = ?", id).
+		UpdateColumn("store_ids", storeIDs).Error
+}
