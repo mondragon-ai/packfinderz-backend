@@ -2425,7 +2425,7 @@ erDiagram
 * `store_type`: `buyer`, `vendor`
 * `kyc_status`: `pending_verification`, `verified`, `rejected`, `expired`, `suspended`
 * `license_status`: `pending`, `verified`, `rejected`, `expired`
-* `member_role`: `owner`, `admin`, `sales_rep`, `viewer`, `driver`, `compliance`, `finance`
+* `member_role`: `owner`, `admin`, `manager`, `viewer`, `agent`, `staff`, `ops`
 * `vendor_order_status` (LOCKED):
   `created_pending`, `accepted`, `partially_accepted`, `rejected`, `fulfilled`, `hold`, `in_transit`, `delivered`, `closed`, `canceled`, `expired`
 * `line_item_status` (LOCKED): `pending`, `accepted`, `rejected`, `fulfilled`, `hold`
