@@ -31,6 +31,12 @@ func (stubAuthService) Login(ctx context.Context, req auth.LoginRequest) (*auth.
 	return nil, fmt.Errorf("not implemented")
 }
 
+type stubRegisterService struct{}
+
+func (stubRegisterService) Register(ctx context.Context, req auth.RegisterRequest) error {
+	return nil
+}
+
 type stubSessionVerifier struct{}
 
 func (stubSessionVerifier) HasSession(ctx context.Context, accessID string) (bool, error) {
@@ -51,7 +57,7 @@ func testConfig() *config.Config {
 
 func newTestRouter(cfg *config.Config) http.Handler {
 	logg := logger.New(logger.Options{ServiceName: "test-routing", Level: logger.ParseLevel("debug"), Output: io.Discard})
-	return NewRouter(cfg, logg, stubPinger{}, stubPinger{}, stubSessionVerifier{}, stubAuthService{})
+	return NewRouter(cfg, logg, stubPinger{}, stubPinger{}, stubSessionVerifier{}, stubAuthService{}, stubRegisterService{})
 }
 
 func TestHealthGroupAccessible(t *testing.T) {

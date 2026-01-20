@@ -15,7 +15,7 @@ import (
 	"github.com/angelmondragon/packfinderz-backend/pkg/redis"
 )
 
-func NewRouter(cfg *config.Config, logg *logger.Logger, dbP db.Pinger, redisP redis.Pinger, sessionVerifier session.AccessSessionChecker, authService auth.Service) http.Handler {
+func NewRouter(cfg *config.Config, logg *logger.Logger, dbP db.Pinger, redisP redis.Pinger, sessionVerifier session.AccessSessionChecker, authService auth.Service, registerService auth.RegisterService) http.Handler {
 	r := chi.NewRouter()
 	r.Use(
 		middleware.Recoverer(logg),
@@ -35,6 +35,7 @@ func NewRouter(cfg *config.Config, logg *logger.Logger, dbP db.Pinger, redisP re
 
 	r.Route("/api/v1/auth", func(r chi.Router) {
 		r.Post("/login", controllers.AuthLogin(authService, logg))
+		r.Post("/register", controllers.AuthRegister(registerService, authService, logg))
 	})
 
 	r.Route("/api", func(r chi.Router) {

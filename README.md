@@ -307,6 +307,24 @@ GET /health/ready
 * All endpoints under `/api/v1`
 * Breaking changes require `/api/v2`
 
+### Authentication
+
+#### Register
+
+```
+POST /api/v1/auth/register
+```
+
+Creates the initial user + store + owner membership in one transaction. Provide `first_name`, `last_name`, `email`, `password`, `company_name`, `store_type`, an `address` object (including `lat`/`lng`), and `accept_tos: true`. Returns `201`, issues access + refresh tokens, and mirrors the newest access token in `X-PF-Token`.
+
+#### Login
+
+```
+POST /api/v1/auth/login
+```
+
+Validates email/password, collects the store memberships, and returns `200` with tokens plus `stores[]` (for multi-store selection). Each response also sets `X-PF-Token` to the latest access token.
+
 ### Error Contract
 
 ```json
