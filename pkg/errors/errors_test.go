@@ -61,7 +61,7 @@ func TestErrorConstructors(t *testing.T) {
 	}
 
 	detail := map[string]any{"field": "foo"}
-	base.WithDetails(detail)
+	base = base.WithDetails(detail)
 	if base.Details() == nil {
 		t.Fatalf("details should be preserved")
 	}

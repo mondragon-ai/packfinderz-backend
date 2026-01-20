@@ -70,3 +70,29 @@ migrate-create: ## Create a new migration (make migrate-create NAME=add_users_ta
 .PHONY: migrate-validate
 migrate-validate: ## Validate migration files (filenames + headers)
 	$(GO) run $(MIGRATE_CMD) -cmd=validate -dir=$(MIGRATE_DIR)
+
+# =========================
+# TESTS && CI/CD
+# =========================
+
+.PHONY: ci-local
+ci-local:
+	go mod download
+	@unformatted=$$(gofmt -l .); \
+	if [ -n "$$unformatted" ]; then \
+		echo "gofmt reported unformatted files:"; \
+		echo "$$unformatted"; \
+		exit 1; \
+	fi
+	@command -v golangci-lint >/dev/null 2>&1 || { \
+		echo "golangci-lint not found. Install it (brew install golangci-lint) or use Docker."; \
+		exit 1; \
+	}
+	golangci-lint run --timeout=3m ./...
+	go test ./...
+	go build ./cmd/api ./cmd/worker ./cmd/migrate
+	@command -v gitleaks >/dev/null 2>&1 || { \
+		echo "gitleaks not found. Install it (brew install gitleaks) or skip this check."; \
+		exit 1; \
+	}
+	gitleaks detect --no-git
