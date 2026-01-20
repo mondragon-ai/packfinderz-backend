@@ -3772,6 +3772,13 @@ WHERE published_at IS NOT NULL
 
 Tokens MUST be signed with the configured secret, expire per `PACKFINDERZ_JWT_EXPIRATION_MINUTES`, and be rejected if the signature/expiry validation fails.
 
+**Refresh tokens**
+
+* Stored in Redis under keys named `pf:session:access:<jwt_jti>` so the access token identifier serves as the lookup key.
+* TTL is configured via `PACKFINDERZ_REFRESH_TOKEN_TTL_MINUTES`, which must exceed the access TTL (`PACKFINDERZ_JWT_EXPIRATION_MINUTES`).
+* Rotation replaces the stored value and invalidates the prior key so that every refresh attempt issues a new pair.
+* Helpers derive the Redis key directly from the JWT `jti` claim to keep the flow consistent.
+
 **Rules**
 
 * API MUST reject requests requiring store context if `active_store_id` missing.

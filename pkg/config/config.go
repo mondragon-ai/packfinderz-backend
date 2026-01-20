@@ -87,9 +87,18 @@ type RedisConfig struct {
 }
 
 type JWTConfig struct {
-	Secret            string `envconfig:"PACKFINDERZ_JWT_SECRET" required:"true"` // also fixes your typo
-	Issuer            string `envconfig:"PACKFINDERZ_JWT_ISSUER" required:"true"`
-	ExpirationMinutes int    `envconfig:"PACKFINDERZ_JWT_EXPIRATION_MINUTES" required:"true"`
+	Secret                 string `envconfig:"PACKFINDERZ_JWT_SECRET" required:"true"` // also fixes your typo
+	Issuer                 string `envconfig:"PACKFINDERZ_JWT_ISSUER" required:"true"`
+	ExpirationMinutes      int    `envconfig:"PACKFINDERZ_JWT_EXPIRATION_MINUTES" required:"true"`
+	RefreshTokenTTLMinutes int    `envconfig:"PACKFINDERZ_REFRESH_TOKEN_TTL_MINUTES" default:"43200"`
+}
+
+// RefreshTokenTTL returns the refresh token TTL configured in minutes.
+func (j JWTConfig) RefreshTokenTTL() time.Duration {
+	if j.RefreshTokenTTLMinutes <= 0 {
+		return 0
+	}
+	return time.Duration(j.RefreshTokenTTLMinutes) * time.Minute
 }
 
 type PasswordConfig struct {

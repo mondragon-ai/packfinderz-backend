@@ -22,12 +22,14 @@ func TestMintAndParseAccessToken(t *testing.T) {
 	storeType := enums.StoreTypeVendor
 	kyc := enums.KYCStatusVerified
 
+	jti := uuid.NewString()
 	payload := AccessTokenPayload{
 		UserID:        userID,
 		ActiveStoreID: &storeID,
 		Role:          enums.MemberRoleOwner,
 		StoreType:     &storeType,
 		KYCStatus:     &kyc,
+		JTI:           jti,
 	}
 
 	token, err := MintAccessToken(cfg, now, payload)
@@ -68,6 +70,9 @@ func TestMintAndParseAccessToken(t *testing.T) {
 	}
 	if diff >= time.Second {
 		t.Fatalf("expected exp roughly %v, got %v (diff %v)", exp.UTC(), claims.ExpiresAt.UTC(), diff) // embedded time.Time
+	}
+	if claims.ID != jti {
+		t.Fatalf("expected jti %s, got %s", jti, claims.ID)
 	}
 }
 

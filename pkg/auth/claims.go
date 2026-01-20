@@ -13,6 +13,7 @@ type AccessTokenPayload struct {
 	Role          enums.MemberRole
 	StoreType     *enums.StoreType
 	KYCStatus     *enums.KYCStatus
+	JTI           string
 }
 
 // AccessTokenClaims represents the typed JWT issued to clients.
