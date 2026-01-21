@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/angelmondragon/packfinderz-backend/internal/memberships"
+	"github.com/angelmondragon/packfinderz-backend/internal/users"
+	"github.com/angelmondragon/packfinderz-backend/pkg/config"
 	"github.com/angelmondragon/packfinderz-backend/pkg/db/models"
 	"github.com/angelmondragon/packfinderz-backend/pkg/enums"
 	pkgerrors "github.com/angelmondragon/packfinderz-backend/pkg/errors"
@@ -15,8 +17,12 @@ import (
 	"gorm.io/gorm"
 )
 
+func newStoreService(repo storeRepository, members stubMembershipsRepo, usersRepo usersRepository) (Service, error) {
+	return NewService(repo, members, usersRepo, config.PasswordConfig{})
+}
+
 func TestNewServiceRequiresRepo(t *testing.T) {
-	_, err := NewService(nil, stubMembershipsRepo{})
+	_, err := NewService(nil, stubMembershipsRepo{}, &stubUsersRepo{}, config.PasswordConfig{})
 	if err == nil {
 		t.Fatal("expected error creating service without repo")
 	}
@@ -24,7 +30,7 @@ func TestNewServiceRequiresRepo(t *testing.T) {
 
 func TestNewServiceRequiresMembershipRepo(t *testing.T) {
 	repo := &stubStoreRepo{}
-	_, err := NewService(repo, nil)
+	_, err := NewService(repo, nil, &stubUsersRepo{}, config.PasswordConfig{})
 	if err == nil {
 		t.Fatal("expected error creating service without memberships repo")
 	}
@@ -33,7 +39,7 @@ func TestNewServiceRequiresMembershipRepo(t *testing.T) {
 func TestServiceGetByIDSuccess(t *testing.T) {
 	store := baseStore()
 	repo := &stubStoreRepo{store: store}
-	svc, err := NewService(repo, stubMembershipsRepo{allowed: true})
+	svc, err := newStoreService(repo, stubMembershipsRepo{allowed: true}, &stubUsersRepo{})
 	if err != nil {
 		t.Fatalf("new service: %v", err)
 	}
@@ -58,7 +64,7 @@ func TestServiceGetByIDSuccess(t *testing.T) {
 
 func TestServiceGetByIDNotFound(t *testing.T) {
 	repo := &stubStoreRepo{err: gorm.ErrRecordNotFound}
-	svc, err := NewService(repo, stubMembershipsRepo{allowed: true})
+	svc, err := newStoreService(repo, stubMembershipsRepo{allowed: true}, &stubUsersRepo{})
 	if err != nil {
 		t.Fatalf("new service: %v", err)
 	}
@@ -74,7 +80,7 @@ func TestServiceGetByIDNotFound(t *testing.T) {
 
 func TestServiceGetByIDDependencyError(t *testing.T) {
 	repo := &stubStoreRepo{err: errors.New("boom")}
-	svc, err := NewService(repo, stubMembershipsRepo{allowed: true})
+	svc, err := newStoreService(repo, stubMembershipsRepo{allowed: true}, &stubUsersRepo{})
 	if err != nil {
 		t.Fatalf("new service: %v", err)
 	}
@@ -91,7 +97,7 @@ func TestServiceGetByIDDependencyError(t *testing.T) {
 func TestServiceUpdateSuccess(t *testing.T) {
 	store := baseStore()
 	repo := &stubStoreRepo{store: store}
-	svc, err := NewService(repo, stubMembershipsRepo{allowed: true})
+	svc, err := newStoreService(repo, stubMembershipsRepo{allowed: true}, &stubUsersRepo{})
 	if err != nil {
 		t.Fatalf("new service: %v", err)
 	}
@@ -131,7 +137,7 @@ func TestServiceUpdateSuccess(t *testing.T) {
 
 func TestServiceUpdateForbidden(t *testing.T) {
 	repo := &stubStoreRepo{store: baseStore()}
-	svc, err := NewService(repo, stubMembershipsRepo{allowed: false})
+	svc, err := newStoreService(repo, stubMembershipsRepo{allowed: false}, &stubUsersRepo{})
 	if err != nil {
 		t.Fatalf("new service: %v", err)
 	}
@@ -160,7 +166,7 @@ func TestServiceListUsersSuccess(t *testing.T) {
 			CreatedAt:    time.Now(),
 		},
 	}
-	svc, err := NewService(repo, stubMembershipsRepo{allowed: true, members: members})
+	svc, err := newStoreService(repo, stubMembershipsRepo{allowed: true, members: members}, &stubUsersRepo{})
 	if err != nil {
 		t.Fatalf("new service: %v", err)
 	}
@@ -179,7 +185,7 @@ func TestServiceListUsersSuccess(t *testing.T) {
 
 func TestServiceListUsersForbidden(t *testing.T) {
 	repo := &stubStoreRepo{store: baseStore()}
-	svc, err := NewService(repo, stubMembershipsRepo{allowed: false})
+	svc, err := newStoreService(repo, stubMembershipsRepo{allowed: false}, &stubUsersRepo{})
 	if err != nil {
 		t.Fatalf("new service: %v", err)
 	}
@@ -190,6 +196,93 @@ func TestServiceListUsersForbidden(t *testing.T) {
 	}
 	if typed := pkgerrors.As(gotErr); typed == nil || typed.Code() != pkgerrors.CodeForbidden {
 		t.Fatalf("expected forbidden code, got %v", gotErr)
+	}
+}
+
+func TestServiceInviteCreatesMembership(t *testing.T) {
+	repo := &stubStoreRepo{store: baseStore()}
+	storeID := repo.store.ID
+	newUserID := uuid.New()
+	usersRepo := &stubUsersRepo{nextID: newUserID}
+	member := memberships.StoreUserDTO{
+		MembershipID: uuid.New(),
+		StoreID:      storeID,
+		UserID:       newUserID,
+		Email:        "newbie@example.com",
+		FirstName:    "New",
+		LastName:     "User",
+		Role:         enums.MemberRoleManager,
+		Status:       enums.MembershipStatusActive,
+		CreatedAt:    time.Now(),
+	}
+	membershipsRepo := stubMembershipsRepo{
+		allowed: true,
+		members: []memberships.StoreUserDTO{member},
+	}
+	svc, err := newStoreService(repo, membershipsRepo, usersRepo)
+	if err != nil {
+		t.Fatalf("new service: %v", err)
+	}
+
+	input := InviteUserInput{
+		Email:     "newbie@example.com",
+		FirstName: "New",
+		LastName:  "User",
+		Role:      enums.MemberRoleManager,
+	}
+	dto, temp, err := svc.InviteUser(context.Background(), uuid.New(), storeID, input)
+	if err != nil {
+		t.Fatalf("invite user: %v", err)
+	}
+	if temp == "" {
+		t.Fatal("expected temporary password")
+	}
+	if dto.Email != "newbie@example.com" {
+		t.Fatalf("unexpected email %s", dto.Email)
+	}
+}
+
+func TestServiceInviteDuplicateMembership(t *testing.T) {
+	repo := &stubStoreRepo{store: baseStore()}
+	storeID := repo.store.ID
+	user := &models.User{ID: uuid.New(), Email: "existing@example.com"}
+	usersRepo := &stubUsersRepo{user: user}
+	member := memberships.StoreUserDTO{
+		MembershipID: uuid.New(),
+		StoreID:      storeID,
+		UserID:       user.ID,
+		Email:        user.Email,
+		FirstName:    "Existing",
+		LastName:     "User",
+		Role:         enums.MemberRoleManager,
+		Status:       enums.MembershipStatusActive,
+		CreatedAt:    time.Now(),
+	}
+	membershipsRepo := stubMembershipsRepo{
+		allowed:            true,
+		members:            []memberships.StoreUserDTO{member},
+		existingMembership: &models.StoreMembership{StoreID: storeID, UserID: user.ID},
+	}
+	svc, err := newStoreService(repo, membershipsRepo, usersRepo)
+	if err != nil {
+		t.Fatalf("new service: %v", err)
+	}
+
+	input := InviteUserInput{
+		Email:     user.Email,
+		FirstName: "Existing",
+		LastName:  "User",
+		Role:      enums.MemberRoleManager,
+	}
+	dto, temp, err := svc.InviteUser(context.Background(), uuid.New(), storeID, input)
+	if err != nil {
+		t.Fatalf("invite duplicate: %v", err)
+	}
+	if temp != "" {
+		t.Fatalf("expected no temp password for duplicate, got %s", temp)
+	}
+	if dto.Email != user.Email {
+		t.Fatalf("unexpected email %s", dto.Email)
 	}
 }
 
@@ -243,10 +336,13 @@ func (s *stubStoreRepo) Update(ctx context.Context, store *models.Store) error {
 }
 
 type stubMembershipsRepo struct {
-	allowed bool
-	err     error
-	members []memberships.StoreUserDTO
-	listErr error
+	allowed            bool
+	err                error
+	members            []memberships.StoreUserDTO
+	listErr            error
+	existingMembership *models.StoreMembership
+	createErr          error
+	getErr             error
 }
 
 func (s stubMembershipsRepo) UserHasRole(ctx context.Context, userID, storeID uuid.UUID, roles ...enums.MemberRole) (bool, error) {
@@ -261,6 +357,79 @@ func (s stubMembershipsRepo) ListStoreUsers(ctx context.Context, storeID uuid.UU
 		return nil, s.listErr
 	}
 	return s.members, nil
+}
+
+func (s stubMembershipsRepo) GetMembership(ctx context.Context, userID, storeID uuid.UUID) (*models.StoreMembership, error) {
+	if s.getErr != nil {
+		return nil, s.getErr
+	}
+	if s.existingMembership != nil {
+		return s.existingMembership, nil
+	}
+	return nil, gorm.ErrRecordNotFound
+}
+
+func (s stubMembershipsRepo) CreateMembership(ctx context.Context, storeID, userID uuid.UUID, role enums.MemberRole, invitedBy *uuid.UUID, status enums.MembershipStatus) (*models.StoreMembership, error) {
+	if s.createErr != nil {
+		return nil, s.createErr
+	}
+	return &models.StoreMembership{
+		ID:              uuid.New(),
+		StoreID:         storeID,
+		UserID:          userID,
+		Role:            role,
+		Status:          status,
+		InvitedByUserID: invitedBy,
+	}, nil
+}
+
+type stubUsersRepo struct {
+	user      *models.User
+	findErr   error
+	created   *models.User
+	createErr error
+	updateErr error
+	nextID    uuid.UUID
+}
+
+func (s *stubUsersRepo) FindByEmail(ctx context.Context, email string) (*models.User, error) {
+	if s.findErr != nil {
+		return nil, s.findErr
+	}
+	if s.user != nil {
+		return s.user, nil
+	}
+	return nil, gorm.ErrRecordNotFound
+}
+
+func (s *stubUsersRepo) Create(ctx context.Context, dto users.CreateUserDTO) (*models.User, error) {
+	if s.createErr != nil {
+		return nil, s.createErr
+	}
+	id := s.nextID
+	if id == uuid.Nil {
+		id = uuid.New()
+	}
+	user := &models.User{
+		ID:           id,
+		Email:        dto.Email,
+		FirstName:    dto.FirstName,
+		LastName:     dto.LastName,
+		PasswordHash: dto.PasswordHash,
+		StoreIDs:     dto.StoreIDs,
+	}
+	s.created = user
+	return user, nil
+}
+
+func (s *stubUsersRepo) UpdatePasswordHash(ctx context.Context, id uuid.UUID, hash string) error {
+	if s.updateErr != nil {
+		return s.updateErr
+	}
+	if s.created != nil && s.created.ID == id {
+		s.created.PasswordHash = hash
+	}
+	return nil
 }
 
 func stringPtr(s string) *string { return &s }

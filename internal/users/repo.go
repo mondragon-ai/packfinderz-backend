@@ -61,3 +61,11 @@ func (r *Repository) UpdateStoreIDs(ctx context.Context, id uuid.UUID, storeIDs 
 		Where("id = ?", id).
 		UpdateColumn("store_ids", storeIDs).Error
 }
+
+// UpdatePasswordHash sets a new password hash for the user.
+func (r *Repository) UpdatePasswordHash(ctx context.Context, id uuid.UUID, hash string) error {
+	return r.db.WithContext(ctx).
+		Model(&models.User{}).
+		Where("id = ?", id).
+		UpdateColumn("password_hash", hash).Error
+}

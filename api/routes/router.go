@@ -84,6 +84,7 @@ func NewRouter(
 			r.Get("/me", controllers.StoreProfile(storeService, logg))
 			r.Put("/me", controllers.StoreUpdate(storeService, logg))
 			r.Get("/me/users", controllers.StoreUsers(storeService, logg))
+			r.Post("/me/users/invite", controllers.StoreInvite(storeService, logg))
 		})
 	})
 

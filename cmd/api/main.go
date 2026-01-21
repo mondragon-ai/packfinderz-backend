@@ -72,9 +72,10 @@ func main() {
 		os.Exit(1)
 	}
 
+	usersRepo := users.NewRepository(dbClient.DB())
 	membershipsRepo := memberships.NewRepository(dbClient.DB())
 	authService, err := auth.NewService(auth.ServiceParams{
-		UserRepo:        users.NewRepository(dbClient.DB()),
+		UserRepo:        usersRepo,
 		MembershipsRepo: membershipsRepo,
 		SessionManager:  sessionManager,
 		JWTConfig:       cfg.JWT,
@@ -103,7 +104,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	storeService, err := stores.NewService(stores.NewRepository(dbClient.DB()), membershipsRepo)
+	storeService, err := stores.NewService(stores.NewRepository(dbClient.DB()), membershipsRepo, usersRepo, cfg.Password)
 	if err != nil {
 		logg.Error(context.Background(), "failed to create store service", err)
 		os.Exit(1)

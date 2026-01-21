@@ -251,13 +251,108 @@ func TestStoreUsersUnauthorized(t *testing.T) {
 	}
 }
 
+func TestStoreInviteSuccess(t *testing.T) {
+	storeID := uuid.New()
+	userID := uuid.New()
+	payload := []byte(`{
+		"email":"new@example.com",
+		"first_name":"New",
+		"last_name":"User",
+		"role":"manager"
+	}`)
+	user := memberships.StoreUserDTO{
+		MembershipID: uuid.New(),
+		StoreID:      storeID,
+		UserID:       uuid.New(),
+		Email:        "new@example.com",
+		FirstName:    "New",
+		LastName:     "User",
+		Role:         enums.MemberRoleManager,
+		Status:       enums.MembershipStatusActive,
+		CreatedAt:    time.Now(),
+	}
+	handler := StoreInvite(stubStoreService{inviteResp: &user, invitePassword: "tmp"}, nil)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/stores/me/users/invite", bytes.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	ctx := middleware.WithStoreID(req.Context(), storeID.String())
+	ctx = middleware.WithUserID(ctx, userID.String())
+	req = req.WithContext(ctx)
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 got %d", rec.Code)
+	}
+	var envelope struct {
+		Data struct {
+			User              memberships.StoreUserDTO `json:"user"`
+			TemporaryPassword string                   `json:"temporary_password"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&envelope); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if envelope.Data.User.Email != "new@example.com" {
+		t.Fatalf("unexpected email %s", envelope.Data.User.Email)
+	}
+	if envelope.Data.TemporaryPassword != "tmp" {
+		t.Fatalf("expected temp pass, got %s", envelope.Data.TemporaryPassword)
+	}
+}
+
+func TestStoreInviteMissingContext(t *testing.T) {
+	handler := StoreInvite(stubStoreService{}, nil)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/stores/me/users/invite", nil)
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 missing context got %d", rec.Code)
+	}
+}
+
+func TestStoreInviteDuplicate(t *testing.T) {
+	storeID := uuid.New()
+	userID := uuid.New()
+	reqBody := []byte(`{"email":"dup@example.com","first_name":"Dup","last_name":"User","role":"manager"}`)
+	handler := StoreInvite(stubStoreService{inviteResp: &memberships.StoreUserDTO{Email: "dup@example.com"}}, nil)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/stores/me/users/invite", bytes.NewReader(reqBody))
+	req.Header.Set("Content-Type", "application/json")
+	ctx := middleware.WithStoreID(req.Context(), storeID.String())
+	ctx = middleware.WithUserID(ctx, userID.String())
+	req = req.WithContext(ctx)
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for duplicate invite got %d", rec.Code)
+	}
+	var envelope struct {
+		Data struct {
+			User memberships.StoreUserDTO `json:"user"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&envelope); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if envelope.Data.User.Email != "dup@example.com" {
+		t.Fatalf("unexpected email %s", envelope.Data.User.Email)
+	}
+}
+
 type stubStoreService struct {
-	dto        *stores.StoreDTO
-	err        error
-	updateResp *stores.StoreDTO
-	updateErr  error
-	users      []memberships.StoreUserDTO
-	usersErr   error
+	dto            *stores.StoreDTO
+	err            error
+	updateResp     *stores.StoreDTO
+	updateErr      error
+	users          []memberships.StoreUserDTO
+	usersErr       error
+	inviteResp     *memberships.StoreUserDTO
+	inviteErr      error
+	invitePassword string
 }
 
 func (s stubStoreService) GetByID(_ context.Context, _ uuid.UUID) (*stores.StoreDTO, error) {
@@ -266,6 +361,10 @@ func (s stubStoreService) GetByID(_ context.Context, _ uuid.UUID) (*stores.Store
 
 func (s stubStoreService) Update(_ context.Context, _ uuid.UUID, _ uuid.UUID, _ stores.UpdateStoreInput) (*stores.StoreDTO, error) {
 	return s.updateResp, s.updateErr
+}
+
+func (s stubStoreService) InviteUser(_ context.Context, _ uuid.UUID, _ uuid.UUID, _ stores.InviteUserInput) (*memberships.StoreUserDTO, string, error) {
+	return s.inviteResp, s.invitePassword, s.inviteErr
 }
 
 func (s stubStoreService) ListUsers(_ context.Context, _ uuid.UUID, _ uuid.UUID) ([]memberships.StoreUserDTO, error) {

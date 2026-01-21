@@ -2,13 +2,16 @@ package controllers
 
 import (
 	"net/http"
+	"strings"
 
 	"github.com/google/uuid"
 
 	"github.com/angelmondragon/packfinderz-backend/api/middleware"
 	"github.com/angelmondragon/packfinderz-backend/api/responses"
 	"github.com/angelmondragon/packfinderz-backend/api/validators"
+	"github.com/angelmondragon/packfinderz-backend/internal/memberships"
 	"github.com/angelmondragon/packfinderz-backend/internal/stores"
+	"github.com/angelmondragon/packfinderz-backend/pkg/enums"
 	pkgerrors "github.com/angelmondragon/packfinderz-backend/pkg/errors"
 	"github.com/angelmondragon/packfinderz-backend/pkg/logger"
 	"github.com/angelmondragon/packfinderz-backend/pkg/types"
@@ -158,5 +161,88 @@ func StoreUsers(svc stores.Service, logg *logger.Logger) http.HandlerFunc {
 		}
 
 		responses.WriteSuccess(w, users)
+	}
+}
+
+type storeInviteRequest struct {
+	Email     string `json:"email" validate:"required,email"`
+	FirstName string `json:"first_name" validate:"required"`
+	LastName  string `json:"last_name" validate:"required"`
+	Role      string `json:"role" validate:"required"`
+}
+
+func (r storeInviteRequest) toInput() (stores.InviteUserInput, error) {
+	role, err := enums.ParseMemberRole(r.Role)
+	if err != nil {
+		return stores.InviteUserInput{}, pkgerrors.Wrap(pkgerrors.CodeValidation, err, "invalid role")
+	}
+	return stores.InviteUserInput{
+		Email:     strings.ToLower(strings.TrimSpace(r.Email)),
+		FirstName: strings.TrimSpace(r.FirstName),
+		LastName:  strings.TrimSpace(r.LastName),
+		Role:      role,
+	}, nil
+}
+
+func StoreInvite(svc stores.Service, logg *logger.Logger) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if svc == nil {
+			responses.WriteError(r.Context(), logg, w, pkgerrors.New(pkgerrors.CodeInternal, "store service unavailable"))
+			return
+		}
+
+		storeID := middleware.StoreIDFromContext(r.Context())
+		if storeID == "" {
+			responses.WriteError(r.Context(), logg, w, pkgerrors.New(pkgerrors.CodeForbidden, "store context missing"))
+			return
+		}
+
+		userID := middleware.UserIDFromContext(r.Context())
+		if userID == "" {
+			responses.WriteError(r.Context(), logg, w, pkgerrors.New(pkgerrors.CodeUnauthorized, "user context missing"))
+			return
+		}
+
+		uid, err := uuid.Parse(userID)
+		if err != nil {
+			responses.WriteError(r.Context(), logg, w, pkgerrors.Wrap(pkgerrors.CodeValidation, err, "invalid user id"))
+			return
+		}
+
+		sid, err := uuid.Parse(storeID)
+		if err != nil {
+			responses.WriteError(r.Context(), logg, w, pkgerrors.Wrap(pkgerrors.CodeValidation, err, "invalid store id"))
+			return
+		}
+
+		var payload storeInviteRequest
+		if err := validators.DecodeJSONBody(r, &payload); err != nil {
+			responses.WriteError(r.Context(), logg, w, err)
+			return
+		}
+
+		input, err := payload.toInput()
+		if err != nil {
+			responses.WriteError(r.Context(), logg, w, err)
+			return
+		}
+
+		invitee, tempPassword, err := svc.InviteUser(r.Context(), uid, sid, input)
+		if err != nil {
+			responses.WriteError(r.Context(), logg, w, err)
+			return
+		}
+
+		resp := struct {
+			User              *memberships.StoreUserDTO `json:"user"`
+			TemporaryPassword *string                   `json:"temporary_password,omitempty"`
+		}{
+			User: invitee,
+		}
+		if tempPassword != "" {
+			resp.TemporaryPassword = &tempPassword
+		}
+
+		responses.WriteSuccess(w, resp)
 	}
 }
