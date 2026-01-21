@@ -17,7 +17,6 @@ EXCEPTION
   WHEN duplicate_object THEN NULL;
 END $$;
 
-
 CREATE TABLE IF NOT EXISTS media (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   store_id uuid NULL,
@@ -55,8 +54,14 @@ CREATE INDEX IF NOT EXISTS idx_media_attachments_owner ON media_attachments (own
 -- +goose Down
 -- +goose StatementBegin
 
+DROP INDEX IF EXISTS idx_media_attachments_owner;
+DROP INDEX IF EXISTS idx_media_user;
+DROP INDEX IF EXISTS idx_media_kind;
+DROP INDEX IF EXISTS idx_media_store_created_at;
+
 DROP TABLE IF EXISTS media_attachments;
 DROP TABLE IF EXISTS media;
+
 DROP TYPE IF EXISTS media_kind;
 
 -- +goose StatementEnd

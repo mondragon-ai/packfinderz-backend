@@ -2988,34 +2988,47 @@ FKs
 
 ### 2.17 `media`
 
-**Purpose:** globally addressable media objects.
+**Purpose:** globally addressable media objects with lifecycle tracking.
 
 Fields
 
 * `id uuid pk`
-* `store_id uuid null` (owner)
-* `user_id uuid null` (uploader)
+* `store_id uuid not null` (owner, enforced by RBAC)
+* `user_id uuid not null` (uploader)
 * `kind media_kind not null`
-* `url text null`
-* `gsc_key text not null unique`
+* `status media_status not null default 'pending'`
+* `gcs_key text not null unique`
 * `file_name text not null`
 * `mime_type text not null`
 * `size_bytes bigint not null`
-* `is_compressed boolean not null default false`
-* `created_at timestamptz not null default now()`
 * `ocr text null`
+* `is_compressed boolean not null default false`
+* timestamps:
+  `created_at`, `updated_at`,
+  `uploaded_at`, `verified_at`,
+  `processing_started_at`, `ready_at`,
+  `failed_at`, `deleted_at`
 
 Indexes
 
-* `(store_id, created_at desc)`
-* `(kind)`
-* `(gsc_key)`
-* `(user_id)`
+* `unique(gcs_key)` (idempotent lookup)
+* `(store_id, created_at desc)` (store timeline)
+
+Status values
+
+* `pending`
+* `uploaded`
+* `processing`
+* `ready`
+* `failed`
+* `delete_requested`
+* `deleted`
+* `delete_failed`
 
 FKs
 
-* `store_id -> stores(id) on delete set null`
-* `user_id -> users(id) on delete set null`
+* `store_id -> stores(id) on delete restrict`
+* `user_id -> users(id) on delete restrict`
 
 ---
 
