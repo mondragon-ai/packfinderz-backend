@@ -106,6 +106,7 @@ func newTestRouter(cfg *config.Config) http.Handler {
 		logg,
 		stubPinger{},          // db.Pinger
 		(*redis.Client)(nil),  // *redis.Client
+		stubPinger{},          // gcs.Pinger
 		stubSessionManager{},  // sessionManager
 		stubAuthService{},     // auth.Service
 		stubRegisterService{}, // auth.RegisterService

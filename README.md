@@ -250,6 +250,7 @@ Re-running the migration is safe because the statements use `CREATE EXTENSION IF
 * Ads, subscriptions
 * Outbox events
 * Audit logs
+* Google Cloud Storage (pkg/storage/gcs) verified via `/health/ready`
 * Media metadata (`media` + `media_attachments`)
 
 ### Redis (Ephemeral)

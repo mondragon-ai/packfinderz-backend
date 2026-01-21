@@ -365,6 +365,7 @@ Manifest approach (MVP):
 * Environments: dev + prod; staging later.
 * `pkg/redis` boots go-redis with well-scoped prefixes for idempotency, rate limits, counters, and refresh tokens while adding Redis to the `/health/ready` dependency check.
 * `pkg/db` governs the GORM bootstrap for API/worker, exposing pooled connections and the `Ping` helper used by readiness probes.
+* `pkg/storage/gcs` bootstraps the shared GCS client (multi-auth + multi-bucket) and surfaces the same readiness dependency to both API and worker.
 * The base repository pattern (`internal/repo.Base`) ensures domain repos always accept the injected `*gorm.DB`, stay context-aware, and tap into `pkg/db` helpers for transactions/raw SQL.
 * GitHub Actions workflow (`.github/workflows/ci.yml`) now enforces gofmt, `golangci-lint`, `go test`, `go build`, and gitleaks secret scanning on PRs and `main` pushes; DB tests must use `//go:build db` so they stay excluded until the infra is ready.
 * Heroku release wiring (`heroku.yml`) binds `./bin/api` to the web dyno and `./bin/worker` to the worker dyno; refer to `docs/heroku_deploy.md` for the release checklist, readiness, and hybrid migration policy.  Postgres (heroku) & Redis (heroku)

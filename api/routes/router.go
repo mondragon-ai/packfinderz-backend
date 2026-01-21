@@ -16,6 +16,7 @@ import (
 	"github.com/angelmondragon/packfinderz-backend/pkg/db"
 	"github.com/angelmondragon/packfinderz-backend/pkg/logger"
 	"github.com/angelmondragon/packfinderz-backend/pkg/redis"
+	"github.com/angelmondragon/packfinderz-backend/pkg/storage/gcs"
 )
 
 type sessionManager interface {
@@ -29,6 +30,7 @@ func NewRouter(
 	logg *logger.Logger,
 	dbP db.Pinger,
 	redisClient *redis.Client,
+	gcsClient gcs.Pinger,
 	sessionManager sessionManager,
 	authService auth.Service,
 	registerService auth.RegisterService,
@@ -57,7 +59,7 @@ func NewRouter(
 
 	r.Route("/health", func(r chi.Router) {
 		r.Get("/live", controllers.HealthLive(cfg))
-		r.Get("/ready", controllers.HealthReady(cfg, logg, dbP, redisClient))
+		r.Get("/ready", controllers.HealthReady(cfg, logg, dbP, redisClient, gcsClient))
 	})
 
 	r.Route("/api/public", func(r chi.Router) {
