@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/angelmondragon/packfinderz-backend/internal/auth"
+	"github.com/angelmondragon/packfinderz-backend/internal/media"
 	"github.com/angelmondragon/packfinderz-backend/internal/memberships"
 	"github.com/angelmondragon/packfinderz-backend/internal/stores"
 	pkgAuth "github.com/angelmondragon/packfinderz-backend/pkg/auth"
@@ -58,6 +59,12 @@ type stubSwitchService struct{}
 
 func (stubSwitchService) Switch(ctx context.Context, input auth.SwitchStoreInput) (*auth.SwitchStoreResult, error) {
 	return nil, nil
+}
+
+type stubMediaService struct{}
+
+func (stubMediaService) PresignUpload(ctx context.Context, userID, storeID uuid.UUID, input media.PresignInput) (*media.PresignOutput, error) {
+	return &media.PresignOutput{}, nil
 }
 
 type stubStoreService struct{}
@@ -112,6 +119,7 @@ func newTestRouter(cfg *config.Config) http.Handler {
 		stubRegisterService{}, // auth.RegisterService
 		stubSwitchService{},   // auth.SwitchStoreService
 		stubStoreService{},
+		stubMediaService{},
 	)
 }
 
