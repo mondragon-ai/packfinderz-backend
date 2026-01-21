@@ -286,6 +286,91 @@ func TestServiceInviteDuplicateMembership(t *testing.T) {
 	}
 }
 
+func TestServiceRemoveUserSuccess(t *testing.T) {
+	storeRepo := &stubStoreRepo{store: baseStore()}
+	storeID := storeRepo.store.ID
+	targetID := uuid.New()
+	membershipsRepo := stubMembershipsRepo{
+		allowed: true,
+		existingMembership: &models.StoreMembership{
+			StoreID: storeID,
+			UserID:  targetID,
+			Role:    enums.MemberRoleManager,
+		},
+		countByRole: 2,
+	}
+	svc, err := newStoreService(storeRepo, membershipsRepo, &stubUsersRepo{})
+	if err != nil {
+		t.Fatalf("new service: %v", err)
+	}
+
+	if err := svc.RemoveUser(context.Background(), uuid.New(), storeID, targetID); err != nil {
+		t.Fatalf("remove user: %v", err)
+	}
+}
+
+func TestServiceRemoveUserForbidden(t *testing.T) {
+	storeRepo := &stubStoreRepo{store: baseStore()}
+	svc, err := newStoreService(storeRepo, stubMembershipsRepo{allowed: false}, &stubUsersRepo{})
+	if err != nil {
+		t.Fatalf("new service: %v", err)
+	}
+
+	err = svc.RemoveUser(context.Background(), uuid.New(), storeRepo.store.ID, uuid.New())
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if typed := pkgerrors.As(err); typed == nil || typed.Code() != pkgerrors.CodeForbidden {
+		t.Fatalf("expected forbidden code, got %v", err)
+	}
+}
+
+func TestServiceRemoveUserNotFound(t *testing.T) {
+	storeRepo := &stubStoreRepo{store: baseStore()}
+	membershipsRepo := stubMembershipsRepo{
+		allowed: true,
+	}
+	svc, err := newStoreService(storeRepo, membershipsRepo, &stubUsersRepo{})
+	if err != nil {
+		t.Fatalf("new service: %v", err)
+	}
+
+	err = svc.RemoveUser(context.Background(), uuid.New(), storeRepo.store.ID, uuid.New())
+	if err == nil {
+		t.Fatal("expected not found error")
+	}
+	if typed := pkgerrors.As(err); typed == nil || typed.Code() != pkgerrors.CodeNotFound {
+		t.Fatalf("expected not found code, got %v", err)
+	}
+}
+
+func TestServiceRemoveUserLastOwner(t *testing.T) {
+	storeRepo := &stubStoreRepo{store: baseStore()}
+	storeID := storeRepo.store.ID
+	targetID := uuid.New()
+	membershipsRepo := stubMembershipsRepo{
+		allowed: true,
+		existingMembership: &models.StoreMembership{
+			StoreID: storeID,
+			UserID:  targetID,
+			Role:    enums.MemberRoleOwner,
+		},
+		countByRole: 1,
+	}
+	svc, err := newStoreService(storeRepo, membershipsRepo, &stubUsersRepo{})
+	if err != nil {
+		t.Fatalf("new service: %v", err)
+	}
+
+	err = svc.RemoveUser(context.Background(), uuid.New(), storeID, targetID)
+	if err == nil {
+		t.Fatal("expected conflict error")
+	}
+	if typed := pkgerrors.As(err); typed == nil || typed.Code() != pkgerrors.CodeConflict {
+		t.Fatalf("expected conflict code, got %v", err)
+	}
+}
+
 func baseStore() *models.Store {
 	return &models.Store{
 		ID:                   uuid.New(),
@@ -343,6 +428,9 @@ type stubMembershipsRepo struct {
 	existingMembership *models.StoreMembership
 	createErr          error
 	getErr             error
+	deleteErr          error
+	countErr           error
+	countByRole        int64
 }
 
 func (s stubMembershipsRepo) UserHasRole(ctx context.Context, userID, storeID uuid.UUID, roles ...enums.MemberRole) (bool, error) {
@@ -381,6 +469,17 @@ func (s stubMembershipsRepo) CreateMembership(ctx context.Context, storeID, user
 		Status:          status,
 		InvitedByUserID: invitedBy,
 	}, nil
+}
+
+func (s stubMembershipsRepo) CountMembersWithRoles(ctx context.Context, storeID uuid.UUID, roles ...enums.MemberRole) (int64, error) {
+	if s.countErr != nil {
+		return 0, s.countErr
+	}
+	return s.countByRole, nil
+}
+
+func (s stubMembershipsRepo) DeleteMembership(ctx context.Context, storeID, userID uuid.UUID) error {
+	return s.deleteErr
 }
 
 type stubUsersRepo struct {

@@ -355,6 +355,16 @@ POST /api/v1/auth/switch-store
 
 Requires both the current Authorization bearer token and the existing `refresh_token`. Validates that the user belongs to `store_id`, rotates the session, and returns `200` with a new access token (in the body + `X-PF-Token`) preconfigured with `activeStoreId`.
 
+### Store Management
+
+These endpoints rely on `activeStoreId` and enforce owner/manager access for mutating flows.
+
+* `GET /api/v1/stores/me` – returns the requested store’s profile for the active store.
+* `PUT /api/v1/stores/me` – updates mutable store metadata (description, phone, email, social links, banner/logo URLs, ratings, categories) while keeping address and geo locked until an admin override exists.
+* `GET /api/v1/stores/me/users` – lists memberships plus user info (`email`, `name`, `role`, `created_at`, `last_login_at`); accessible to owner/manager roles.
+* `POST /api/v1/stores/me/users/invite` – invites (or reuses) a user, creates a membership, and issues a temporary password for new accounts (passwords are never logged).
+* `DELETE /api/v1/stores/me/users/{userId}` – removes only the membership row, returns `409` if the target is the last owner, and leaves the user record intact.
+
 ### Error Contract
 
 ```json

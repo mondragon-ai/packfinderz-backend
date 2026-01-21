@@ -29,6 +29,8 @@ type membershipsRepository interface {
 	ListStoreUsers(ctx context.Context, storeID uuid.UUID) ([]memberships.StoreUserDTO, error)
 	GetMembership(ctx context.Context, userID, storeID uuid.UUID) (*models.StoreMembership, error)
 	CreateMembership(ctx context.Context, storeID, userID uuid.UUID, role enums.MemberRole, invitedBy *uuid.UUID, status enums.MembershipStatus) (*models.StoreMembership, error)
+	DeleteMembership(ctx context.Context, storeID, userID uuid.UUID) error
+	CountMembersWithRoles(ctx context.Context, storeID uuid.UUID, roles ...enums.MemberRole) (int64, error)
 }
 
 type usersRepository interface {
@@ -43,6 +45,7 @@ type Service interface {
 	Update(ctx context.Context, userID, storeID uuid.UUID, input UpdateStoreInput) (*StoreDTO, error)
 	ListUsers(ctx context.Context, userID, storeID uuid.UUID) ([]memberships.StoreUserDTO, error)
 	InviteUser(ctx context.Context, inviterID, storeID uuid.UUID, input InviteUserInput) (*memberships.StoreUserDTO, string, error)
+	RemoveUser(ctx context.Context, actorID, storeID, targetUserID uuid.UUID) error
 }
 
 type service struct {
@@ -296,6 +299,41 @@ func (s *service) InviteUser(ctx context.Context, inviterID, storeID uuid.UUID, 
 		return nil, "", fetchErr
 	}
 	return dto, tempPassword, nil
+}
+
+func (s *service) RemoveUser(ctx context.Context, actorID, storeID, targetUserID uuid.UUID) error {
+	allowedRoles := []enums.MemberRole{enums.MemberRoleOwner, enums.MemberRoleManager}
+	ok, err := s.memberships.UserHasRole(ctx, actorID, storeID, allowedRoles...)
+	if err != nil {
+		return pkgerrors.Wrap(pkgerrors.CodeDependency, err, "check membership")
+	}
+	if !ok {
+		return pkgerrors.New(pkgerrors.CodeForbidden, "insufficient store role")
+	}
+
+	membership, err := s.memberships.GetMembership(ctx, targetUserID, storeID)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return pkgerrors.New(pkgerrors.CodeNotFound, "membership not found")
+		}
+		return pkgerrors.Wrap(pkgerrors.CodeDependency, err, "load membership")
+	}
+
+	if membership.Role == enums.MemberRoleOwner {
+		count, err := s.memberships.CountMembersWithRoles(ctx, storeID, enums.MemberRoleOwner)
+		if err != nil {
+			return pkgerrors.Wrap(pkgerrors.CodeDependency, err, "count owners")
+		}
+		if count <= 1 {
+			return pkgerrors.New(pkgerrors.CodeConflict, "cannot remove last owner")
+		}
+	}
+
+	if err := s.memberships.DeleteMembership(ctx, storeID, targetUserID); err != nil {
+		return pkgerrors.Wrap(pkgerrors.CodeDependency, err, "delete membership")
+	}
+
+	return nil
 }
 
 func cloneStringPtr(value *string) *string {
