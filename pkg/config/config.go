@@ -10,21 +10,22 @@ import (
 )
 
 type Config struct {
-	App          AppConfig
-	Service      ServiceConfig
-	DB           DBConfig
-	Redis        RedisConfig
-	JWT          JWTConfig
-	Password     PasswordConfig
-	FeatureFlags FeatureFlagsConfig
-	OpenAI       OpenAIConfig
-	GoogleMaps   GoogleMapsConfig
-	GCP          GCPConfig
-	GCS          GCSConfig
-	Media        MediaConfig
-	PubSub       PubSubConfig
-	Stripe       StripeConfig
-	Sendgrid     SendgridConfig
+	App           AppConfig
+	Service       ServiceConfig
+	DB            DBConfig
+	Redis         RedisConfig
+	JWT           JWTConfig
+	Password      PasswordConfig
+	AuthRateLimit AuthRateLimitConfig
+	FeatureFlags  FeatureFlagsConfig
+	OpenAI        OpenAIConfig
+	GoogleMaps    GoogleMapsConfig
+	GCP           GCPConfig
+	GCS           GCSConfig
+	Media         MediaConfig
+	PubSub        PubSubConfig
+	Stripe        StripeConfig
+	Sendgrid      SendgridConfig
 }
 
 func Load() (*Config, error) {
@@ -107,6 +108,15 @@ type PasswordConfig struct {
 	ArgonParallelism int `envconfig:"PACKFINDERZ_ARGON_PARALLELISM" default:"2"`
 	ArgonSaltLen     int `envconfig:"PACKFINDERZ_ARGON_SALT_LEN" default:"16"`
 	ArgonKeyLen      int `envconfig:"PACKFINDERZ_ARGON_KEY_LEN" default:"32"`
+}
+
+type AuthRateLimitConfig struct {
+	LoginWindow        time.Duration `envconfig:"PACKFINDERZ_AUTH_RATE_LIMIT_LOGIN_WINDOW" default:"1m"`
+	LoginEmailLimit    int           `envconfig:"PACKFINDERZ_AUTH_RATE_LIMIT_LOGIN_EMAIL_LIMIT" default:"5"`
+	LoginIPLimit       int           `envconfig:"PACKFINDERZ_AUTH_RATE_LIMIT_LOGIN_IP_LIMIT" default:"20"`
+	RegisterWindow     time.Duration `envconfig:"PACKFINDERZ_AUTH_RATE_LIMIT_REGISTER_WINDOW" default:"5m"`
+	RegisterEmailLimit int           `envconfig:"PACKFINDERZ_AUTH_RATE_LIMIT_REGISTER_EMAIL_LIMIT" default:"3"`
+	RegisterIPLimit    int           `envconfig:"PACKFINDERZ_AUTH_RATE_LIMIT_REGISTER_IP_LIMIT" default:"20"`
 }
 
 type FeatureFlagsConfig struct {

@@ -16,6 +16,7 @@ const (
 	CodeConflict      Code = "CONFLICT"
 	CodeStateConflict Code = "STATE_CONFLICT"
 	CodeIdempotency   Code = "IDEMPOTENCY_KEY_REUSED"
+	CodeRateLimit     Code = "RATE_LIMIT_EXCEEDED"
 	CodeInternal      Code = "INTERNAL_ERROR"
 	CodeDependency    Code = "DEPENDENCY_ERROR"
 )
@@ -69,6 +70,12 @@ var metadataByCode = map[Code]Metadata{
 		Retryable:      false,
 		PublicMessage:  "idempotency key reused",
 		DetailsAllowed: true,
+	},
+	CodeRateLimit: {
+		HTTPStatus:     http.StatusTooManyRequests,
+		Retryable:      false,
+		PublicMessage:  "rate limit exceeded",
+		DetailsAllowed: false,
 	},
 	CodeInternal: {
 		HTTPStatus:     http.StatusInternalServerError,

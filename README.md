@@ -388,6 +388,19 @@ PACKFINDERZ_LOG_WARN_STACK=false
 
 > **Rule:** Do not add new env vars without documentation.
 
+### Auth Rate Limiting
+
+Configurable Redis-backed throttles protect the login/register endpoints from brute-force attacks.
+
+* `PACKFINDERZ_AUTH_RATE_LIMIT_LOGIN_WINDOW` (default `1m`) – fixed window duration for login counters.
+* `PACKFINDERZ_AUTH_RATE_LIMIT_LOGIN_IP_LIMIT` (default `20`) – max login attempts per IP per window.
+* `PACKFINDERZ_AUTH_RATE_LIMIT_LOGIN_EMAIL_LIMIT` (default `5`) – max login attempts per normalized email per window.
+* `PACKFINDERZ_AUTH_RATE_LIMIT_REGISTER_WINDOW` (default `5m`) – fixed window duration for register counters.
+* `PACKFINDERZ_AUTH_RATE_LIMIT_REGISTER_IP_LIMIT` (default `20`) – max register attempts per IP per window.
+* `PACKFINDERZ_AUTH_RATE_LIMIT_REGISTER_EMAIL_LIMIT` (default `3`) – max register attempts per normalized email per window.
+
+Redis keys follow `rl:ip:<policy>:<ip>` and `rl:email:<policy>:<hash>` so each policy keeps its own bucket.
+
 ### Password Hashing Configuration
 
 Argon2id parameters are configurable so production can tune memory/time while defaults remain safe for local development.
