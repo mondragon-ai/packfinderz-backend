@@ -11,6 +11,7 @@ import (
 	"github.com/angelmondragon/packfinderz-backend/pkg/logger"
 	"github.com/angelmondragon/packfinderz-backend/pkg/migrate"
 	"github.com/angelmondragon/packfinderz-backend/pkg/redis"
+	"github.com/angelmondragon/packfinderz-backend/pkg/storage/gcs"
 	"github.com/joho/godotenv"
 )
 
@@ -60,9 +61,19 @@ func main() {
 		}
 	}()
 
+	gcsClient, err := gcs.NewClient(context.Background(), cfg.GCS, cfg.GCP, logg)
+	if err != nil {
+		logg.Error(context.Background(), "failed to bootstrap gcs", err)
+		os.Exit(1)
+	}
+	defer func() {
+		if err := gcsClient.Close(); err != nil {
+			logg.Error(context.Background(), "error closing gcs client", err)
+		}
+	}()
+
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
-
 	ctx = logg.WithFields(ctx, map[string]any{
 		// "instance":    instance.GetID(),
 		"env":         cfg.App.Env,
@@ -70,14 +81,22 @@ func main() {
 	})
 	logg.Info(ctx, "starting worker")
 
+	if gcsClient != nil {
+		if err := gcsClient.Ping(ctx); err != nil {
+			logg.Error(ctx, "gcs ping failed", err)
+		} else {
+			logg.Info(ctx, "gcs ping succeeded")
+		}
+	}
+
 	runWorker(ctx, cfg, logg, dbClient, redisClient)
 	logg.Info(ctx, "worker shutting down gracefully")
 }
 
 func runWorker(ctx context.Context, cfg *config.Config, logg *logger.Logger, dbClient *db.Client, redisClient *redis.Client) {
 	ctx = logg.WithFields(ctx, map[string]any{
-		"job":          "heartbeat",
-		"pubsub_media": cfg.PubSub.MediaTopic,
+		"job": "heartbeat",
+		// "pubsub_media": cfg.PubSub.MediaTopic,
 	})
 	if err := dbClient.Ping(ctx); err != nil {
 		logg.Error(ctx, "database ping failed", err)

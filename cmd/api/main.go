@@ -18,6 +18,7 @@ import (
 	"github.com/angelmondragon/packfinderz-backend/pkg/logger"
 	"github.com/angelmondragon/packfinderz-backend/pkg/migrate"
 	"github.com/angelmondragon/packfinderz-backend/pkg/redis"
+	"github.com/angelmondragon/packfinderz-backend/pkg/storage/gcs"
 )
 
 func main() {
@@ -71,6 +72,17 @@ func main() {
 		logg.Error(context.Background(), "failed to create session manager", err)
 		os.Exit(1)
 	}
+
+	gcsClient, err := gcs.NewClient(context.Background(), cfg.GCS, cfg.GCP, logg)
+	if err != nil {
+		logg.Error(context.Background(), "failed to bootstrap gcs", err)
+		os.Exit(1)
+	}
+	defer func() {
+		if err := gcsClient.Close(); err != nil {
+			logg.Error(context.Background(), "error closing gcs client", err)
+		}
+	}()
 
 	usersRepo := users.NewRepository(dbClient.DB())
 	membershipsRepo := memberships.NewRepository(dbClient.DB())
@@ -133,6 +145,7 @@ func main() {
 			logg,
 			dbClient,
 			redisClient,
+			gcsClient,
 			sessionManager,
 			authService,
 			registerService,
