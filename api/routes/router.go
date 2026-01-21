@@ -10,6 +10,7 @@ import (
 	"github.com/angelmondragon/packfinderz-backend/api/controllers"
 	"github.com/angelmondragon/packfinderz-backend/api/middleware"
 	"github.com/angelmondragon/packfinderz-backend/internal/auth"
+	"github.com/angelmondragon/packfinderz-backend/internal/stores"
 	"github.com/angelmondragon/packfinderz-backend/pkg/auth/session"
 	"github.com/angelmondragon/packfinderz-backend/pkg/config"
 	"github.com/angelmondragon/packfinderz-backend/pkg/db"
@@ -32,6 +33,7 @@ func NewRouter(
 	authService auth.Service,
 	registerService auth.RegisterService,
 	switchService auth.SwitchStoreService,
+	storeService stores.Service,
 ) http.Handler {
 	r := chi.NewRouter()
 	r.Use(
@@ -77,6 +79,10 @@ func NewRouter(
 		r.Use(middleware.Idempotency(redisClient, logg))
 		r.Use(middleware.RateLimit())
 		r.Get("/ping", controllers.PrivatePing())
+
+		r.Route("/v1/stores", func(r chi.Router) {
+			r.Get("/me", controllers.StoreProfile(storeService, logg))
+		})
 	})
 
 	r.Route("/api/admin", func(r chi.Router) {
