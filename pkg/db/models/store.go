@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/lib/pq"
 
 	"github.com/angelmondragon/packfinderz-backend/pkg/enums"
 	"github.com/angelmondragon/packfinderz-backend/pkg/types"
@@ -24,6 +25,10 @@ type Store struct {
 	Address              types.Address        `gorm:"column:address;type:address_t;not null"`
 	Geom                 types.GeographyPoint `gorm:"column:geom;type:geography(Point,4326);not null"`
 	Social               *types.Social        `gorm:"column:social;type:social_t"`
+	BannerURL            *string              `gorm:"column:banner_url"`
+	LogoURL              *string              `gorm:"column:logo_url"`
+	Ratings              types.Ratings        `gorm:"column:ratings;type:jsonb"`
+	Categories           pq.StringArray       `gorm:"column:categories;type:text[]"`
 	OwnerID              uuid.UUID            `gorm:"column:owner;type:uuid;not null"`
 	LastActiveAt         *time.Time           `gorm:"column:last_active_at"`
 	CreatedAt            time.Time            `gorm:"column:created_at;autoCreateTime"`

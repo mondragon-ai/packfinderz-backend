@@ -1,232 +1,317 @@
+Below is a **fully rewritten, reorganized, and compressed** version of `reusable.md`, with the new `Ratings` type **canonically integrated**.
+It is optimized for **LLM consumption**, minimal token load, and strict “single source of truth” usage.
+
+---
 
 # PKG & API Reference (Canonical / Reusable)
 
 > **Purpose**
-> This document defines **canonical helpers, types, enums, and contracts** that MUST be reused across the codebase.
-> It exists to prevent duplication and drift when generating new code (services, handlers, middleware, DTOs).
->  
-> If something is defined here, **do not re-implement it elsewhere**.
+> Defines **canonical helpers, types, enums, and contracts** reused across the codebase.
+>
+> If something exists here, **DO NOT re-implement it elsewhere**.
 
 ---
 
 ## PKG
 
+---
+
 ### `config`
-- Central `Config` struct driven by `envconfig`.
-- Typed sub-configs:
-  - App, Service, DB, Redis, JWT, FeatureFlags
-  - OpenAI, GoogleMaps
-  - GCP, GCS, Media
-  - Pub/Sub, Stripe, Sendgrid
-- `DBConfig.ensureDSN`
-  - Synthesizes legacy host/user/password vars into `PACKFINDERZ_DB_DSN` when missing.
+
+Central config via `envconfig`.
+
+**Typed sub-configs**
+
+* App, Service, DB, Redis, JWT, FeatureFlags
+* OpenAI, GoogleMaps
+* GCP, GCS, Media
+* Pub/Sub, Stripe, Sendgrid
+
+**Helpers**
+
+* `DBConfig.ensureDSN`
+
+  * Synthesizes legacy vars → `PACKFINDERZ_DB_DSN` if missing.
 
 ---
 
 ### `db`
-- `Client`
-  - Boots GORM with Postgres driver.
-  - Exposes:
-    - `DB()`
-    - `Ping()`
-    - `Close()`
-    - context-aware `Exec` / `Raw`
-    - `WithTx(fn)` that auto-rolls back on errors or panics.
+
+GORM + Postgres client.
+
+**Client**
+
+* `DB()`
+* `Ping()`
+* `Close()`
+* Context-aware `Exec` / `Raw`
+* `WithTx(fn)` → auto rollback on error/panic
 
 ---
 
 ### `migrate`
-- Goose-based migration helpers:
-  - `Run`, `MigrateToVersion`
-  - Migration validation (filename + header).
-- `autorun.go`
-  - Dev-only auto migration when:
-    - `PACKFINDERZ_APP_ENV=dev`
-    - `PACKFINDERZ_AUTO_MIGRATE=true`
-- `create.go`
-  - Templated migration generation.
+
+Goose-based migrations.
+
+* `Run`
+* `MigrateToVersion`
+* Filename + header validation
+
+**Dev Auto-run**
+
+* Enabled when:
+
+  * `PACKFINDERZ_APP_ENV=dev`
+  * `PACKFINDERZ_AUTO_MIGRATE=true`
+
+**Generator**
+
+* `create.go` → templated migrations
 
 ---
 
 ### `redis`
-- `Client`
-  - go-redis v9 wrapper.
-  - Handles URL vs host config, pooling, TTL defaults.
-- Common helpers:
-  - `Set`, `Get`, `SetNX`
-  - `Incr`, `IncrWithTTL`
-  - `FixedWindowAllow` (rate limiting)
-  - Idempotency + rate-limit key builders
-  - Refresh/session token helpers
-  - `Ping`, `Close`
 
-#### Redis session helpers
-- `AccessSessionKey(accessID string) string`
-  - Builds namespaced Redis key:
-  - `buildKey(sessionPrefix, "access", accessID)`
-- `Del(ctx, keys...)`
-  - Deletes one or more keys.
-  - Errors if client not initialized.
+go-redis v9 wrapper.
+
+**Client**
+
+* URL or host-based config
+* Pooling + TTL defaults
+
+**Helpers**
+
+* `Set`, `Get`, `SetNX`
+* `Incr`, `IncrWithTTL`
+* `FixedWindowAllow` (rate limiting)
+* Idempotency + rate-limit key builders
+* Refresh/session helpers
+* `Ping`, `Close`
+
+**Session Keys**
+
+* `AccessSessionKey(accessID string)`
+* `Del(ctx, keys...)`
 
 ---
 
 ### `logger`
-- Structured `zerolog` wrapper.
-- Options:
-  - log level
-  - warn-stack
-  - output destination
-- Helpers:
-  - `ParseLevel`
-  - Context enrichment:
-    - `RequestID`
-    - `UserID`
-    - `StoreID`
-    - `ActorRole`
-  - `Info / Warn / Error` with optional stack traces.
+
+Structured `zerolog` wrapper.
+
+**Features**
+
+* Level parsing
+* Warn-stack
+* Output control
+
+**Context Fields**
+
+* `RequestID`
+* `UserID`
+* `StoreID`
+* `ActorRole`
+
+**Helpers**
+
+* `Info`, `Warn`, `Error` (+ optional stack)
 
 ---
 
 ### `errors`
-- Canonical typed error system.
-- `Code` enum:
-  - `VALIDATION_ERROR`
-  - `UNAUTHORIZED`
-  - `FORBIDDEN`
-  - `NOT_FOUND`
-  - `CONFLICT`
-  - `INTERNAL_ERROR`
-  - `DEPENDENCY_ERROR`
-- `Metadata`
-  - HTTP status
-  - retryable flag
-  - public message
-  - details allowed
-- `Error` builder:
-  - `New`
-  - `Wrap`
-  - `WithDetails`
-  - `As`
-- `MetadataFor(code)`
-  - **Single source of truth** for API error mapping.
+
+Canonical typed error system.
+
+**Codes**
+
+* `VALIDATION_ERROR`
+* `UNAUTHORIZED`
+* `FORBIDDEN`
+* `NOT_FOUND`
+* `CONFLICT`
+* `INTERNAL_ERROR`
+* `DEPENDENCY_ERROR`
+
+**Metadata**
+
+* HTTP status
+* Retryable flag
+* Public message
+* Detail visibility
+
+**Builders**
+
+* `New`
+* `Wrap`
+* `WithDetails`
+* `As`
+
+**Mapping**
+
+* `MetadataFor(code)` → **single API mapping source**
 
 ---
 
-## Shared Helpers / Canonical Types
+## Shared Types (`pkg/types`)
 
-### `pkg/types`: API envelopes
-- **SuccessEnvelope**
-  ```json
-  { "data": any }
+---
+
+### API Envelopes (MANDATORY)
+
+**SuccessEnvelope**
+
+```json
+{ "data": any }
 ```
 
-* **ErrorEnvelope**
+**ErrorEnvelope**
 
-  ```json
-  { "error": { "code": string, "message": string, "details"?: any } }
-  ```
-* Used exclusively by:
+```json
+{ "error": { "code": string, "message": string, "details"?: any } }
+```
 
-  * `responses.WriteSuccess*`
-  * `responses.WriteError`
+Used exclusively by:
+
+* `responses.WriteSuccess*`
+* `responses.WriteError`
 
 ---
 
-### `pkg/types`: Postgres composite helpers
+### Postgres Composite Utilities
 
-Reusable utilities for `sql.Scanner` / `driver.Valuer` implementations.
+Reusable helpers for `sql.Scanner` / `driver.Valuer`:
 
-* `quoteCompositeString(string)`
-* `quoteCompositeNullable(*string)`
-* `isCompositeNull(string)`
-* `parseComposite(raw string, expected int)`
-* `newCompositeNullable(string)`
-* `toString(any)`
+* `quoteCompositeString`
+* `quoteCompositeNullable`
+* `isCompositeNull`
+* `parseComposite`
+* `newCompositeNullable`
+* `toString`
 
 **Purpose**
 
-* Safely encode/decode Postgres composite types.
-* Prevents ad-hoc parsing logic across models.
+* Safe composite encode/decode
+* Zero ad-hoc parsing in models
 
 ---
 
-### `pkg/types`: `Address` (`address_t`)
+### `Address` (`address_t`)
 
-* Fields:
+Postgres composite.
 
-  * `line1`, `line2?`, `city`, `state`, `postal_code`, `country`
-  * `lat`, `lng`, `geohash?`
-* Behavior:
+**Fields**
 
-  * Required: `line1`, `city`, `state`, `postal_code`, `lat`, `lng`
-  * Default `country = "US"`
-* Implements:
+* `line1`, `line2?`
+* `city`, `state`, `postal_code`
+* `country` (default `"US"`)
+* `lat`, `lng`, `geohash?`
 
-  * `driver.Valuer`
-  * `sql.Scanner`
+**Implements**
 
----
-
-### `pkg/types`: `Social` (`social_t`)
-
-* Optional fields:
-
-  * `twitter`, `facebook`, `instagram`, `linkedin`, `youtube`, `website`
-* Implements:
-
-  * `driver.Valuer`
-  * `sql.Scanner`
+* `driver.Valuer`
+* `sql.Scanner`
 
 ---
 
-### `pkg/types`: `GeographyPoint`
+### `Social` (`social_t`)
 
-* Represents PostGIS `geography(POINT, 4326)`
-* Fields: `{ lat, lng }`
-* Implements:
+Postgres composite.
 
-  * `driver.Valuer` → EWKT (`SRID=4326;POINT(lng lat)`)
-  * `sql.Scanner`
+**Optional**
 
-    * WKT / EWKT
-    * WKB bytes
+* `twitter`, `facebook`, `instagram`
+* `linkedin`, `youtube`, `website`
+
+**Implements**
+
+* `driver.Valuer`
+* `sql.Scanner`
+
+---
+
+### `GeographyPoint`
+
+PostGIS `geography(POINT, 4326)`.
+
+**Fields**
+
+* `lat`, `lng`
+
+**Implements**
+
+* `driver.Valuer` → `SRID=4326;POINT(lng lat)`
+* `sql.Scanner` (WKT / EWKT / WKB)
+
+---
+
+### `Ratings` (JSONB)
+
+Flexible scoring map stored as JSONB.
+
+```go
+type Ratings map[string]int
+```
+
+**Behavior**
+
+* `nil` → `{}` on write
+* Supports `string` or `[]byte` scan
+* Strict type validation
+
+**Implements**
+
+* `driver.Valuer`
+* `sql.Scanner`
+
+**Usage**
+
+* Product/store ratings
+* Arbitrary scoring dimensions
+* Avoids schema churn
 
 ---
 
 ## Security
 
+---
+
 ### `pkg/security/password`
 
-* Argon2id password hashing.
-* Config-driven parameters.
-* Hash format:
+Argon2id hashing.
 
-  ```
-  $argon2id$v=19$m=...,t=...,p=...$<salt>$<hash>
-  ```
-* Helpers:
+**Format**
 
-  * `HashPassword`
-  * `VerifyPassword`
-* Guarantees:
+```
+$argon2id$v=19$m=...,t=...,p=...$<salt>$<hash>
+```
 
-  * Constant-time comparison
-  * Parameter clamping (safe bounds)
-* Error:
+**Helpers**
 
-  * `ErrInvalidHash`
+* `HashPassword`
+* `VerifyPassword`
+
+**Guarantees**
+
+* Constant-time compare
+* Safe parameter bounds
+
+**Errors**
+
+* `ErrInvalidHash`
 
 ---
 
 ## Enums (`pkg/enums/*`)
 
-> Canonical string enums used across DTOs, DB models, auth, and validation.
+> Canonical string enums across DTOs, DB, auth, validation.
 
-All enums provide:
+All enums implement:
 
 * `String()`
 * `IsValid()`
-* `ParseX(value string)`
+* `ParseX(string)`
+
+---
 
 ### `StoreType`
 
@@ -262,80 +347,88 @@ All enums provide:
 
 ## Auth (Canonical)
 
+---
+
 ### `pkg/auth/token`
 
-* HS256 JWT access tokens only.
-* Single signing method enforced.
-* Helpers:
+HS256 access tokens only.
 
-  * `MintAccessToken`
-  * `ParseAccessToken`
-* Enforced:
+**Helpers**
 
-  * issuer
-  * expiry
-  * signing algorithm
-* Payload validation uses canonical enums.
+* `MintAccessToken`
+* `ParseAccessToken`
+
+**Enforced**
+
+* Issuer
+* Expiry
+* Signing algorithm
 
 ---
 
 ### `pkg/auth/claims`
 
-* `AccessTokenPayload`
+**AccessTokenPayload**
 
-  * `user_id`
-  * `active_store_id?`
-  * `role`
-  * `store_type?`
-  * `kyc_status?`
-* `AccessTokenClaims`
+* `user_id`
+* `active_store_id?`
+* `role`
+* `store_type?`
+* `kyc_status?`
 
-  * Typed JWT claims returned to callers.
-  * Embeds `jwt.RegisteredClaims`.
+**AccessTokenClaims**
+
+* Typed claims
+* Embeds `jwt.RegisteredClaims`
 
 ---
 
 ### `pkg/auth/session`
 
-**Refresh-session system (Redis-backed)**
+Redis-backed refresh sessions.
 
-* Refresh tokens:
+**Refresh Tokens**
 
-  * cryptographically random
-  * base64url encoded
-* Errors:
+* Cryptographically random
+* base64url encoded
 
-  * `ErrInvalidRefreshToken` (used consistently for “not found”, expired, or mismatched tokens)
+**Errors**
+
+* `ErrInvalidRefreshToken`
+  (not found, expired, mismatched)
 
 **Manager**
 
 * `Generate(accessID)`
 * `Rotate(oldAccessID, refreshToken)`
-* `HasSession(accessID)` (used by middleware)
-* Guarantees:
+* `HasSession(accessID)`
 
-  * refresh TTL > access TTL
-  * constant-time token comparison
-  * single-use rotation semantics
+**Guarantees**
+
+* Refresh TTL > access TTL
+* Constant-time compare
+* Single-use rotation
 
 **AccessID**
 
-* UUID string.
+* UUID string
 * Used as:
 
   * JWT `jti`
-  * Redis session key suffix.
+  * Redis key suffix
 
 ---
 
-## API (High-Level)
+## API
+
+---
 
 ### Routes
 
 * `/health`
 * `/api/v1/auth/login`
 * `/api/public/*`
-* `/api/*` (auth required)
+* `/api/*` (auth)
 * `/api/admin/*`
 * `/api/agent/*`
 
@@ -346,10 +439,7 @@ All enums provide:
 * `Recoverer`
 * `RequestID`
 * `Logging`
-* `Auth`
-
-  * Uses `pkg/auth`
-  * Verifies Redis session via `pkg/auth/session`
+* `Auth` (JWT + Redis session)
 * `StoreContext`
 * `RequireRole`
 * `Idempotency` (placeholder)
@@ -359,11 +449,10 @@ All enums provide:
 
 ### Responses
 
-* **ALL responses MUST use envelopes**
+**ALL responses MUST**
 
-  * `SuccessEnvelope`
-  * `ErrorEnvelope`
-* Error mapping MUST flow through:
+* Use envelopes
+* Map errors via:
 
   * `pkg/errors`
   * `pkg/logger`

@@ -25,6 +25,10 @@ type StoreDTO struct {
 	Address              types.Address        `json:"address"`
 	Geom                 types.GeographyPoint `json:"geom"`
 	Social               *types.Social        `json:"social,omitempty"`
+	BannerURL            *string              `json:"banner_url,omitempty"`
+	LogoURL              *string              `json:"logo_url,omitempty"`
+	Ratings              map[string]int       `json:"ratings,omitempty"`
+	Categories           []string             `json:"categories,omitempty"`
 	OwnerID              uuid.UUID            `json:"owner"`
 	LastActiveAt         *time.Time           `json:"last_active_at,omitempty"`
 	CreatedAt            time.Time            `json:"created_at"`
@@ -77,6 +81,24 @@ func FromModel(m *models.Store) *StoreDTO {
 	if m.Social != nil {
 		cpy := *m.Social
 		dto.Social = &cpy
+	}
+
+	if m.BannerURL != nil {
+		banner := *m.BannerURL
+		dto.BannerURL = &banner
+	}
+	if m.LogoURL != nil {
+		logo := *m.LogoURL
+		dto.LogoURL = &logo
+	}
+	if len(m.Ratings) > 0 {
+		dto.Ratings = make(map[string]int, len(m.Ratings))
+		for k, v := range m.Ratings {
+			dto.Ratings[k] = v
+		}
+	}
+	if len(m.Categories) > 0 {
+		dto.Categories = append(dto.Categories, m.Categories...)
 	}
 
 	return dto
