@@ -367,6 +367,13 @@ These endpoints rely on `activeStoreId` and enforce owner/manager access for mut
 * `POST /api/v1/stores/me/users/invite` – invites (or reuses) a user, creates a membership, and issues a temporary password for new accounts (passwords are never logged).
 * `DELETE /api/v1/stores/me/users/{userId}` – removes only the membership row, returns `409` if the target is the last owner, and leaves the user record intact.
 
+### Media Uploads
+
+* `POST /api/v1/media/presign` – creates a `media` row in `pending` state, computes a deterministic `gcs_key` containing the newly minted `media_id`, and returns `{media_id, gcs_key, signed_put_url, content_type, expires_at}` for clients to PUT directly to GCS.
+  * Requires `activeStoreId` + store role (owner/admin/manager/staff/ops), `Idempotency-Key`, and a sanitized `file_name`.
+  * Validates `media_kind`, `mime_type`, and `size_bytes ≤ 20MB`; the signed URL enforces the supplied `Content-Type`.
+  * TTL honors `PACKFINDERZ_GCS_UPLOAD_URL_EXPIRY`, and clients must not proxy uploads through the API (use the signed PUT directly).
+
 ### Error Contract
 
 ```json

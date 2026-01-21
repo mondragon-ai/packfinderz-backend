@@ -10,6 +10,7 @@ import (
 	"github.com/angelmondragon/packfinderz-backend/api/controllers"
 	"github.com/angelmondragon/packfinderz-backend/api/middleware"
 	"github.com/angelmondragon/packfinderz-backend/internal/auth"
+	"github.com/angelmondragon/packfinderz-backend/internal/media"
 	"github.com/angelmondragon/packfinderz-backend/internal/stores"
 	"github.com/angelmondragon/packfinderz-backend/pkg/auth/session"
 	"github.com/angelmondragon/packfinderz-backend/pkg/config"
@@ -36,6 +37,7 @@ func NewRouter(
 	registerService auth.RegisterService,
 	switchService auth.SwitchStoreService,
 	storeService stores.Service,
+	mediaService media.Service,
 ) http.Handler {
 	r := chi.NewRouter()
 	r.Use(
@@ -88,6 +90,9 @@ func NewRouter(
 			r.Get("/me/users", controllers.StoreUsers(storeService, logg))
 			r.Post("/me/users/invite", controllers.StoreInvite(storeService, logg))
 			r.Delete("/me/users/{userId}", controllers.StoreRemoveUser(storeService, logg))
+		})
+		r.Route("/v1/media", func(r chi.Router) {
+			r.Post("/presign", controllers.MediaPresign(mediaService, logg))
 		})
 	})
 

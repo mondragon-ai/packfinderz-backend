@@ -9,6 +9,7 @@ import (
 
 	"github.com/angelmondragon/packfinderz-backend/api/routes"
 	"github.com/angelmondragon/packfinderz-backend/internal/auth"
+	"github.com/angelmondragon/packfinderz-backend/internal/media"
 	"github.com/angelmondragon/packfinderz-backend/internal/memberships"
 	"github.com/angelmondragon/packfinderz-backend/internal/stores"
 	"github.com/angelmondragon/packfinderz-backend/internal/users"
@@ -122,6 +123,12 @@ func main() {
 		os.Exit(1)
 	}
 
+	mediaService, err := media.NewService(media.NewRepository(dbClient.DB()), membershipsRepo, gcsClient, cfg.GCS.BucketName, cfg.GCS.UploadURLExpiry)
+	if err != nil {
+		logg.Error(context.Background(), "failed to create media service", err)
+		os.Exit(1)
+	}
+
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = cfg.App.Port
@@ -151,6 +158,7 @@ func main() {
 			registerService,
 			switchService,
 			storeService,
+			mediaService,
 		),
 	}
 

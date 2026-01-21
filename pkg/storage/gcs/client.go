@@ -16,6 +16,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -32,9 +33,10 @@ const (
 )
 
 type Client struct {
-	httpClient    *http.Client
-	defaultBucket string
-	tokenSource   *tokenSource
+	httpClient     *http.Client
+	defaultBucket  string
+	tokenSource    *tokenSource
+	serviceAccount *serviceAccountInfo
 }
 
 type Pinger interface {
@@ -59,15 +61,24 @@ func NewClient(ctx context.Context, cfg config.GCSConfig, gcp config.GCPConfig, 
 
 	var ts *tokenSource
 	var err error
+	var svcCreds *serviceAccountInfo
 	switch {
 	case gcp.CredentialsJSON != "":
-		ts, err = newServiceAccountTokenSource(httpClient, gcp.CredentialsJSON)
+		svcCreds, err = parseServiceAccountCredentials(gcp.CredentialsJSON)
+		if err != nil {
+			return nil, err
+		}
+		ts, err = newServiceAccountTokenSource(httpClient, svcCreds)
 	case gcp.ApplicationCredentials != "":
 		bytes, readErr := os.ReadFile(gcp.ApplicationCredentials)
 		if readErr != nil {
 			return nil, fmt.Errorf("reading credentials file: %w", readErr)
 		}
-		ts, err = newServiceAccountTokenSource(httpClient, string(bytes))
+		svcCreds, err = parseServiceAccountCredentials(string(bytes))
+		if err != nil {
+			return nil, err
+		}
+		ts, err = newServiceAccountTokenSource(httpClient, svcCreds)
 	default:
 		ts = newMetadataTokenSource(httpClient)
 	}
@@ -76,9 +87,10 @@ func NewClient(ctx context.Context, cfg config.GCSConfig, gcp config.GCPConfig, 
 	}
 
 	client := &Client{
-		httpClient:    httpClient,
-		defaultBucket: cfg.BucketName,
-		tokenSource:   ts,
+		httpClient:     httpClient,
+		defaultBucket:  cfg.BucketName,
+		tokenSource:    ts,
+		serviceAccount: svcCreds,
 	}
 
 	if err := client.Ping(ctx); err != nil {
@@ -169,6 +181,12 @@ func (b *Bucket) Name() string {
 	return b.name
 }
 
+type serviceAccountInfo struct {
+	clientEmail string
+	privateKey  *rsa.PrivateKey
+	tokenURI    string
+}
+
 type tokenSource struct {
 	mu     sync.Mutex
 	token  string
@@ -193,7 +211,7 @@ func (t *tokenSource) Token(ctx context.Context) (string, error) {
 	return token, nil
 }
 
-func newServiceAccountTokenSource(client *http.Client, jsonCreds string) (*tokenSource, error) {
+func parseServiceAccountCredentials(jsonCreds string) (*serviceAccountInfo, error) {
 	var creds struct {
 		ClientEmail string `json:"client_email"`
 		PrivateKey  string `json:"private_key"`
@@ -213,10 +231,20 @@ func newServiceAccountTokenSource(client *http.Client, jsonCreds string) (*token
 	if err != nil {
 		return nil, err
 	}
+	return &serviceAccountInfo{
+		clientEmail: creds.ClientEmail,
+		privateKey:  priv,
+		tokenURI:    tokenURI,
+	}, nil
+}
 
+func newServiceAccountTokenSource(client *http.Client, creds *serviceAccountInfo) (*tokenSource, error) {
+	if creds == nil {
+		return nil, errors.New("service account credentials required")
+	}
 	return &tokenSource{
 		fetch: func(ctx context.Context) (string, time.Time, error) {
-			return fetchServiceAccountToken(ctx, client, creds.ClientEmail, priv, tokenURI)
+			return fetchServiceAccountToken(ctx, client, creds.clientEmail, creds.privateKey, creds.tokenURI)
 		},
 	}, nil
 }
@@ -245,7 +273,7 @@ func fetchServiceAccountToken(ctx context.Context, client *http.Client, email st
 	}
 	payload := base64.RawURLEncoding.EncodeToString(payloadBytes)
 	unsigned := strings.Join([]string{header, payload}, ".")
-	signature, err := signJWT(unsigned, key)
+	signature, err := signWithKey(unsigned, key)
 	if err != nil {
 		return "", time.Time{}, err
 	}
@@ -326,11 +354,63 @@ func parsePrivateKey(pemData string) (*rsa.PrivateKey, error) {
 	return priv, nil
 }
 
-func signJWT(unsigned string, key *rsa.PrivateKey) (string, error) {
+func signWithKey(unsigned string, key *rsa.PrivateKey) (string, error) {
 	hash := sha256.Sum256([]byte(unsigned))
 	signature, err := rsa.SignPKCS1v15(rand.Reader, key, crypto.SHA256, hash[:])
 	if err != nil {
 		return "", err
 	}
 	return base64.RawURLEncoding.EncodeToString(signature), nil
+}
+
+// SignedURL builds a V2 signed PUT URL that enforces the provided Content-Type.
+func (c *Client) SignedURL(bucket, object, contentType string, expires time.Duration) (string, error) {
+	if c == nil {
+		return "", errors.New("gcs client not initialized")
+	}
+	if bucket == "" {
+		bucket = c.defaultBucket
+	}
+	if bucket == "" {
+		return "", errors.New("gcs bucket not configured")
+	}
+	if object == "" {
+		return "", errors.New("object name required")
+	}
+	contentType = strings.TrimSpace(contentType)
+	if contentType == "" {
+		return "", errors.New("content type required")
+	}
+	if expires <= 0 {
+		return "", errors.New("expires must be positive")
+	}
+	if c.serviceAccount == nil || c.serviceAccount.clientEmail == "" || c.serviceAccount.privateKey == nil {
+		return "", errors.New("gcs signing credentials unavailable")
+	}
+
+	expiry := time.Now().Add(expires).Unix()
+	stringToSign := fmt.Sprintf("%s\n\n%s\n%d\n/%s/%s", http.MethodPut, contentType, expiry, bucket, object)
+	signature, err := signWithKey(stringToSign, c.serviceAccount.privateKey)
+	if err != nil {
+		return "", err
+	}
+
+	values := url.Values{}
+	values.Set("GoogleAccessId", c.serviceAccount.clientEmail)
+	values.Set("Expires", strconv.FormatInt(expiry, 10))
+	values.Set("Signature", signature)
+
+	objPath := escapeObjectPath(object)
+	return fmt.Sprintf("https://storage.googleapis.com/%s/%s?%s", bucket, objPath, values.Encode()), nil
+}
+
+func escapeObjectPath(object string) string {
+	if object == "" {
+		return ""
+	}
+	parts := strings.Split(object, "/")
+	for i, part := range parts {
+		parts[i] = url.PathEscape(part)
+	}
+	return strings.Join(parts, "/")
 }
