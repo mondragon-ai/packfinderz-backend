@@ -10,6 +10,7 @@ import (
 	"github.com/angelmondragon/packfinderz-backend/api/routes"
 	"github.com/angelmondragon/packfinderz-backend/internal/auth"
 	"github.com/angelmondragon/packfinderz-backend/internal/memberships"
+	"github.com/angelmondragon/packfinderz-backend/internal/stores"
 	"github.com/angelmondragon/packfinderz-backend/internal/users"
 	"github.com/angelmondragon/packfinderz-backend/pkg/auth/session"
 	"github.com/angelmondragon/packfinderz-backend/pkg/config"
@@ -101,6 +102,12 @@ func main() {
 		os.Exit(1)
 	}
 
+	storeService, err := stores.NewService(stores.NewRepository(dbClient.DB()))
+	if err != nil {
+		logg.Error(context.Background(), "failed to create store service", err)
+		os.Exit(1)
+	}
+
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = cfg.App.Port
@@ -128,6 +135,7 @@ func main() {
 			authService,
 			registerService,
 			switchService,
+			storeService,
 		),
 	}
 

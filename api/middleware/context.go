@@ -39,3 +39,11 @@ func StoreIDFromContext(ctx context.Context) string {
 	}
 	return ""
 }
+
+// WithStoreID injects the store identifier into the context for downstream handlers.
+func WithStoreID(ctx context.Context, storeID string) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return context.WithValue(ctx, ctxStoreID, storeID)
+}
