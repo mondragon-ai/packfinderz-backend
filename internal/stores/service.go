@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/angelmondragon/packfinderz-backend/internal/memberships"
 	"github.com/angelmondragon/packfinderz-backend/pkg/db/models"
 	"github.com/angelmondragon/packfinderz-backend/pkg/enums"
 	pkgerrors "github.com/angelmondragon/packfinderz-backend/pkg/errors"
@@ -21,12 +22,14 @@ type storeRepository interface {
 
 type membershipsRepository interface {
 	UserHasRole(ctx context.Context, userID, storeID uuid.UUID, roles ...enums.MemberRole) (bool, error)
+	ListStoreUsers(ctx context.Context, storeID uuid.UUID) ([]memberships.StoreUserDTO, error)
 }
 
 // Service exposes store read and update operations.
 type Service interface {
 	GetByID(ctx context.Context, id uuid.UUID) (*StoreDTO, error)
 	Update(ctx context.Context, userID, storeID uuid.UUID, input UpdateStoreInput) (*StoreDTO, error)
+	ListUsers(ctx context.Context, userID, storeID uuid.UUID) ([]memberships.StoreUserDTO, error)
 }
 
 type service struct {
@@ -129,6 +132,23 @@ func (s *service) Update(ctx context.Context, userID, storeID uuid.UUID, input U
 		return nil, pkgerrors.Wrap(pkgerrors.CodeDependency, err, "update store")
 	}
 	return FromModel(store), nil
+}
+
+func (s *service) ListUsers(ctx context.Context, userID, storeID uuid.UUID) ([]memberships.StoreUserDTO, error) {
+	allowedRoles := []enums.MemberRole{enums.MemberRoleOwner, enums.MemberRoleManager}
+	ok, err := s.memberships.UserHasRole(ctx, userID, storeID, allowedRoles...)
+	if err != nil {
+		return nil, pkgerrors.Wrap(pkgerrors.CodeDependency, err, "check membership")
+	}
+	if !ok {
+		return nil, pkgerrors.New(pkgerrors.CodeForbidden, "insufficient store role")
+	}
+
+	users, err := s.memberships.ListStoreUsers(ctx, storeID)
+	if err != nil {
+		return nil, pkgerrors.Wrap(pkgerrors.CodeDependency, err, "list store users")
+	}
+	return users, nil
 }
 
 func cloneStringPtr(value *string) *string {

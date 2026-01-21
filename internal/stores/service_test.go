@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/angelmondragon/packfinderz-backend/internal/memberships"
 	"github.com/angelmondragon/packfinderz-backend/pkg/db/models"
 	"github.com/angelmondragon/packfinderz-backend/pkg/enums"
 	pkgerrors "github.com/angelmondragon/packfinderz-backend/pkg/errors"
@@ -144,6 +145,54 @@ func TestServiceUpdateForbidden(t *testing.T) {
 	}
 }
 
+func TestServiceListUsersSuccess(t *testing.T) {
+	repo := &stubStoreRepo{store: baseStore()}
+	members := []memberships.StoreUserDTO{
+		{
+			MembershipID: uuid.New(),
+			StoreID:      repo.store.ID,
+			UserID:       uuid.New(),
+			Email:        "user@example.com",
+			FirstName:    "Test",
+			LastName:     "User",
+			Role:         enums.MemberRoleManager,
+			Status:       enums.MembershipStatusActive,
+			CreatedAt:    time.Now(),
+		},
+	}
+	svc, err := NewService(repo, stubMembershipsRepo{allowed: true, members: members})
+	if err != nil {
+		t.Fatalf("new service: %v", err)
+	}
+
+	output, err := svc.ListUsers(context.Background(), uuid.New(), repo.store.ID)
+	if err != nil {
+		t.Fatalf("list users: %v", err)
+	}
+	if len(output) != 1 {
+		t.Fatalf("expected 1 member got %d", len(output))
+	}
+	if output[0].Email != "user@example.com" {
+		t.Fatalf("expected email user@example.com got %s", output[0].Email)
+	}
+}
+
+func TestServiceListUsersForbidden(t *testing.T) {
+	repo := &stubStoreRepo{store: baseStore()}
+	svc, err := NewService(repo, stubMembershipsRepo{allowed: false})
+	if err != nil {
+		t.Fatalf("new service: %v", err)
+	}
+
+	_, gotErr := svc.ListUsers(context.Background(), uuid.New(), repo.store.ID)
+	if gotErr == nil {
+		t.Fatal("expected error")
+	}
+	if typed := pkgerrors.As(gotErr); typed == nil || typed.Code() != pkgerrors.CodeForbidden {
+		t.Fatalf("expected forbidden code, got %v", gotErr)
+	}
+}
+
 func baseStore() *models.Store {
 	return &models.Store{
 		ID:                   uuid.New(),
@@ -196,6 +245,8 @@ func (s *stubStoreRepo) Update(ctx context.Context, store *models.Store) error {
 type stubMembershipsRepo struct {
 	allowed bool
 	err     error
+	members []memberships.StoreUserDTO
+	listErr error
 }
 
 func (s stubMembershipsRepo) UserHasRole(ctx context.Context, userID, storeID uuid.UUID, roles ...enums.MemberRole) (bool, error) {
@@ -203,6 +254,13 @@ func (s stubMembershipsRepo) UserHasRole(ctx context.Context, userID, storeID uu
 		return false, s.err
 	}
 	return s.allowed, nil
+}
+
+func (s stubMembershipsRepo) ListStoreUsers(ctx context.Context, storeID uuid.UUID) ([]memberships.StoreUserDTO, error) {
+	if s.listErr != nil {
+		return nil, s.listErr
+	}
+	return s.members, nil
 }
 
 func stringPtr(s string) *string { return &s }

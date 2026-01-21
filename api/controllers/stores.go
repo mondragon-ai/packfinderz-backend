@@ -118,3 +118,45 @@ func StoreUpdate(svc stores.Service, logg *logger.Logger) http.HandlerFunc {
 		responses.WriteSuccess(w, profile)
 	}
 }
+
+// StoreUsers returns the membership roster for managers/owners.
+func StoreUsers(svc stores.Service, logg *logger.Logger) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if svc == nil {
+			responses.WriteError(r.Context(), logg, w, pkgerrors.New(pkgerrors.CodeInternal, "store service unavailable"))
+			return
+		}
+
+		storeID := middleware.StoreIDFromContext(r.Context())
+		if storeID == "" {
+			responses.WriteError(r.Context(), logg, w, pkgerrors.New(pkgerrors.CodeForbidden, "store context missing"))
+			return
+		}
+
+		userID := middleware.UserIDFromContext(r.Context())
+		if userID == "" {
+			responses.WriteError(r.Context(), logg, w, pkgerrors.New(pkgerrors.CodeUnauthorized, "user context missing"))
+			return
+		}
+
+		uid, err := uuid.Parse(userID)
+		if err != nil {
+			responses.WriteError(r.Context(), logg, w, pkgerrors.Wrap(pkgerrors.CodeValidation, err, "invalid user id"))
+			return
+		}
+
+		sid, err := uuid.Parse(storeID)
+		if err != nil {
+			responses.WriteError(r.Context(), logg, w, pkgerrors.Wrap(pkgerrors.CodeValidation, err, "invalid store id"))
+			return
+		}
+
+		users, err := svc.ListUsers(r.Context(), uid, sid)
+		if err != nil {
+			responses.WriteError(r.Context(), logg, w, err)
+			return
+		}
+
+		responses.WriteSuccess(w, users)
+	}
+}
