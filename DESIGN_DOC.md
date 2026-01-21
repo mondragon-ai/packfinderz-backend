@@ -1423,7 +1423,6 @@ Eligibility requires:
 * **CheckoutAttempt:** (conceptual) the act of converting `CartRecord` into `CheckoutGroup` + `VendorOrder`s. (Not necessarily a table.)
 * **HoldForPickup:** order is packed/ready and waiting for agent pickup.
 * **HoldForPayment:** order is waiting for ACH settlement (future) or payment completion.
-* **MediaAttachment:** link row attaching a `Media` object to a domain entity (product/license/ad/order).
 * **IdempotencyKey:** caller-provided request key used to guarantee exactly-once effects for POST actions.
 * **VendorVisibility:** whether a vendor appears in buyer search; requires license verified + subscription active.
 
@@ -1435,7 +1434,7 @@ Eligibility requires:
 * **Store**
 * **StoreMembership**
 * **License**
-* **Media** + **MediaAttachment**
+* **Media**
 * **Product** + **ProductMedia**
 * **InventoryItem**
 * **CartRecord** + **CartItem**
@@ -2996,17 +2995,20 @@ Fields
 * `store_id uuid null` (owner)
 * `user_id uuid null` (uploader)
 * `kind media_kind not null`
-* `url text not null`
+* `url text null`
+* `gsc_key text not null unique`
 * `file_name text not null`
 * `mime_type text not null`
 * `size_bytes bigint not null`
 * `is_compressed boolean not null default false`
 * `created_at timestamptz not null default now()`
+* `ocr text null`
 
 Indexes
 
 * `(store_id, created_at desc)`
 * `(kind)`
+* `(gsc_key)`
 * `(user_id)`
 
 FKs
