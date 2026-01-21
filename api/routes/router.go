@@ -40,6 +40,19 @@ func NewRouter(
 		middleware.Logging(logg),
 	)
 
+	loginPolicy := middleware.NewAuthRateLimitPolicy(
+		"login",
+		cfg.AuthRateLimit.LoginWindow,
+		cfg.AuthRateLimit.LoginIPLimit,
+		cfg.AuthRateLimit.LoginEmailLimit,
+	)
+	registerPolicy := middleware.NewAuthRateLimitPolicy(
+		"register",
+		cfg.AuthRateLimit.RegisterWindow,
+		cfg.AuthRateLimit.RegisterIPLimit,
+		cfg.AuthRateLimit.RegisterEmailLimit,
+	)
+
 	r.Route("/health", func(r chi.Router) {
 		r.Get("/live", controllers.HealthLive(cfg))
 		r.Get("/ready", controllers.HealthReady(cfg, logg, dbP, redisClient))
@@ -51,8 +64,8 @@ func NewRouter(
 	})
 
 	r.Route("/api/v1/auth", func(r chi.Router) {
-		r.Post("/login", controllers.AuthLogin(authService, logg))
-		r.Post("/register", controllers.AuthRegister(registerService, authService, logg))
+		r.With(middleware.AuthRateLimit(loginPolicy, redisClient, logg)).Post("/login", controllers.AuthLogin(authService, logg))
+		r.With(middleware.AuthRateLimit(registerPolicy, redisClient, logg)).Post("/register", controllers.AuthRegister(registerService, authService, logg))
 		r.Post("/logout", controllers.AuthLogout(sessionManager, cfg.JWT, logg))
 		r.Post("/refresh", controllers.AuthRefresh(sessionManager, cfg.JWT, logg))
 		r.Post("/switch-store", controllers.AuthSwitchStore(switchService, cfg.JWT, logg))
