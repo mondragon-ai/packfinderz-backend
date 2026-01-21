@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
 	"github.com/angelmondragon/packfinderz-backend/api/middleware"
@@ -161,6 +162,59 @@ func StoreUsers(svc stores.Service, logg *logger.Logger) http.HandlerFunc {
 		}
 
 		responses.WriteSuccess(w, users)
+	}
+}
+
+// StoreRemoveUser deletes a membership for the provided user ID.
+func StoreRemoveUser(svc stores.Service, logg *logger.Logger) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if svc == nil {
+			responses.WriteError(r.Context(), logg, w, pkgerrors.New(pkgerrors.CodeInternal, "store service unavailable"))
+			return
+		}
+
+		storeID := middleware.StoreIDFromContext(r.Context())
+		if storeID == "" {
+			responses.WriteError(r.Context(), logg, w, pkgerrors.New(pkgerrors.CodeForbidden, "store context missing"))
+			return
+		}
+
+		userID := middleware.UserIDFromContext(r.Context())
+		if userID == "" {
+			responses.WriteError(r.Context(), logg, w, pkgerrors.New(pkgerrors.CodeUnauthorized, "user context missing"))
+			return
+		}
+
+		uid, err := uuid.Parse(userID)
+		if err != nil {
+			responses.WriteError(r.Context(), logg, w, pkgerrors.Wrap(pkgerrors.CodeValidation, err, "invalid user id"))
+			return
+		}
+
+		sid, err := uuid.Parse(storeID)
+		if err != nil {
+			responses.WriteError(r.Context(), logg, w, pkgerrors.Wrap(pkgerrors.CodeValidation, err, "invalid store id"))
+			return
+		}
+
+		targetIDParam := strings.TrimSpace(chi.URLParam(r, "userId"))
+		if targetIDParam == "" {
+			responses.WriteError(r.Context(), logg, w, pkgerrors.New(pkgerrors.CodeValidation, "user id is required"))
+			return
+		}
+
+		targetID, err := uuid.Parse(targetIDParam)
+		if err != nil {
+			responses.WriteError(r.Context(), logg, w, pkgerrors.Wrap(pkgerrors.CodeValidation, err, "invalid user id"))
+			return
+		}
+
+		if err := svc.RemoveUser(r.Context(), uid, sid, targetID); err != nil {
+			responses.WriteError(r.Context(), logg, w, err)
+			return
+		}
+
+		responses.WriteSuccess(w, nil)
 	}
 }
 

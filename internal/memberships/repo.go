@@ -121,3 +121,26 @@ func (r *Repository) ListStoreUsers(ctx context.Context, storeID uuid.UUID) ([]S
 	}
 	return storeUsersFromRows(rows), nil
 }
+
+// CountMembersWithRoles returns how many store members hold any of the provided roles.
+func (r *Repository) CountMembersWithRoles(ctx context.Context, storeID uuid.UUID, roles ...enums.MemberRole) (int64, error) {
+	if len(roles) == 0 {
+		return 0, nil
+	}
+	var count int64
+	err := r.db.WithContext(ctx).
+		Model(&models.StoreMembership{}).
+		Where("store_id = ? AND role IN ?", storeID, roles).
+		Count(&count).Error
+	if err != nil {
+		return 0, err
+	}
+	return count, nil
+}
+
+// DeleteMembership removes the row linking a user to a store.
+func (r *Repository) DeleteMembership(ctx context.Context, storeID, userID uuid.UUID) error {
+	return r.db.WithContext(ctx).
+		Where("store_id = ? AND user_id = ?", storeID, userID).
+		Delete(&models.StoreMembership{}).Error
+}

@@ -2594,6 +2594,8 @@ FKs
 
 `membership_status` values: `invited`, `active`, `removed`, `pending` (invites start `invited`, transition to `active`, `removed` represents explicit removals, and `pending` covers in-flight approvals).
 
+**Removal policy:** The API exposes `DELETE /api/v1/stores/me/users/{userId}` to delete the membership row while rejecting last-owner removals so every store keeps an owner.
+
 ---
 
 ### 2.4 `licenses`

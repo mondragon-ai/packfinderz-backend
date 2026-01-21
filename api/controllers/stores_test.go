@@ -15,6 +15,7 @@ import (
 	"github.com/angelmondragon/packfinderz-backend/pkg/enums"
 	pkgerrors "github.com/angelmondragon/packfinderz-backend/pkg/errors"
 	"github.com/angelmondragon/packfinderz-backend/pkg/types"
+	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 )
 
@@ -251,6 +252,114 @@ func TestStoreUsersUnauthorized(t *testing.T) {
 	}
 }
 
+func TestStoreRemoveUserSuccess(t *testing.T) {
+	storeID := uuid.New()
+	userID := uuid.New()
+	targetID := uuid.New()
+	handler := StoreRemoveUser(stubStoreService{}, nil)
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/v1/stores/me/users/"+targetID.String(), nil)
+	ctx := middleware.WithStoreID(req.Context(), storeID.String())
+	ctx = middleware.WithUserID(ctx, userID.String())
+	req = req.WithContext(ctx)
+	req = withRouteParam(req, "userId", targetID.String())
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 got %d", rec.Code)
+	}
+	var envelope struct {
+		Data interface{} `json:"data"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&envelope); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if envelope.Data != nil {
+		t.Fatalf("expected nil data got %v", envelope.Data)
+	}
+}
+
+func TestStoreRemoveUserMissingStoreContext(t *testing.T) {
+	handler := StoreRemoveUser(stubStoreService{}, nil)
+	req := httptest.NewRequest(http.MethodDelete, "/api/v1/stores/me/users/"+uuid.NewString(), nil)
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 missing store context got %d", rec.Code)
+	}
+}
+
+func TestStoreRemoveUserMissingUserContext(t *testing.T) {
+	handler := StoreRemoveUser(stubStoreService{}, nil)
+	req := httptest.NewRequest(http.MethodDelete, "/api/v1/stores/me/users/"+uuid.NewString(), nil)
+	ctx := middleware.WithStoreID(req.Context(), uuid.NewString())
+	req = req.WithContext(ctx)
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401 missing user context got %d", rec.Code)
+	}
+}
+
+func TestStoreRemoveUserInvalidTarget(t *testing.T) {
+	storeID := uuid.New()
+	userID := uuid.New()
+	handler := StoreRemoveUser(stubStoreService{}, nil)
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/v1/stores/me/users/not-a-uuid", nil)
+	ctx := middleware.WithStoreID(req.Context(), storeID.String())
+	ctx = middleware.WithUserID(ctx, userID.String())
+	req = req.WithContext(ctx)
+	req = withRouteParam(req, "userId", "not-a-uuid")
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 invalid target got %d", rec.Code)
+	}
+}
+
+func TestStoreRemoveUserForbidden(t *testing.T) {
+	storeID := uuid.New()
+	userID := uuid.New()
+	targetID := uuid.NewString()
+	handler := StoreRemoveUser(stubStoreService{removeErr: pkgerrors.New(pkgerrors.CodeForbidden, "denied")}, nil)
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/v1/stores/me/users/"+targetID, nil)
+	ctx := middleware.WithStoreID(req.Context(), storeID.String())
+	ctx = middleware.WithUserID(ctx, userID.String())
+	req = req.WithContext(ctx)
+	req = withRouteParam(req, "userId", targetID)
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 when service denies got %d", rec.Code)
+	}
+}
+
+func TestStoreRemoveUserConflict(t *testing.T) {
+	storeID := uuid.New()
+	userID := uuid.New()
+	targetID := uuid.NewString()
+	handler := StoreRemoveUser(stubStoreService{removeErr: pkgerrors.New(pkgerrors.CodeConflict, "cannot remove last owner")}, nil)
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/v1/stores/me/users/"+targetID, nil)
+	ctx := middleware.WithStoreID(req.Context(), storeID.String())
+	ctx = middleware.WithUserID(ctx, userID.String())
+	req = req.WithContext(ctx)
+	req = withRouteParam(req, "userId", targetID)
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("expected 409 for conflict got %d", rec.Code)
+	}
+}
+
 func TestStoreInviteSuccess(t *testing.T) {
 	storeID := uuid.New()
 	userID := uuid.New()
@@ -353,6 +462,7 @@ type stubStoreService struct {
 	inviteResp     *memberships.StoreUserDTO
 	inviteErr      error
 	invitePassword string
+	removeErr      error
 }
 
 func (s stubStoreService) GetByID(_ context.Context, _ uuid.UUID) (*stores.StoreDTO, error) {
@@ -371,4 +481,14 @@ func (s stubStoreService) ListUsers(_ context.Context, _ uuid.UUID, _ uuid.UUID)
 	return s.users, s.usersErr
 }
 
+func (s stubStoreService) RemoveUser(_ context.Context, _ uuid.UUID, _ uuid.UUID, _ uuid.UUID) error {
+	return s.removeErr
+}
+
 func stringPtr(s string) *string { return &s }
+
+func withRouteParam(req *http.Request, key, value string) *http.Request {
+	routeCtx := chi.NewRouteContext()
+	routeCtx.URLParams.Add(key, value)
+	return req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, routeCtx))
+}
