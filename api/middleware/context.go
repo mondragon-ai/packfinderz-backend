@@ -40,6 +40,14 @@ func StoreIDFromContext(ctx context.Context) string {
 	return ""
 }
 
+// WithUserID injects the user identifier into the context.
+func WithUserID(ctx context.Context, userID string) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return context.WithValue(ctx, ctxUserID, userID)
+}
+
 // WithStoreID injects the store identifier into the context for downstream handlers.
 func WithStoreID(ctx context.Context, storeID string) context.Context {
 	if ctx == nil {

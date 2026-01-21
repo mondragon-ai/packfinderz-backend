@@ -82,6 +82,7 @@ func NewRouter(
 
 		r.Route("/v1/stores", func(r chi.Router) {
 			r.Get("/me", controllers.StoreProfile(storeService, logg))
+			r.Put("/me", controllers.StoreUpdate(storeService, logg))
 		})
 	})
 

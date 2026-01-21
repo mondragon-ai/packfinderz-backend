@@ -2,6 +2,7 @@ package stores
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/angelmondragon/packfinderz-backend/pkg/db/models"
 	"github.com/google/uuid"
@@ -43,4 +44,12 @@ func (r *Repository) FindByOwner(ctx context.Context, ownerID uuid.UUID) ([]mode
 		return nil, err
 	}
 	return stores, nil
+}
+
+// Update saves the provided store.
+func (r *Repository) Update(ctx context.Context, store *models.Store) error {
+	if store == nil {
+		return fmt.Errorf("store is required")
+	}
+	return r.db.WithContext(ctx).Save(store).Error
 }

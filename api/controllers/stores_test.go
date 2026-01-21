@@ -1,6 +1,7 @@
 package controllers
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"net/http"
@@ -93,11 +94,104 @@ func TestStoreProfileMissingContext(t *testing.T) {
 	}
 }
 
+func TestStoreUpdateSuccess(t *testing.T) {
+	storeID := uuid.New()
+	userID := uuid.New()
+	payload := []byte(`{
+		"company_name": "Updated",
+		"phone": "+15551234567",
+		"banner_url": "https://example.com/banner",
+		"ratings": {"quality": 5},
+		"categories": ["flower","edibles"]
+	}`)
+	respDTO := &stores.StoreDTO{
+		ID:          storeID,
+		CompanyName: "Updated",
+		Phone:       stringPtr("+15551234567"),
+		BannerURL:   stringPtr("https://example.com/banner"),
+		Ratings:     map[string]int{"quality": 5},
+		Categories:  []string{"flower", "edibles"},
+	}
+	handler := StoreUpdate(stubStoreService{updateResp: respDTO}, nil)
+
+	req := httptest.NewRequest(http.MethodPut, "/api/v1/stores/me", bytes.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	ctx := middleware.WithStoreID(req.Context(), storeID.String())
+	ctx = middleware.WithUserID(ctx, userID.String())
+	req = req.WithContext(ctx)
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 got %d", rec.Code)
+	}
+	var envelope struct {
+		Data stores.StoreDTO `json:"data"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&envelope); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if envelope.Data.CompanyName != "Updated" {
+		t.Fatalf("expected updated company name, got %s", envelope.Data.CompanyName)
+	}
+	if envelope.Data.Ratings["quality"] != 5 {
+		t.Fatalf("expected rating quality=5 got %v", envelope.Data.Ratings)
+	}
+}
+
+func TestStoreUpdateRejectsAddress(t *testing.T) {
+	storeID := uuid.New()
+	userID := uuid.New()
+	payload := []byte(`{"address": {"line1": "1"}}`)
+	handler := StoreUpdate(stubStoreService{}, nil)
+
+	req := httptest.NewRequest(http.MethodPut, "/api/v1/stores/me", bytes.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	ctx := middleware.WithStoreID(req.Context(), storeID.String())
+	ctx = middleware.WithUserID(ctx, userID.String())
+	req = req.WithContext(ctx)
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for address field got %d", rec.Code)
+	}
+}
+
+func TestStoreUpdateForbidden(t *testing.T) {
+	storeID := uuid.New()
+	userID := uuid.New()
+	handler := StoreUpdate(stubStoreService{updateErr: pkgerrors.New(pkgerrors.CodeForbidden, "denied")}, nil)
+
+	req := httptest.NewRequest(http.MethodPut, "/api/v1/stores/me", bytes.NewReader([]byte(`{"company_name": "nope"}`)))
+	req.Header.Set("Content-Type", "application/json")
+	ctx := middleware.WithStoreID(req.Context(), storeID.String())
+	ctx = middleware.WithUserID(ctx, userID.String())
+	req = req.WithContext(ctx)
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 got %d", rec.Code)
+	}
+}
+
 type stubStoreService struct {
-	dto *stores.StoreDTO
-	err error
+	dto        *stores.StoreDTO
+	err        error
+	updateResp *stores.StoreDTO
+	updateErr  error
 }
 
 func (s stubStoreService) GetByID(_ context.Context, _ uuid.UUID) (*stores.StoreDTO, error) {
 	return s.dto, s.err
 }
+
+func (s stubStoreService) Update(_ context.Context, _ uuid.UUID, _ uuid.UUID, _ stores.UpdateStoreInput) (*stores.StoreDTO, error) {
+	return s.updateResp, s.updateErr
+}
+
+func stringPtr(s string) *string { return &s }
