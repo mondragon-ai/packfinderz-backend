@@ -4,11 +4,15 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/angelmondragon/packfinderz-backend/internal/memberships"
+	"github.com/angelmondragon/packfinderz-backend/internal/users"
+	"github.com/angelmondragon/packfinderz-backend/pkg/config"
 	"github.com/angelmondragon/packfinderz-backend/pkg/db/models"
 	"github.com/angelmondragon/packfinderz-backend/pkg/enums"
 	pkgerrors "github.com/angelmondragon/packfinderz-backend/pkg/errors"
+	"github.com/angelmondragon/packfinderz-backend/pkg/security"
 	"github.com/angelmondragon/packfinderz-backend/pkg/types"
 	"github.com/google/uuid"
 	"github.com/lib/pq"
@@ -23,31 +27,47 @@ type storeRepository interface {
 type membershipsRepository interface {
 	UserHasRole(ctx context.Context, userID, storeID uuid.UUID, roles ...enums.MemberRole) (bool, error)
 	ListStoreUsers(ctx context.Context, storeID uuid.UUID) ([]memberships.StoreUserDTO, error)
+	GetMembership(ctx context.Context, userID, storeID uuid.UUID) (*models.StoreMembership, error)
+	CreateMembership(ctx context.Context, storeID, userID uuid.UUID, role enums.MemberRole, invitedBy *uuid.UUID, status enums.MembershipStatus) (*models.StoreMembership, error)
 }
 
-// Service exposes store read and update operations.
+type usersRepository interface {
+	FindByEmail(ctx context.Context, email string) (*models.User, error)
+	Create(ctx context.Context, dto users.CreateUserDTO) (*models.User, error)
+	UpdatePasswordHash(ctx context.Context, id uuid.UUID, hash string) error
+}
+
+// Service exposes store operations.
 type Service interface {
 	GetByID(ctx context.Context, id uuid.UUID) (*StoreDTO, error)
 	Update(ctx context.Context, userID, storeID uuid.UUID, input UpdateStoreInput) (*StoreDTO, error)
 	ListUsers(ctx context.Context, userID, storeID uuid.UUID) ([]memberships.StoreUserDTO, error)
+	InviteUser(ctx context.Context, inviterID, storeID uuid.UUID, input InviteUserInput) (*memberships.StoreUserDTO, string, error)
 }
 
 type service struct {
 	repo        storeRepository
 	memberships membershipsRepository
+	users       usersRepository
+	passwordCfg config.PasswordConfig
 }
 
 // NewService builds a store service with the provided repositories.
-func NewService(repo storeRepository, memberships membershipsRepository) (Service, error) {
+func NewService(repo storeRepository, memberships membershipsRepository, usersRepo usersRepository, passwordCfg config.PasswordConfig) (Service, error) {
 	if repo == nil {
 		return nil, fmt.Errorf("store repository required")
 	}
 	if memberships == nil {
 		return nil, fmt.Errorf("memberships repository required")
 	}
+	if usersRepo == nil {
+		return nil, fmt.Errorf("users repository required")
+	}
 	return &service{
 		repo:        repo,
 		memberships: memberships,
+		users:       usersRepo,
+		passwordCfg: passwordCfg,
 	}, nil
 }
 
@@ -62,6 +82,69 @@ type UpdateStoreInput struct {
 	LogoURL     *string
 	Ratings     *map[string]int
 	Categories  *[]string
+}
+
+// InviteUserInput captures the data required to invite a store user.
+type InviteUserInput struct {
+	Email     string
+	FirstName string
+	LastName  string
+	Role      enums.MemberRole
+}
+
+func (s *service) createNewUser(ctx context.Context, email, firstName, lastName string, storeID uuid.UUID) (*models.User, string, error) {
+	if !strings.Contains(email, "@") {
+		return nil, "", pkgerrors.New(pkgerrors.CodeValidation, "invalid email")
+	}
+
+	tempPassword, err := security.GenerateTempPassword(16)
+	if err != nil {
+		return nil, "", pkgerrors.Wrap(pkgerrors.CodeInternal, err, "generate temp password")
+	}
+	hash, err := security.HashPassword(tempPassword, s.passwordCfg)
+	if err != nil {
+		return nil, "", pkgerrors.Wrap(pkgerrors.CodeInternal, err, "hash password")
+	}
+
+	user, err := s.users.Create(ctx, users.CreateUserDTO{
+		Email:        email,
+		FirstName:    firstName,
+		LastName:     lastName,
+		PasswordHash: hash,
+		StoreIDs:     []uuid.UUID{storeID},
+	})
+	if err != nil {
+		return nil, "", pkgerrors.Wrap(pkgerrors.CodeDependency, err, "create user")
+	}
+	return user, tempPassword, nil
+}
+
+func (s *service) resetUserPassword(ctx context.Context, userID uuid.UUID) (string, error) {
+	tempPassword, err := security.GenerateTempPassword(16)
+	if err != nil {
+		return "", pkgerrors.Wrap(pkgerrors.CodeInternal, err, "generate temp password")
+	}
+	hash, err := security.HashPassword(tempPassword, s.passwordCfg)
+	if err != nil {
+		return "", pkgerrors.Wrap(pkgerrors.CodeInternal, err, "hash password")
+	}
+	if err := s.users.UpdatePasswordHash(ctx, userID, hash); err != nil {
+		return "", pkgerrors.Wrap(pkgerrors.CodeDependency, err, "update user password")
+	}
+	return tempPassword, nil
+}
+
+func (s *service) fetchStoreUser(ctx context.Context, storeID, userID uuid.UUID) (*memberships.StoreUserDTO, error) {
+	users, err := s.memberships.ListStoreUsers(ctx, storeID)
+	if err != nil {
+		return nil, pkgerrors.Wrap(pkgerrors.CodeDependency, err, "list store users")
+	}
+	for _, u := range users {
+		if u.UserID == userID {
+			return &u, nil
+		}
+	}
+	return nil, pkgerrors.New(pkgerrors.CodeNotFound, "membership not found")
 }
 
 func (s *service) GetByID(ctx context.Context, id uuid.UUID) (*StoreDTO, error) {
@@ -149,6 +232,70 @@ func (s *service) ListUsers(ctx context.Context, userID, storeID uuid.UUID) ([]m
 		return nil, pkgerrors.Wrap(pkgerrors.CodeDependency, err, "list store users")
 	}
 	return users, nil
+}
+
+func (s *service) InviteUser(ctx context.Context, inviterID, storeID uuid.UUID, input InviteUserInput) (*memberships.StoreUserDTO, string, error) {
+	allowedRoles := []enums.MemberRole{enums.MemberRoleOwner, enums.MemberRoleManager}
+	ok, err := s.memberships.UserHasRole(ctx, inviterID, storeID, allowedRoles...)
+	if err != nil {
+		return nil, "", pkgerrors.Wrap(pkgerrors.CodeDependency, err, "check membership")
+	}
+	if !ok {
+		return nil, "", pkgerrors.New(pkgerrors.CodeForbidden, "insufficient store role")
+	}
+
+	email := strings.ToLower(strings.TrimSpace(input.Email))
+	if email == "" {
+		return nil, "", pkgerrors.New(pkgerrors.CodeValidation, "email is required")
+	}
+	if !input.Role.IsValid() {
+		return nil, "", pkgerrors.New(pkgerrors.CodeValidation, "invalid role")
+	}
+
+	var usr *models.User
+	var tempPassword string
+	user, err := s.users.FindByEmail(ctx, email)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			usr, tempPassword, err = s.createNewUser(ctx, email, input.FirstName, input.LastName, storeID)
+			if err != nil {
+				return nil, "", err
+			}
+		} else {
+			return nil, "", pkgerrors.Wrap(pkgerrors.CodeDependency, err, "lookup user")
+		}
+	} else {
+		usr = user
+	}
+
+	membership, err := s.memberships.GetMembership(ctx, usr.ID, storeID)
+	if err == nil && membership != nil {
+		dto, fetchErr := s.fetchStoreUser(ctx, storeID, usr.ID)
+		if fetchErr != nil {
+			return nil, "", fetchErr
+		}
+		return dto, "", nil
+	}
+	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, "", pkgerrors.Wrap(pkgerrors.CodeDependency, err, "check membership")
+	}
+
+	if tempPassword == "" {
+		tempPassword, err = s.resetUserPassword(ctx, usr.ID)
+		if err != nil {
+			return nil, "", err
+		}
+	}
+
+	if _, err := s.memberships.CreateMembership(ctx, storeID, usr.ID, input.Role, &inviterID, enums.MembershipStatusInvited); err != nil {
+		return nil, "", pkgerrors.Wrap(pkgerrors.CodeDependency, err, "create membership")
+	}
+
+	dto, fetchErr := s.fetchStoreUser(ctx, storeID, usr.ID)
+	if fetchErr != nil {
+		return nil, "", fetchErr
+	}
+	return dto, tempPassword, nil
 }
 
 func cloneStringPtr(value *string) *string {

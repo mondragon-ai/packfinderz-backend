@@ -12,6 +12,8 @@ import (
 	"golang.org/x/crypto/argon2"
 )
 
+var tempPasswordCharset = []rune("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789")
+
 // ErrInvalidHash signals a malformed Argon2id hash string.
 var ErrInvalidHash = fmt.Errorf("invalid argon2id hash")
 
@@ -133,4 +135,32 @@ func clampInt(value, min, max int) int {
 
 func clampUint32(value, min, max int) uint32 {
 	return uint32(clampInt(value, min, max))
+}
+
+// GenerateTempPassword produces a random string suitable for temporary credentials.
+func GenerateTempPassword(length int) (string, error) {
+	if length <= 0 {
+		return "", fmt.Errorf("length must be positive")
+	}
+
+	result := make([]rune, length)
+	for i := 0; i < length; i++ {
+		idx, err := randInt(len(tempPasswordCharset))
+		if err != nil {
+			return "", err
+		}
+		result[i] = tempPasswordCharset[idx]
+	}
+	return string(result), nil
+}
+
+func randInt(max int) (int, error) {
+	if max <= 0 {
+		return 0, fmt.Errorf("invalid max %d", max)
+	}
+	var buff = make([]byte, 1)
+	if _, err := rand.Read(buff); err != nil {
+		return 0, err
+	}
+	return int(buff[0]) % max, nil
 }
