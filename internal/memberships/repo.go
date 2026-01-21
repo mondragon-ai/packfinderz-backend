@@ -105,3 +105,19 @@ func (r *Repository) GetMembershipWithStore(ctx context.Context, userID, storeID
 	dto := membershipWithStoreFromRow(row)
 	return &dto, nil
 }
+
+// ListStoreUsers returns memberships for the store along with user metadata.
+func (r *Repository) ListStoreUsers(ctx context.Context, storeID uuid.UUID) ([]StoreUserDTO, error) {
+	var rows []storeUserRow
+	err := r.db.WithContext(ctx).
+		Model(&models.StoreMembership{}).
+		Select("store_memberships.*, users.email, users.first_name, users.last_name, users.last_login_at").
+		Joins("JOIN users ON users.id = store_memberships.user_id").
+		Where("store_memberships.store_id = ?", storeID).
+		Order("store_memberships.created_at").
+		Scan(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	return storeUsersFromRows(rows), nil
+}

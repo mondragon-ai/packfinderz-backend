@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/angelmondragon/packfinderz-backend/api/middleware"
+	"github.com/angelmondragon/packfinderz-backend/internal/memberships"
 	"github.com/angelmondragon/packfinderz-backend/internal/stores"
 	"github.com/angelmondragon/packfinderz-backend/pkg/enums"
 	pkgerrors "github.com/angelmondragon/packfinderz-backend/pkg/errors"
@@ -179,11 +180,84 @@ func TestStoreUpdateForbidden(t *testing.T) {
 	}
 }
 
+func TestStoreUsersSuccess(t *testing.T) {
+	storeID := uuid.New()
+	userID := uuid.New()
+	members := []memberships.StoreUserDTO{
+		{
+			MembershipID: uuid.New(),
+			StoreID:      storeID,
+			UserID:       uuid.New(),
+			Email:        "member@example.com",
+			FirstName:    "Member",
+			LastName:     "User",
+			Role:         enums.MemberRoleManager,
+			Status:       enums.MembershipStatusActive,
+			CreatedAt:    time.Now(),
+		},
+	}
+	handler := StoreUsers(stubStoreService{users: members}, nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/stores/me/users", nil)
+	ctx := middleware.WithStoreID(req.Context(), storeID.String())
+	ctx = middleware.WithUserID(ctx, userID.String())
+	req = req.WithContext(ctx)
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 got %d", rec.Code)
+	}
+	var envelope struct {
+		Data []memberships.StoreUserDTO `json:"data"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&envelope); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if len(envelope.Data) != 1 {
+		t.Fatalf("expected 1 member got %d", len(envelope.Data))
+	}
+	if envelope.Data[0].Email != "member@example.com" {
+		t.Fatalf("unexpected user email %s", envelope.Data[0].Email)
+	}
+}
+
+func TestStoreUsersMissingContext(t *testing.T) {
+	handler := StoreUsers(stubStoreService{}, nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/stores/me/users", nil)
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 missing store context got %d", rec.Code)
+	}
+}
+
+func TestStoreUsersUnauthorized(t *testing.T) {
+	storeID := uuid.New()
+	userID := uuid.New()
+	handler := StoreUsers(stubStoreService{usersErr: pkgerrors.New(pkgerrors.CodeForbidden, "denied")}, nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/stores/me/users", nil)
+	ctx := middleware.WithStoreID(req.Context(), storeID.String())
+	ctx = middleware.WithUserID(ctx, userID.String())
+	req = req.WithContext(ctx)
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 when service denies got %d", rec.Code)
+	}
+}
+
 type stubStoreService struct {
 	dto        *stores.StoreDTO
 	err        error
 	updateResp *stores.StoreDTO
 	updateErr  error
+	users      []memberships.StoreUserDTO
+	usersErr   error
 }
 
 func (s stubStoreService) GetByID(_ context.Context, _ uuid.UUID) (*stores.StoreDTO, error) {
@@ -192,6 +266,10 @@ func (s stubStoreService) GetByID(_ context.Context, _ uuid.UUID) (*stores.Store
 
 func (s stubStoreService) Update(_ context.Context, _ uuid.UUID, _ uuid.UUID, _ stores.UpdateStoreInput) (*stores.StoreDTO, error) {
 	return s.updateResp, s.updateErr
+}
+
+func (s stubStoreService) ListUsers(_ context.Context, _ uuid.UUID, _ uuid.UUID) ([]memberships.StoreUserDTO, error) {
+	return s.users, s.usersErr
 }
 
 func stringPtr(s string) *string { return &s }
