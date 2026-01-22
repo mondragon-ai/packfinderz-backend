@@ -41,21 +41,26 @@ func (s *stubMediaRepo) FindByID(ctx context.Context, id uuid.UUID) (*models.Med
 }
 
 type stubMemberships struct {
-	ok  bool
-	err error
+	ok    bool
+	err   error
+	roles []enums.MemberRole
 }
 
-func (s stubMemberships) UserHasRole(ctx context.Context, userID, storeID uuid.UUID, roles ...enums.MemberRole) (bool, error) {
+func (s *stubMemberships) UserHasRole(ctx context.Context, userID, storeID uuid.UUID, roles ...enums.MemberRole) (bool, error) {
 	if s.err != nil {
 		return false, s.err
 	}
+	s.roles = roles
 	return s.ok, nil
 }
 
-func newServiceForTests(media *models.Media, members stubMemberships) (Service, *stubLicenseRepo) {
+func newServiceForTests(media *models.Media, members *stubMemberships) (Service, *stubLicenseRepo) {
 	repo := &stubLicenseRepo{}
 	if media != nil && media.ID == uuid.Nil {
 		media.ID = uuid.New()
+	}
+	if members == nil {
+		members = &stubMemberships{ok: true}
 	}
 	mediaRepo := &stubMediaRepo{media: media}
 	svc, err := NewService(repo, mediaRepo, members)
@@ -79,7 +84,7 @@ func TestCreateLicenseSuccess(t *testing.T) {
 		CreatedAt: now,
 	}
 
-	members := stubMemberships{ok: true}
+	members := &stubMemberships{ok: true}
 	svc, repo := newServiceForTests(mediaRow, members)
 
 	input := CreateLicenseInput{
@@ -106,7 +111,8 @@ func TestCreateLicenseSuccess(t *testing.T) {
 
 func TestCreateLicenseRequiresMembership(t *testing.T) {
 	storeID := uuid.New()
-	svc, _ := newServiceForTests(&models.Media{StoreID: storeID, Status: enums.MediaStatusUploaded, Kind: enums.MediaKindLicenseDoc, MimeType: "application/pdf"}, stubMemberships{ok: false})
+	members := &stubMemberships{ok: false}
+	svc, _ := newServiceForTests(&models.Media{StoreID: storeID, Status: enums.MediaStatusUploaded, Kind: enums.MediaKindLicenseDoc, MimeType: "application/pdf"}, members)
 
 	if _, err := svc.CreateLicense(context.Background(), uuid.New(), storeID, CreateLicenseInput{
 		MediaID:      uuid.New(),
@@ -125,7 +131,7 @@ func TestCreateLicenseMediaNotFound(t *testing.T) {
 	userID := uuid.New()
 	mediaRepo := &stubMediaRepo{}
 	repo := &stubLicenseRepo{}
-	svc, _ := NewService(repo, mediaRepo, stubMemberships{ok: true})
+	svc, _ := NewService(repo, mediaRepo, &stubMemberships{ok: true})
 
 	if _, err := svc.CreateLicense(context.Background(), userID, storeID, CreateLicenseInput{
 		MediaID:      uuid.New(),
@@ -149,7 +155,7 @@ func TestCreateLicenseMediaStoreMismatch(t *testing.T) {
 		Kind:     enums.MediaKindLicenseDoc,
 		MimeType: "application/pdf",
 	}
-	svc, _ := newServiceForTests(mediaRow, stubMemberships{ok: true})
+	svc, _ := newServiceForTests(mediaRow, &stubMemberships{ok: true})
 
 	if _, err := svc.CreateLicense(context.Background(), userID, storeID, CreateLicenseInput{
 		MediaID:      mediaRow.ID,
@@ -173,7 +179,7 @@ func TestCreateLicenseInvalidStatus(t *testing.T) {
 		Kind:     enums.MediaKindLicenseDoc,
 		MimeType: "application/pdf",
 	}
-	svc, _ := newServiceForTests(mediaRow, stubMemberships{ok: true})
+	svc, _ := newServiceForTests(mediaRow, &stubMemberships{ok: true})
 
 	if _, err := svc.CreateLicense(context.Background(), userID, storeID, CreateLicenseInput{
 		MediaID:      mediaRow.ID,
@@ -197,7 +203,7 @@ func TestCreateLicenseInvalidMime(t *testing.T) {
 		Kind:     enums.MediaKindLicenseDoc,
 		MimeType: "application/octet-stream",
 	}
-	svc, _ := newServiceForTests(mediaRow, stubMemberships{ok: true})
+	svc, _ := newServiceForTests(mediaRow, &stubMemberships{ok: true})
 
 	if _, err := svc.CreateLicense(context.Background(), userID, storeID, CreateLicenseInput{
 		MediaID:      mediaRow.ID,
@@ -221,7 +227,7 @@ func TestCreateLicenseInvalidKind(t *testing.T) {
 		Kind:     enums.MediaKindProduct,
 		MimeType: "image/png",
 	}
-	svc, _ := newServiceForTests(mediaRow, stubMemberships{ok: true})
+	svc, _ := newServiceForTests(mediaRow, &stubMemberships{ok: true})
 
 	if _, err := svc.CreateLicense(context.Background(), userID, storeID, CreateLicenseInput{
 		MediaID:      mediaRow.ID,
@@ -233,4 +239,52 @@ func TestCreateLicenseInvalidKind(t *testing.T) {
 	} else if typed := pkgerrors.As(err); typed == nil || typed.Code() != pkgerrors.CodeValidation {
 		t.Fatalf("expected validation code, got %v", err)
 	}
+}
+
+func TestCreateLicenseChecksAllMemberRoles(t *testing.T) {
+	storeID := uuid.New()
+	userID := uuid.New()
+	mediaRow := &models.Media{
+		ID:       uuid.New(),
+		StoreID:  storeID,
+		Status:   enums.MediaStatusUploaded,
+		Kind:     enums.MediaKindLicenseDoc,
+		MimeType: "application/pdf",
+	}
+	members := &stubMemberships{ok: false}
+	svc, _ := newServiceForTests(mediaRow, members)
+
+	if _, err := svc.CreateLicense(context.Background(), userID, storeID, CreateLicenseInput{
+		MediaID:      mediaRow.ID,
+		IssuingState: "state",
+		Type:         enums.LicenseTypeProducer,
+		Number:       "123",
+	}); err == nil {
+		t.Fatal("expected forbidden error")
+	}
+
+	expectedRoles := []enums.MemberRole{
+		enums.MemberRoleOwner,
+		enums.MemberRoleAdmin,
+		enums.MemberRoleManager,
+		enums.MemberRoleStaff,
+		enums.MemberRoleOps,
+	}
+	if len(members.roles) != len(expectedRoles) {
+		t.Fatalf("expected %d roles, got %d", len(expectedRoles), len(members.roles))
+	}
+	for _, expected := range expectedRoles {
+		if !containsRole(members.roles, expected) {
+			t.Fatalf("expected role %s in membership check", expected)
+		}
+	}
+}
+
+func containsRole(list []enums.MemberRole, target enums.MemberRole) bool {
+	for _, candidate := range list {
+		if candidate == target {
+			return true
+		}
+	}
+	return false
 }
