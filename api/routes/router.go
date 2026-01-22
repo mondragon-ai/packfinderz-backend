@@ -94,6 +94,7 @@ func NewRouter(
 		r.Route("/v1/media", func(r chi.Router) {
 			r.Get("/", controllers.MediaList(mediaService, logg))
 			r.Post("/presign", controllers.MediaPresign(mediaService, logg))
+			r.Delete("/{mediaId}", controllers.MediaDelete(mediaService, logg))
 		})
 	})
 

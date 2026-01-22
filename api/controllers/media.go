@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
 	"github.com/angelmondragon/packfinderz-backend/api/middleware"
@@ -87,6 +88,46 @@ func MediaPresign(svc media.Service, logg *logger.Logger) http.HandlerFunc {
 		}
 
 		responses.WriteSuccess(w, resp)
+	}
+}
+
+// MediaDelete deletes a media row if it belongs to the active store and is unreferenced.
+func MediaDelete(svc media.Service, logg *logger.Logger) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if svc == nil {
+			responses.WriteError(r.Context(), logg, w, pkgerrors.New(pkgerrors.CodeInternal, "media service unavailable"))
+			return
+		}
+
+		storeID := middleware.StoreIDFromContext(r.Context())
+		if storeID == "" {
+			responses.WriteError(r.Context(), logg, w, pkgerrors.New(pkgerrors.CodeForbidden, "store context missing"))
+			return
+		}
+
+		sid, err := uuid.Parse(storeID)
+		if err != nil {
+			responses.WriteError(r.Context(), logg, w, pkgerrors.Wrap(pkgerrors.CodeValidation, err, "invalid store id"))
+			return
+		}
+
+		mediaIDParam := chi.URLParam(r, "mediaId")
+		mediaID, err := uuid.Parse(strings.TrimSpace(mediaIDParam))
+		if err != nil {
+			responses.WriteError(r.Context(), logg, w, pkgerrors.Wrap(pkgerrors.CodeValidation, err, "invalid media id"))
+			return
+		}
+
+		err = svc.DeleteMedia(r.Context(), media.DeleteMediaParams{
+			StoreID: sid,
+			MediaID: mediaID,
+		})
+		if err != nil {
+			responses.WriteError(r.Context(), logg, w, err)
+			return
+		}
+
+		w.WriteHeader(http.StatusNoContent)
 	}
 }
 

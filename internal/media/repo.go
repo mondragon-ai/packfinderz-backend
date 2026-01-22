@@ -98,3 +98,13 @@ func (r *Repository) MarkUploaded(ctx context.Context, id uuid.UUID, uploadedAt 
 			"uploaded_at": uploadedAt,
 		}).Error
 }
+
+// MarkDeleted marks the media as deleted with a timestamp.
+func (r *Repository) MarkDeleted(ctx context.Context, id uuid.UUID, deletedAt time.Time) error {
+	return r.db.WithContext(ctx).Model(&models.Media{}).
+		Where("id = ?", id).
+		Updates(map[string]any{
+			"status":     enums.MediaStatusDeleted,
+			"deleted_at": deletedAt,
+		}).Error
+}
