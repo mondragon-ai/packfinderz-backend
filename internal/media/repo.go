@@ -2,8 +2,10 @@ package media
 
 import (
 	"context"
+	"time"
 
 	"github.com/angelmondragon/packfinderz-backend/pkg/db/models"
+	"github.com/angelmondragon/packfinderz-backend/pkg/enums"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
@@ -38,4 +40,23 @@ func (r *Repository) FindByID(ctx context.Context, id uuid.UUID) (*models.Media,
 // Delete removes a media record.
 func (r *Repository) Delete(ctx context.Context, id uuid.UUID) error {
 	return r.db.WithContext(ctx).Where("id = ?", id).Delete(&models.Media{}).Error
+}
+
+// FindByGCSKey retrieves a media record using its GCS key.
+func (r *Repository) FindByGCSKey(ctx context.Context, gcsKey string) (*models.Media, error) {
+	var m models.Media
+	if err := r.db.WithContext(ctx).First(&m, "gcs_key = ?", gcsKey).Error; err != nil {
+		return nil, err
+	}
+	return &m, nil
+}
+
+// MarkUploaded marks the media row as uploaded and records the provided timestamp.
+func (r *Repository) MarkUploaded(ctx context.Context, id uuid.UUID, uploadedAt time.Time) error {
+	return r.db.WithContext(ctx).Model(&models.Media{}).
+		Where("id = ?", id).
+		Updates(map[string]any{
+			"status":      enums.MediaStatusUploaded,
+			"uploaded_at": uploadedAt,
+		}).Error
 }

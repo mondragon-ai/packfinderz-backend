@@ -77,6 +77,8 @@
 
 `cmd/worker` now mirrors the API stack by loading config, structured logging, GORM DB, Redis, Pub/Sub, and GCS clients before handing control to its long-running service loop. The new `pkg/pubsub` helper confirms the configured subscriptions exist and offers a Ping surface that the worker runs alongside `db.Ping` (and `redis.Ping`) to guard readiness, so failures stop startup instead of letting the Heroku worker dyno spin without its dependencies. The worker context carries `serviceKind=worker` and emits structured heartbeat logs while the consumers run.
 
+The worker also consumes the `gcp-meda-sub` Pub/Sub subscription for GCS `OBJECT_FINALIZE` notifications and marks matching `media.gcs_key` rows as `uploaded`, keeping the media lifecycle in sync with bucket uploads.
+
 ---
 
 ## Repository Conventions

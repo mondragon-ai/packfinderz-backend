@@ -1142,6 +1142,7 @@ flowchart LR
 * consume Pub/Sub topics
 * run schedulers (TTL, expiry, cleanup)
 * bootstrap its dependencies (config, structured logger, GORM DB, Redis, Pub/Sub, and GCS) and confirm DB + Pub/Sub readiness before entering the long-running consumer loop.
+* consume `gcp-meda-sub` `OBJECT_FINALIZE` notifications and update `media` rows to `status=uploaded`.
 
 ---
 
