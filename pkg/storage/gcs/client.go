@@ -441,6 +441,60 @@ func (c *Client) SignedReadURL(bucket, object string, expires time.Duration) (st
 	return fmt.Sprintf("https://storage.googleapis.com/%s/%s?%s", bucket, objPath, values.Encode()), nil
 }
 
+// DeleteObject removes an object from the configured bucket.
+func (c *Client) DeleteObject(ctx context.Context, bucket, object string) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if c == nil {
+		return errors.New("gcs client not initialized")
+	}
+	if bucket == "" {
+		bucket = c.defaultBucket
+	}
+	if bucket == "" {
+		return errors.New("gcs bucket not configured")
+	}
+	if object == "" {
+		return errors.New("object name required")
+	}
+	if c.tokenSource == nil {
+		return errors.New("gcs token source unavailable")
+	}
+
+	token, err := c.tokenSource.Token(ctx)
+	if err != nil {
+		return err
+	}
+
+	escaped := escapeObjectPath(object)
+	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, fmt.Sprintf("https://storage.googleapis.com/storage/v1/b/%s/o/%s", bucket, escaped), nil)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode == http.StatusNotFound {
+		return nil
+	}
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 2048))
+		if len(body) > 0 {
+			return fmt.Errorf("delete object failed: %s: %s", resp.Status, strings.TrimSpace(string(body)))
+		}
+		return fmt.Errorf("delete object failed: %s", resp.Status)
+	}
+
+	return nil
+}
+
 func escapeObjectPath(object string) string {
 	if object == "" {
 		return ""

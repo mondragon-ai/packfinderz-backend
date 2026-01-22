@@ -27,17 +27,20 @@ type mediaRepository interface {
 	Delete(ctx context.Context, id uuid.UUID) error
 	List(ctx context.Context, opts listQuery) ([]models.Media, error)
 	FindByID(ctx context.Context, id uuid.UUID) (*models.Media, error)
+	MarkDeleted(ctx context.Context, id uuid.UUID, deletedAt time.Time) error
 }
 
 type gcsClient interface {
 	SignedURL(bucket, object, contentType string, expires time.Duration) (string, error)
 	SignedReadURL(bucket, object string, expires time.Duration) (string, error)
+	DeleteObject(ctx context.Context, bucket, object string) error
 }
 
 // Service exposes media-presign semantics.
 type Service interface {
 	PresignUpload(ctx context.Context, userID, storeID uuid.UUID, input PresignInput) (*PresignOutput, error)
 	ListMedia(ctx context.Context, params ListParams) (*ListResult, error)
+	DeleteMedia(ctx context.Context, params DeleteMediaParams) error
 	GenerateReadURL(ctx context.Context, params ReadURLParams) (*ReadURLOutput, error)
 }
 
@@ -234,6 +237,50 @@ func (s *service) GenerateReadURL(ctx context.Context, params ReadURLParams) (*R
 		URL:       url,
 		ExpiresAt: time.Now().Add(s.downloadTTL),
 	}, nil
+}
+
+type DeleteMediaParams struct {
+	StoreID uuid.UUID
+	MediaID uuid.UUID
+}
+
+func (s *service) DeleteMedia(ctx context.Context, params DeleteMediaParams) error {
+	if params.StoreID == uuid.Nil {
+		return pkgerrors.New(pkgerrors.CodeValidation, "active store id required")
+	}
+	if params.MediaID == uuid.Nil {
+		return pkgerrors.New(pkgerrors.CodeValidation, "media id required")
+	}
+
+	mediaRow, err := s.repo.FindByID(ctx, params.MediaID)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return pkgerrors.New(pkgerrors.CodeNotFound, "media not found")
+		}
+		return pkgerrors.Wrap(pkgerrors.CodeDependency, err, "lookup media")
+	}
+
+	if mediaRow.StoreID != params.StoreID {
+		return pkgerrors.New(pkgerrors.CodeForbidden, "media does not belong to active store")
+	}
+
+	if mediaRow.Status == enums.MediaStatusDeleted {
+		return nil
+	}
+
+	if !isReadableStatus(mediaRow.Status) {
+		return pkgerrors.New(pkgerrors.CodeConflict, "media not available for deletion")
+	}
+
+	if err := s.gcs.DeleteObject(ctx, s.bucket, mediaRow.GCSKey); err != nil {
+		return pkgerrors.Wrap(pkgerrors.CodeDependency, err, "delete gcs object")
+	}
+
+	if err := s.repo.MarkDeleted(ctx, mediaRow.ID, time.Now()); err != nil {
+		return pkgerrors.Wrap(pkgerrors.CodeDependency, err, "mark media deleted")
+	}
+
+	return nil
 }
 
 func isReadableStatus(status enums.MediaStatus) bool {

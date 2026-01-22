@@ -16,12 +16,15 @@ import (
 )
 
 type stubMediaRepo struct {
-	created   *models.Media
-	deleteID  uuid.UUID
-	createErr error
-	deleteErr error
-	findMedia *models.Media
-	findErr   error
+	created     *models.Media
+	deleteID    uuid.UUID
+	createErr   error
+	deleteErr   error
+	findMedia   *models.Media
+	findErr     error
+	markDeleted bool
+	deletedAt   time.Time
+	markErr     error
 }
 
 func (s *stubMediaRepo) Create(ctx context.Context, media *models.Media) (*models.Media, error) {
@@ -51,6 +54,15 @@ func (s *stubMediaRepo) List(ctx context.Context, opts listQuery) ([]models.Medi
 	return nil, nil
 }
 
+func (s *stubMediaRepo) MarkDeleted(ctx context.Context, id uuid.UUID, deletedAt time.Time) error {
+	s.markDeleted = true
+	s.deletedAt = deletedAt
+	if s.markErr != nil {
+		return s.markErr
+	}
+	return nil
+}
+
 type stubMemberships struct {
 	ok  bool
 	err error
@@ -71,6 +83,8 @@ type stubGCS struct {
 	lastMimeType string
 	readURL      string
 	readErr      error
+	deleteCalled bool
+	deleteErr    error
 }
 
 func (s *stubGCS) SignedURL(bucket, object, contentType string, expires time.Duration) (string, error) {
@@ -93,6 +107,16 @@ func (s *stubGCS) SignedReadURL(bucket, object string, expires time.Duration) (s
 		return "https://download.example", nil
 	}
 	return s.readURL, nil
+}
+
+func (s *stubGCS) DeleteObject(ctx context.Context, bucket, object string) error {
+	s.deleteCalled = true
+	s.lastBucket = bucket
+	s.lastObject = object
+	if s.deleteErr != nil {
+		return s.deleteErr
+	}
+	return nil
 }
 
 func TestMediaServicePresignSuccess(t *testing.T) {
@@ -329,6 +353,128 @@ func TestMediaServiceGenerateReadURLDependencyError(t *testing.T) {
 	if _, err := svc.GenerateReadURL(context.Background(), ReadURLParams{
 		StoreID: repo.findMedia.StoreID,
 		MediaID: repo.findMedia.ID,
+	}); err == nil {
+		t.Fatal("expected dependency error")
+	} else if typed := pkgerrors.As(err); typed == nil || typed.Code() != pkgerrors.CodeDependency {
+		t.Fatalf("expected dependency code, got %v", err)
+	}
+}
+
+func TestMediaServiceDeleteSuccess(t *testing.T) {
+	t.Parallel()
+
+	storeID := uuid.New()
+	mediaID := uuid.New()
+	repo := &stubMediaRepo{
+		findMedia: &models.Media{
+			ID:      mediaID,
+			StoreID: storeID,
+			Status:  enums.MediaStatusUploaded,
+			GCSKey:  "media/key",
+		},
+	}
+	members := stubMemberships{ok: true}
+	gcs := &stubGCS{}
+
+	svc, err := NewService(repo, members, gcs, "bucket", time.Minute, 15*time.Minute)
+	if err != nil {
+		t.Fatalf("NewService: %v", err)
+	}
+
+	if err := svc.DeleteMedia(context.Background(), DeleteMediaParams{
+		StoreID: storeID,
+		MediaID: mediaID,
+	}); err != nil {
+		t.Fatalf("DeleteMedia returned error: %v", err)
+	}
+	if !gcs.deleteCalled {
+		t.Fatal("expected gcs delete called")
+	}
+	if !repo.markDeleted {
+		t.Fatal("expected repo.MarkDeleted called")
+	}
+}
+
+func TestMediaServiceDeleteStoreMismatch(t *testing.T) {
+	t.Parallel()
+
+	repo := &stubMediaRepo{
+		findMedia: &models.Media{
+			ID:      uuid.New(),
+			StoreID: uuid.New(),
+			Status:  enums.MediaStatusUploaded,
+			GCSKey:  "media/key",
+		},
+	}
+	members := stubMemberships{ok: true}
+	gcs := &stubGCS{}
+	svc, err := NewService(repo, members, gcs, "bucket", time.Minute, 15*time.Minute)
+	if err != nil {
+		t.Fatalf("NewService: %v", err)
+	}
+
+	if err := svc.DeleteMedia(context.Background(), DeleteMediaParams{
+		StoreID: uuid.New(),
+		MediaID: repo.findMedia.ID,
+	}); err == nil {
+		t.Fatal("expected forbidden error")
+	} else if typed := pkgerrors.As(err); typed == nil || typed.Code() != pkgerrors.CodeForbidden {
+		t.Fatalf("expected forbidden code, got %v", err)
+	}
+}
+
+func TestMediaServiceDeleteInvalidStatus(t *testing.T) {
+	t.Parallel()
+
+	storeID := uuid.New()
+	repo := &stubMediaRepo{
+		findMedia: &models.Media{
+			ID:      uuid.New(),
+			StoreID: storeID,
+			Status:  enums.MediaStatusPending,
+			GCSKey:  "media/key",
+		},
+	}
+	members := stubMemberships{ok: true}
+	gcs := &stubGCS{}
+	svc, err := NewService(repo, members, gcs, "bucket", time.Minute, 15*time.Minute)
+	if err != nil {
+		t.Fatalf("NewService: %v", err)
+	}
+
+	if err := svc.DeleteMedia(context.Background(), DeleteMediaParams{
+		StoreID: storeID,
+		MediaID: repo.findMedia.ID,
+	}); err == nil {
+		t.Fatal("expected conflict error")
+	} else if typed := pkgerrors.As(err); typed == nil || typed.Code() != pkgerrors.CodeConflict {
+		t.Fatalf("expected conflict code, got %v", err)
+	}
+}
+
+func TestMediaServiceDeleteDependencyError(t *testing.T) {
+	t.Parallel()
+
+	storeID := uuid.New()
+	mediaID := uuid.New()
+	repo := &stubMediaRepo{
+		findMedia: &models.Media{
+			ID:      mediaID,
+			StoreID: storeID,
+			Status:  enums.MediaStatusUploaded,
+			GCSKey:  "media/key",
+		},
+	}
+	members := stubMemberships{ok: true}
+	gcs := &stubGCS{deleteErr: errors.New("boom")}
+	svc, err := NewService(repo, members, gcs, "bucket", time.Minute, 15*time.Minute)
+	if err != nil {
+		t.Fatalf("NewService: %v", err)
+	}
+
+	if err := svc.DeleteMedia(context.Background(), DeleteMediaParams{
+		StoreID: storeID,
+		MediaID: mediaID,
 	}); err == nil {
 		t.Fatal("expected dependency error")
 	} else if typed := pkgerrors.As(err); typed == nil || typed.Code() != pkgerrors.CodeDependency {

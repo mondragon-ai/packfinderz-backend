@@ -1,11 +1,14 @@
 package gcs
 
 import (
+	"context"
 	"crypto"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/sha256"
 	"encoding/base64"
+	"io"
+	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
@@ -173,6 +176,71 @@ func TestSignedURLErrors(t *testing.T) {
 	}
 }
 
+type roundTripFunc func(*http.Request) *http.Response
+
+func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return f(req), nil
+}
+
+func TestDeleteObjectSuccess(t *testing.T) {
+	t.Parallel()
+
+	key := mustGenerateKey(t)
+	client := &Client{
+		defaultBucket: "bucket",
+		serviceAccount: &serviceAccountInfo{
+			clientEmail: "signer@example.com",
+			privateKey:  key,
+		},
+		tokenSource: &tokenSource{fetch: func(context.Context) (string, time.Time, error) {
+			return "token", time.Now().Add(time.Hour), nil
+		}},
+		httpClient: &http.Client{Transport: roundTripFunc(func(req *http.Request) *http.Response {
+			if req.Method != http.MethodDelete {
+				t.Fatalf("expected DELETE, got %s", req.Method)
+			}
+			if req.Header.Get("Authorization") != "Bearer token" {
+				t.Fatalf("unexpected auth %s", req.Header.Get("Authorization"))
+			}
+			return &http.Response{
+				StatusCode: http.StatusNoContent,
+				Body:       io.NopCloser(strings.NewReader("")),
+				Header:     http.Header{},
+			}
+		})},
+	}
+
+	if err := client.DeleteObject(context.Background(), "bucket", "media/file.png"); err != nil {
+		t.Fatalf("DeleteObject: %v", err)
+	}
+}
+
+func TestDeleteObjectNotFound(t *testing.T) {
+	t.Parallel()
+
+	key := mustGenerateKey(t)
+	client := &Client{
+		defaultBucket: "bucket",
+		serviceAccount: &serviceAccountInfo{
+			clientEmail: "signer@example.com",
+			privateKey:  key,
+		},
+		tokenSource: &tokenSource{fetch: func(context.Context) (string, time.Time, error) {
+			return "token", time.Now().Add(time.Hour), nil
+		}},
+		httpClient: &http.Client{Transport: roundTripFunc(func(req *http.Request) *http.Response {
+			return &http.Response{
+				StatusCode: http.StatusNotFound,
+				Body:       io.NopCloser(strings.NewReader("")),
+				Header:     http.Header{},
+			}
+		})},
+	}
+
+	if err := client.DeleteObject(context.Background(), "bucket", "media/file.png"); err != nil {
+		t.Fatalf("DeleteObject not found should succeed: %v", err)
+	}
+}
 func mustGenerateKey(t *testing.T) *rsa.PrivateKey {
 	t.Helper()
 	key, err := rsa.GenerateKey(rand.Reader, 2048)
