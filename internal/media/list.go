@@ -2,20 +2,14 @@ package media
 
 import (
 	"context"
-	"encoding/base64"
-	"fmt"
 	"strings"
 	"time"
 
 	"github.com/angelmondragon/packfinderz-backend/pkg/db/models"
 	"github.com/angelmondragon/packfinderz-backend/pkg/enums"
 	pkgerrors "github.com/angelmondragon/packfinderz-backend/pkg/errors"
+	pkgpagination "github.com/angelmondragon/packfinderz-backend/pkg/pagination"
 	"github.com/google/uuid"
-)
-
-const (
-	defaultMediaListLimit = 25
-	maxMediaListLimit     = 100
 )
 
 // ListParams configures media listing filters/pagination.
@@ -27,8 +21,7 @@ type ListParams struct {
 	Status    enums.MediaStatus
 	MimeType  string
 	Search    string
-	Limit     int
-	Cursor    string
+	pkgpagination.Params
 }
 
 // ListResult returns paginated media metadata.
@@ -52,11 +45,6 @@ type ListItem struct {
 	SignedURL  string            `json:"signed_url,omitempty"`
 }
 
-type listCursor struct {
-	createdAt time.Time
-	id        uuid.UUID
-}
-
 type listQuery struct {
 	storeID  uuid.UUID
 	kind     *enums.MediaKind
@@ -64,7 +52,7 @@ type listQuery struct {
 	mimeType string
 	search   string
 	limit    int
-	cursor   *listCursor
+	cursor   *pkgpagination.Cursor
 }
 
 func (s *service) ListMedia(ctx context.Context, params ListParams) (*ListResult, error) {
@@ -72,17 +60,10 @@ func (s *service) ListMedia(ctx context.Context, params ListParams) (*ListResult
 		return nil, pkgerrors.New(pkgerrors.CodeValidation, "active store id required")
 	}
 
-	limit := params.Limit
-	if limit <= 0 {
-		limit = defaultMediaListLimit
-	}
-	if limit > maxMediaListLimit {
-		limit = maxMediaListLimit
-	}
-
+	limit := pkgpagination.NormalizeLimit(params.Limit)
 	query := listQuery{
 		storeID:  params.StoreID,
-		limit:    limit + 1,
+		limit:    pkgpagination.LimitWithBuffer(params.Limit),
 		mimeType: strings.TrimSpace(params.MimeType),
 		search:   strings.TrimSpace(params.Search),
 	}
@@ -93,7 +74,7 @@ func (s *service) ListMedia(ctx context.Context, params ListParams) (*ListResult
 		query.status = &params.Status
 	}
 	if params.Cursor != "" {
-		cursor, err := parseListCursor(params.Cursor)
+		cursor, err := pkgpagination.ParseCursor(params.Cursor)
 		if err != nil {
 			return nil, pkgerrors.Wrap(pkgerrors.CodeValidation, err, "invalid cursor")
 		}
@@ -107,7 +88,10 @@ func (s *service) ListMedia(ctx context.Context, params ListParams) (*ListResult
 
 	nextCursor := ""
 	if len(rows) > limit {
-		nextCursor = encodeListCursor(&rows[limit])
+		nextCursor = pkgpagination.EncodeCursor(pkgpagination.Cursor{
+			CreatedAt: rows[limit].CreatedAt,
+			ID:        rows[limit].ID,
+		})
 		rows = rows[:limit]
 	}
 
@@ -141,34 +125,6 @@ func toListItem(m models.Media) ListItem {
 		CreatedAt:  m.CreatedAt,
 		UploadedAt: m.UploadedAt,
 	}
-}
-
-func encodeListCursor(m *models.Media) string {
-	payload := fmt.Sprintf("%s|%s", m.CreatedAt.UTC().Format(time.RFC3339Nano), m.ID.String())
-	return base64.StdEncoding.EncodeToString([]byte(payload))
-}
-
-func parseListCursor(value string) (*listCursor, error) {
-	decoded, err := base64.StdEncoding.DecodeString(value)
-	if err != nil {
-		return nil, fmt.Errorf("decode cursor: %w", err)
-	}
-	parts := strings.SplitN(string(decoded), "|", 2)
-	if len(parts) != 2 {
-		return nil, fmt.Errorf("invalid cursor format")
-	}
-	t, err := time.Parse(time.RFC3339Nano, parts[0])
-	if err != nil {
-		return nil, fmt.Errorf("invalid cursor timestamp: %w", err)
-	}
-	id, err := uuid.Parse(parts[1])
-	if err != nil {
-		return nil, fmt.Errorf("invalid cursor id: %w", err)
-	}
-	return &listCursor{
-		createdAt: t,
-		id:        id,
-	}, nil
 }
 
 func (s *service) buildReadURL(media models.Media) (string, error) {

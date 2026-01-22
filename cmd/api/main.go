@@ -141,6 +141,9 @@ func main() {
 		licenses.NewRepository(dbClient.DB()),
 		media.NewRepository(dbClient.DB()),
 		membershipsRepo,
+		gcsClient,
+		cfg.GCS.BucketName,
+		cfg.GCS.DownloadURLExpiry,
 	)
 	if err != nil {
 		logg.Error(context.Background(), "failed to create license service", err)

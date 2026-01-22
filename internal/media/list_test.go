@@ -8,6 +8,7 @@ import (
 	"github.com/angelmondragon/packfinderz-backend/pkg/db/models"
 	"github.com/angelmondragon/packfinderz-backend/pkg/enums"
 	pkgerrors "github.com/angelmondragon/packfinderz-backend/pkg/errors"
+	"github.com/angelmondragon/packfinderz-backend/pkg/pagination"
 	"github.com/google/uuid"
 )
 
@@ -65,7 +66,7 @@ func TestListMediaCursorPagination(t *testing.T) {
 
 	params := ListParams{
 		StoreID: storeID,
-		Limit:   1,
+		Params:  pagination.Params{Limit: 1},
 	}
 	res, err := svc.ListMedia(context.Background(), params)
 	if err != nil {
@@ -83,7 +84,10 @@ func TestListMediaCursorPagination(t *testing.T) {
 	if res.Cursor == "" {
 		t.Fatal("expected cursor for next page")
 	}
-	expected := encodeListCursor(&rows[1])
+	expected := pagination.EncodeCursor(pagination.Cursor{
+		CreatedAt: rows[1].CreatedAt,
+		ID:        rows[1].ID,
+	})
 	if res.Cursor != expected {
 		t.Fatalf("expected cursor %s got %s", expected, res.Cursor)
 	}
@@ -96,12 +100,12 @@ func TestListMediaLimitClamped(t *testing.T) {
 
 	if _, err := svc.ListMedia(context.Background(), ListParams{
 		StoreID: storeID,
-		Limit:   maxMediaListLimit + 50,
+		Params:  pagination.Params{Limit: pagination.MaxLimit + 50},
 	}); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if repo.lastQuery.limit != maxMediaListLimit+1 {
-		t.Fatalf("expected limit %d got %d", maxMediaListLimit+1, repo.lastQuery.limit)
+	if repo.lastQuery.limit != pagination.MaxLimit+1 {
+		t.Fatalf("expected limit %d got %d", pagination.MaxLimit+1, repo.lastQuery.limit)
 	}
 }
 
@@ -112,7 +116,7 @@ func TestListMediaInvalidCursor(t *testing.T) {
 
 	if _, err := svc.ListMedia(context.Background(), ListParams{
 		StoreID: storeID,
-		Cursor:  "badcursor",
+		Params:  pagination.Params{Cursor: "badcursor"},
 	}); err == nil {
 		t.Fatal("expected error for invalid cursor")
 	} else if pkgerrors.As(err).Code() != pkgerrors.CodeValidation {
@@ -189,7 +193,7 @@ func TestListMediaSignedURLOnlyForReturnedRows(t *testing.T) {
 
 	resp, err := svc.ListMedia(context.Background(), ListParams{
 		StoreID: storeID,
-		Limit:   1,
+		Params:  pagination.Params{Limit: 1},
 	})
 	if err != nil {
 		t.Fatalf("ListMedia returned error: %v", err)

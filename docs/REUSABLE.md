@@ -88,6 +88,26 @@ go-redis v9 wrapper.
 * Refresh/session helpers
 * `Ping`, `Close`
 
+### `pagination`
+
+Cursor-based limit/cursor helpers reused across list endpoints.
+
+**Constants**
+
+* `DefaultLimit = 25`
+* `MaxLimit = 100`
+
+**Types**
+
+* `Params { Limit int; Cursor string }` → embed in API/list DTOs.
+* `Cursor { CreatedAt time.Time; ID uuid.UUID }` → canonical cursor payload for rows.
+
+**Functions**
+
+* `NormalizeLimit(limit)` → clamps to `[DefaultLimit, MaxLimit]`.
+* `LimitWithBuffer(limit)` → normalized limit + 1 so services can detect a next page.
+* `EncodeCursor(Cursor)` / `ParseCursor(string)` → base64 encode/decode the cursor payload.
+
 **Session Keys**
 
 * `AccessSessionKey(accessID string)`

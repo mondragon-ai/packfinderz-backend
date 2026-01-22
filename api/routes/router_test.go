@@ -113,6 +113,11 @@ func (s stubStoreService) Update(ctx context.Context, userID uuid.UUID, storeID 
 
 type stubLicensesService struct{}
 
+// ListLicenses implements [licenses.Service].
+func (s stubLicensesService) ListLicenses(ctx context.Context, params licenses.ListParams) (*licenses.ListResult, error) {
+	panic("unimplemented")
+}
+
 // CreateLicense implements [licenses.Service].
 func (s stubLicensesService) CreateLicense(ctx context.Context, userID uuid.UUID, storeID uuid.UUID, input licenses.CreateLicenseInput) (*models.License, error) {
 	panic("unimplemented")
