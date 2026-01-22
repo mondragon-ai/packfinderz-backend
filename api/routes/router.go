@@ -99,6 +99,7 @@ func NewRouter(
 			r.Delete("/{mediaId}", controllers.MediaDelete(mediaService, logg))
 		})
 		r.Route("/v1/licenses", func(r chi.Router) {
+			r.Get("/", controllers.LicenseList(licenseService, logg))
 			r.Post("/", controllers.LicenseCreate(licenseService, logg))
 		})
 	})

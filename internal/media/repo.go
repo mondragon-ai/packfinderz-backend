@@ -68,7 +68,7 @@ func (r *Repository) List(ctx context.Context, opts listQuery) ([]models.Media, 
 		query = query.Where("file_name ILIKE ? ESCAPE '\\'", pattern)
 	}
 	if opts.cursor != nil {
-		query = query.Where("(created_at < ?) OR (created_at = ? AND id < ?)", opts.cursor.createdAt, opts.cursor.createdAt, opts.cursor.id)
+		query = query.Where("(created_at < ?) OR (created_at = ? AND id < ?)", opts.cursor.CreatedAt, opts.cursor.CreatedAt, opts.cursor.ID)
 	}
 
 	query = query.Order("created_at DESC").Order("id DESC").Limit(opts.limit)

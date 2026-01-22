@@ -24,3 +24,20 @@ func (r *Repository) Create(ctx context.Context, license *models.License) (*mode
 	}
 	return license, nil
 }
+
+// List returns store-scoped licenses using cursor pagination.
+func (r *Repository) List(ctx context.Context, opts listQuery) ([]models.License, error) {
+	query := r.db.WithContext(ctx).Model(&models.License{}).Where("store_id = ?", opts.storeID)
+
+	if opts.cursor != nil {
+		query = query.Where("(created_at < ?) OR (created_at = ? AND id < ?)", opts.cursor.CreatedAt, opts.cursor.CreatedAt, opts.cursor.ID)
+	}
+
+	query = query.Order("created_at DESC").Order("id DESC").Limit(opts.limit)
+
+	var rows []models.License
+	if err := query.Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	return rows, nil
+}

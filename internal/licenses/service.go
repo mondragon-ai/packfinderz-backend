@@ -10,6 +10,7 @@ import (
 	"github.com/angelmondragon/packfinderz-backend/pkg/db/models"
 	"github.com/angelmondragon/packfinderz-backend/pkg/enums"
 	pkgerrors "github.com/angelmondragon/packfinderz-backend/pkg/errors"
+	pkgpagination "github.com/angelmondragon/packfinderz-backend/pkg/pagination"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
@@ -24,17 +25,26 @@ type membershipsRepository interface {
 
 type licensesRepository interface {
 	Create(ctx context.Context, license *models.License) (*models.License, error)
+	List(ctx context.Context, opts listQuery) ([]models.License, error)
 }
 
-// Service exposes license creation semantics.
+type gcsClient interface {
+	SignedReadURL(bucket, object string, expires time.Duration) (string, error)
+}
+
+// Service exposes license creation and listing semantics.
 type Service interface {
 	CreateLicense(ctx context.Context, userID, storeID uuid.UUID, input CreateLicenseInput) (*models.License, error)
+	ListLicenses(ctx context.Context, params ListParams) (*ListResult, error)
 }
 
 type service struct {
 	repo         licensesRepository
 	mediaRepo    mediasRepository
 	memberships  membershipsRepository
+	gcs          gcsClient
+	bucket       string
+	downloadTTL  time.Duration
 	allowedRoles []enums.MemberRole
 }
 
@@ -48,8 +58,8 @@ type CreateLicenseInput struct {
 	Number         string
 }
 
-// NewService builds a license service backed by the provided repositories.
-func NewService(repo licensesRepository, mediaRepo mediasRepository, memberships membershipsRepository) (Service, error) {
+// NewService builds a license service backed by the provided repositories and GCS signer.
+func NewService(repo licensesRepository, mediaRepo mediasRepository, memberships membershipsRepository, gcs gcsClient, bucket string, downloadTTL time.Duration) (Service, error) {
 	if repo == nil {
 		return nil, fmt.Errorf("license repository required")
 	}
@@ -59,14 +69,28 @@ func NewService(repo licensesRepository, mediaRepo mediasRepository, memberships
 	if memberships == nil {
 		return nil, fmt.Errorf("memberships repository required")
 	}
+	if gcs == nil {
+		return nil, fmt.Errorf("gcs client required")
+	}
+	if bucket == "" {
+		return nil, fmt.Errorf("gcs bucket required")
+	}
+	if downloadTTL <= 0 {
+		return nil, fmt.Errorf("download ttl must be positive")
+	}
 	return &service{
 		repo:        repo,
 		mediaRepo:   mediaRepo,
 		memberships: memberships,
+		gcs:         gcs,
+		bucket:      bucket,
+		downloadTTL: downloadTTL,
 		allowedRoles: []enums.MemberRole{
 			enums.MemberRoleOwner,
 			enums.MemberRoleAdmin,
 			enums.MemberRoleManager,
+			enums.MemberRoleStaff,
+			enums.MemberRoleOps,
 		},
 	}, nil
 }
@@ -138,6 +162,65 @@ func (s *service) CreateLicense(ctx context.Context, userID, storeID uuid.UUID, 
 		return nil, pkgerrors.Wrap(pkgerrors.CodeDependency, err, "create license")
 	}
 	return created, nil
+}
+
+func (s *service) ListLicenses(ctx context.Context, params ListParams) (*ListResult, error) {
+	if params.StoreID == uuid.Nil {
+		return nil, pkgerrors.New(pkgerrors.CodeValidation, "active store id required")
+	}
+
+	limit := pkgpagination.NormalizeLimit(params.Limit)
+	query := listQuery{
+		storeID: params.StoreID,
+		limit:   pkgpagination.LimitWithBuffer(params.Limit),
+	}
+	if params.Cursor != "" {
+		cursor, err := pkgpagination.ParseCursor(params.Cursor)
+		if err != nil {
+			return nil, pkgerrors.Wrap(pkgerrors.CodeValidation, err, "invalid cursor")
+		}
+		query.cursor = cursor
+	}
+
+	rows, err := s.repo.List(ctx, query)
+	if err != nil {
+		return nil, pkgerrors.Wrap(pkgerrors.CodeDependency, err, "list licenses")
+	}
+
+	nextCursor := ""
+	if len(rows) > limit {
+		nextCursor = pkgpagination.EncodeCursor(pkgpagination.Cursor{
+			CreatedAt: rows[limit].CreatedAt,
+			ID:        rows[limit].ID,
+		})
+		rows = rows[:limit]
+	}
+
+	items := make([]ListItem, len(rows))
+	for i, row := range rows {
+		url, err := s.buildSignedURL(row.GCSKey)
+		if err != nil {
+			return nil, err
+		}
+		items[i] = toListItem(row)
+		items[i].SignedURL = url
+	}
+
+	return &ListResult{
+		Items:  items,
+		Cursor: nextCursor,
+	}, nil
+}
+
+func (s *service) buildSignedURL(key string) (string, error) {
+	if key == "" {
+		return "", nil
+	}
+	url, err := s.gcs.SignedReadURL(s.bucket, key, s.downloadTTL)
+	if err != nil {
+		return "", pkgerrors.Wrap(pkgerrors.CodeDependency, err, "generate signed read url")
+	}
+	return url, nil
 }
 
 func isLicenseMediaStatus(status enums.MediaStatus) bool {

@@ -156,7 +156,6 @@ func MediaList(svc media.Service, logg *logger.Logger) http.HandlerFunc {
 			StoreID:  sid,
 			MimeType: strings.TrimSpace(q.Get("mime_type")),
 			Search:   strings.TrimSpace(q.Get("search")),
-			Cursor:   strings.TrimSpace(q.Get("cursor")),
 		}
 
 		if limit := strings.TrimSpace(q.Get("limit")); limit != "" {
