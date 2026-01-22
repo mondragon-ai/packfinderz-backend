@@ -49,6 +49,7 @@ type ListItem struct {
 	SizeBytes  int64             `json:"size_bytes"`
 	CreatedAt  time.Time         `json:"created_at"`
 	UploadedAt *time.Time        `json:"uploaded_at"`
+	SignedURL  string            `json:"signed_url,omitempty"`
 }
 
 type listCursor struct {
@@ -112,7 +113,13 @@ func (s *service) ListMedia(ctx context.Context, params ListParams) (*ListResult
 
 	items := make([]ListItem, len(rows))
 	for i, m := range rows {
+		signedURL, err := s.buildReadURL(m)
+		if err != nil {
+			return nil, err
+		}
+
 		items[i] = toListItem(m)
+		items[i].SignedURL = signedURL
 	}
 
 	return &ListResult{
@@ -162,4 +169,15 @@ func parseListCursor(value string) (*listCursor, error) {
 		createdAt: t,
 		id:        id,
 	}, nil
+}
+
+func (s *service) buildReadURL(media models.Media) (string, error) {
+	if !isReadableStatus(media.Status) {
+		return "", nil
+	}
+	url, err := s.gcs.SignedReadURL(s.bucket, media.GCSKey, s.downloadTTL)
+	if err != nil {
+		return "", pkgerrors.Wrap(pkgerrors.CodeDependency, err, "generate signed read url")
+	}
+	return url, nil
 }

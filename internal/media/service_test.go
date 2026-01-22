@@ -83,6 +83,7 @@ type stubGCS struct {
 	lastMimeType string
 	readURL      string
 	readErr      error
+	readCalls    int
 	deleteCalled bool
 	deleteErr    error
 }
@@ -98,6 +99,7 @@ func (s *stubGCS) SignedURL(bucket, object, contentType string, expires time.Dur
 }
 
 func (s *stubGCS) SignedReadURL(bucket, object string, expires time.Duration) (string, error) {
+	s.readCalls++
 	if s.readErr != nil {
 		return "", s.readErr
 	}
