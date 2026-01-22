@@ -2,6 +2,7 @@ package controllers
 
 import (
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/google/uuid"
@@ -80,6 +81,73 @@ func MediaPresign(svc media.Service, logg *logger.Logger) http.HandlerFunc {
 		}
 
 		resp, err := svc.PresignUpload(r.Context(), uid, sid, input)
+		if err != nil {
+			responses.WriteError(r.Context(), logg, w, err)
+			return
+		}
+
+		responses.WriteSuccess(w, resp)
+	}
+}
+
+// MediaList handles listing store-scoped media metadata.
+func MediaList(svc media.Service, logg *logger.Logger) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if svc == nil {
+			responses.WriteError(r.Context(), logg, w, pkgerrors.New(pkgerrors.CodeInternal, "media service unavailable"))
+			return
+		}
+
+		storeID := middleware.StoreIDFromContext(r.Context())
+		if storeID == "" {
+			responses.WriteError(r.Context(), logg, w, pkgerrors.New(pkgerrors.CodeForbidden, "store context missing"))
+			return
+		}
+
+		sid, err := uuid.Parse(storeID)
+		if err != nil {
+			responses.WriteError(r.Context(), logg, w, pkgerrors.Wrap(pkgerrors.CodeValidation, err, "invalid store id"))
+			return
+		}
+
+		q := r.URL.Query()
+		params := media.ListParams{
+			StoreID:  sid,
+			MimeType: strings.TrimSpace(q.Get("mime_type")),
+			Search:   strings.TrimSpace(q.Get("search")),
+			Cursor:   strings.TrimSpace(q.Get("cursor")),
+		}
+
+		if limit := strings.TrimSpace(q.Get("limit")); limit != "" {
+			value, err := strconv.Atoi(limit)
+			if err != nil || value <= 0 {
+				responses.WriteError(r.Context(), logg, w, pkgerrors.New(pkgerrors.CodeValidation, "limit must be a positive integer"))
+				return
+			}
+			params.Limit = value
+		}
+
+		if kind := strings.TrimSpace(q.Get("kind")); kind != "" {
+			parsed, err := enums.ParseMediaKind(kind)
+			if err != nil {
+				responses.WriteError(r.Context(), logg, w, pkgerrors.New(pkgerrors.CodeValidation, "invalid kind filter"))
+				return
+			}
+			params.Kind = parsed
+			params.HasKind = true
+		}
+
+		if status := strings.TrimSpace(q.Get("status")); status != "" {
+			parsed, err := enums.ParseMediaStatus(status)
+			if err != nil {
+				responses.WriteError(r.Context(), logg, w, pkgerrors.New(pkgerrors.CodeValidation, "invalid status filter"))
+				return
+			}
+			params.Status = parsed
+			params.HasStatus = true
+		}
+
+		resp, err := svc.ListMedia(r.Context(), params)
 		if err != nil {
 			responses.WriteError(r.Context(), logg, w, err)
 			return

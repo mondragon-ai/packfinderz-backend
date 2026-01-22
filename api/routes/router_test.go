@@ -63,6 +63,11 @@ func (stubSwitchService) Switch(ctx context.Context, input auth.SwitchStoreInput
 
 type stubMediaService struct{}
 
+// ListMedia implements [media.Service].
+func (s stubMediaService) ListMedia(ctx context.Context, params media.ListParams) (*media.ListResult, error) {
+	panic("unimplemented")
+}
+
 func (stubMediaService) PresignUpload(ctx context.Context, userID, storeID uuid.UUID, input media.PresignInput) (*media.PresignOutput, error) {
 	return &media.PresignOutput{}, nil
 }

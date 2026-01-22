@@ -1802,7 +1802,7 @@ Headers:
 
 * `GET /api/v1/media`
 
-  * Supports `type`, `ownerType`, `search`, pagination.
+  * Returns media metadata scoped to `activeStoreId` and supports filters (`kind`, `status`, `mime_type`, `search`) plus cursor pagination (`limit` + `cursor`).
   * Success: `200`
   * Errors: `401, 403`
 
