@@ -15,6 +15,7 @@ type License struct {
 	UserID         uuid.UUID           `gorm:"column:user_id;type:uuid;not null"`
 	Status         enums.LicenseStatus `gorm:"column:status;type:license_status;not null;default:'pending'"`
 	MediaID        uuid.UUID           `gorm:"column:media_id;type:uuid;not null"`
+	GCSKey         string              `gorm:"column:gcs_key;not null;unique"`
 	IssuingState   string              `gorm:"column:issuing_state;not null"`
 	IssueDate      *time.Time          `gorm:"column:issue_date"`
 	ExpirationDate *time.Time          `gorm:"column:expiration_date"`

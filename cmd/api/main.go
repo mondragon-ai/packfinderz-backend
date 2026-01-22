@@ -9,6 +9,7 @@ import (
 
 	"github.com/angelmondragon/packfinderz-backend/api/routes"
 	"github.com/angelmondragon/packfinderz-backend/internal/auth"
+	"github.com/angelmondragon/packfinderz-backend/internal/licenses"
 	"github.com/angelmondragon/packfinderz-backend/internal/media"
 	"github.com/angelmondragon/packfinderz-backend/internal/memberships"
 	"github.com/angelmondragon/packfinderz-backend/internal/stores"
@@ -136,6 +137,16 @@ func main() {
 		os.Exit(1)
 	}
 
+	licenseService, err := licenses.NewService(
+		licenses.NewRepository(dbClient.DB()),
+		media.NewRepository(dbClient.DB()),
+		membershipsRepo,
+	)
+	if err != nil {
+		logg.Error(context.Background(), "failed to create license service", err)
+		os.Exit(1)
+	}
+
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = cfg.App.Port
@@ -166,6 +177,7 @@ func main() {
 			switchService,
 			storeService,
 			mediaService,
+			licenseService,
 		),
 	}
 
