@@ -73,6 +73,10 @@
 
 `pkg/redis` wraps the Heroku-friendly go-redis client, enforces sensible dial/read/write timeouts, and exposes key builders for idempotency, counters, rate-limits, and refresh-token sessions. Its `Ping` method is now part of `/health/ready`, so the readiness endpoint verifies both Postgres and Redis before advertising readiness. Configure Redis via `PACKFINDERZ_REDIS_URL` (or address/password) plus the optional pooling/timeouts (`POOL_SIZE`, `MIN_IDLE_CONNS`, `DIAL_TIMEOUT`, `READ_TIMEOUT`, `WRITE_TIMEOUT`).
 
+### Worker Bootstrapping
+
+`cmd/worker` now mirrors the API stack by loading config, structured logging, GORM DB, Redis, Pub/Sub, and GCS clients before handing control to its long-running service loop. The new `pkg/pubsub` helper confirms the configured subscriptions exist and offers a Ping surface that the worker runs alongside `db.Ping` (and `redis.Ping`) to guard readiness, so failures stop startup instead of letting the Heroku worker dyno spin without its dependencies. The worker context carries `serviceKind=worker` and emits structured heartbeat logs while the consumers run.
+
 ---
 
 ## Repository Conventions
