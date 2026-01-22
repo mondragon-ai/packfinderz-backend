@@ -363,6 +363,13 @@ All enums implement:
 * `staff`
 * `ops`
 
+### `Outbox`
+
+* `event_type_enum`: `order_created`, `license_status_changed`, `media_uploaded`, `notification_requested`, `ad_*`, etc.
+* `aggregate_type_enum`: `vendor_order`, `checkout_group`, `license`, `store`, `media`, `ledger_event`, `notification`, `ad`.
+* Helpers: `OutboxEventType`/`OutboxAggregateType` in `pkg/enums/outbox.go`.
+* Outbox payload envelope struct and actor ref definitions live under `pkg/outbox/envelope.go`.
+
 ---
 
 ## Auth (Canonical)
