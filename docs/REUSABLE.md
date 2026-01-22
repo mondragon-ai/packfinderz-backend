@@ -369,6 +369,7 @@ All enums implement:
 * `aggregate_type_enum`: `vendor_order`, `checkout_group`, `license`, `store`, `media`, `ledger_event`, `notification`, `ad`.
 * Helpers: `OutboxEventType`/`OutboxAggregateType` in `pkg/enums/outbox.go`.
 * Outbox payload envelope struct and actor ref definitions live under `pkg/outbox/envelope.go`.
+* Repository/service/registry infrastructure lives under `pkg/outbox` (see `repository.go`, `service.go`, `registry.go`).
 
 ---
 
