@@ -1,0 +1,8 @@
+[allowlist]
+description = "Local/dev secrets & known false positives"
+paths = [
+  '''^\.env$''',
+  '''^heroku-config\.json$''',
+  '''^.*\.min\.json$''',            
+  '''^packfinderz-pf-app-sa\.json$''',
+]
