@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/angelmondragon/packfinderz-backend/internal/media/consumer"
 	"github.com/angelmondragon/packfinderz-backend/pkg/config"
 	"github.com/angelmondragon/packfinderz-backend/pkg/db"
 	"github.com/angelmondragon/packfinderz-backend/pkg/logger"
@@ -15,21 +16,23 @@ import (
 )
 
 type ServiceParams struct {
-	Config *config.Config
-	Logger *logger.Logger
-	DB     *db.Client
-	Redis  *redis.Client
-	PubSub *pubsub.Client
-	GCS    *gcs.Client
+	Config        *config.Config
+	Logger        *logger.Logger
+	DB            *db.Client
+	Redis         *redis.Client
+	PubSub        *pubsub.Client
+	MediaConsumer *consumer.Consumer
+	GCS           *gcs.Client
 }
 
 type Service struct {
-	cfg    *config.Config
-	logg   *logger.Logger
-	db     *db.Client
-	redis  *redis.Client
-	pubsub *pubsub.Client
-	gcs    *gcs.Client
+	cfg      *config.Config
+	logg     *logger.Logger
+	db       *db.Client
+	redis    *redis.Client
+	pubsub   *pubsub.Client
+	consumer *consumer.Consumer
+	gcs      *gcs.Client
 }
 
 func NewService(params ServiceParams) (*Service, error) {
@@ -48,17 +51,21 @@ func NewService(params ServiceParams) (*Service, error) {
 	if params.PubSub == nil {
 		return nil, errors.New("pubsub client is required")
 	}
+	if params.MediaConsumer == nil {
+		return nil, errors.New("media consumer is required")
+	}
 	if params.GCS == nil {
 		return nil, errors.New("gcs client is required")
 	}
 
 	return &Service{
-		cfg:    params.Config,
-		logg:   params.Logger,
-		db:     params.DB,
-		redis:  params.Redis,
-		pubsub: params.PubSub,
-		gcs:    params.GCS,
+		cfg:      params.Config,
+		logg:     params.Logger,
+		db:       params.DB,
+		redis:    params.Redis,
+		pubsub:   params.PubSub,
+		consumer: params.MediaConsumer,
+		gcs:      params.GCS,
 	}, nil
 }
 
@@ -99,12 +106,22 @@ func (s *Service) Run(ctx context.Context) error {
 
 	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- s.consumer.Run(ctx)
+	}()
 
 	for {
 		select {
 		case <-ctx.Done():
 			s.logg.Info(ctx, "worker context canceled")
 			return ctx.Err()
+		case err := <-errCh:
+			if err != nil && !errors.Is(err, context.Canceled) {
+				s.logg.Error(ctx, "media consumer stopped unexpectedly", err)
+				return err
+			}
+			return err
 		case <-ticker.C:
 			s.logg.Info(ctx, "worker.heartbeat")
 		}

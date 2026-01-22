@@ -8,6 +8,8 @@ import (
 
 	"github.com/joho/godotenv"
 
+	"github.com/angelmondragon/packfinderz-backend/internal/media"
+	"github.com/angelmondragon/packfinderz-backend/internal/media/consumer"
 	"github.com/angelmondragon/packfinderz-backend/pkg/config"
 	"github.com/angelmondragon/packfinderz-backend/pkg/db"
 	"github.com/angelmondragon/packfinderz-backend/pkg/logger"
@@ -87,13 +89,21 @@ func main() {
 		}
 	}()
 
+	mediaRepo := media.NewRepository(dbClient.DB())
+	mediaConsumer, err := consumer.NewConsumer(mediaRepo, pubsubClient.MediaSubscription(), logg)
+	if err != nil {
+		logg.Error(context.Background(), "failed to create media consumer", err)
+		os.Exit(1)
+	}
+
 	service, err := NewService(ServiceParams{
-		Config: cfg,
-		Logger: logg,
-		DB:     dbClient,
-		Redis:  redisClient,
-		PubSub: pubsubClient,
-		GCS:    gcsClient,
+		Config:        cfg,
+		Logger:        logg,
+		DB:            dbClient,
+		Redis:         redisClient,
+		PubSub:        pubsubClient,
+		MediaConsumer: mediaConsumer,
+		GCS:           gcsClient,
 	})
 	if err != nil {
 		logg.Error(context.Background(), "failed to create worker service", err)
