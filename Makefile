@@ -95,4 +95,4 @@ ci-local:
 		echo "gitleaks not found. Install it (brew install gitleaks) or skip this check."; \
 		exit 1; \
 	}
-	gitleaks detect --no-git --redact --config .gitleaks.toml
+	gitleaks detect --no-git

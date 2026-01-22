@@ -23,6 +23,7 @@ type membershipsRepository interface {
 type mediaRepository interface {
 	Create(ctx context.Context, media *models.Media) (*models.Media, error)
 	Delete(ctx context.Context, id uuid.UUID) error
+	List(ctx context.Context, opts listQuery) ([]models.Media, error)
 }
 
 type gcsClient interface {
@@ -32,6 +33,7 @@ type gcsClient interface {
 // Service exposes media-presign semantics.
 type Service interface {
 	PresignUpload(ctx context.Context, userID, storeID uuid.UUID, input PresignInput) (*PresignOutput, error)
+	ListMedia(ctx context.Context, params ListParams) (*ListResult, error)
 }
 
 type service struct {

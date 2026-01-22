@@ -92,6 +92,7 @@ func NewRouter(
 			r.Delete("/me/users/{userId}", controllers.StoreRemoveUser(storeService, logg))
 		})
 		r.Route("/v1/media", func(r chi.Router) {
+			r.Get("/", controllers.MediaList(mediaService, logg))
 			r.Post("/presign", controllers.MediaPresign(mediaService, logg))
 		})
 	})

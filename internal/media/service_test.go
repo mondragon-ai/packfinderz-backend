@@ -33,6 +33,10 @@ func (s *stubMediaRepo) Delete(ctx context.Context, id uuid.UUID) error {
 	return s.deleteErr
 }
 
+func (s *stubMediaRepo) List(ctx context.Context, opts listQuery) ([]models.Media, error) {
+	return nil, nil
+}
+
 type stubMemberships struct {
 	ok  bool
 	err error

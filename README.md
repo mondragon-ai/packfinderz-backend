@@ -379,6 +379,7 @@ These endpoints rely on `activeStoreId` and enforce owner/manager access for mut
   * Requires `activeStoreId` + store role (owner/admin/manager/staff/ops), `Idempotency-Key`, and a sanitized `file_name`.
   * Validates `media_kind`, `mime_type`, and `size_bytes ≤ 20MB`; the signed URL enforces the supplied `Content-Type`.
   * TTL honors `PACKFINDERZ_GCS_UPLOAD_URL_EXPIRY`, and clients must not proxy uploads through the API (use the signed PUT directly).
+* `GET /api/v1/media` – lists media owned by `activeStoreId`, returning metadata only (`id`, `kind`, `status`, `file_name`, `mime_type`, `size_bytes`, `created_at`, `uploaded_at`). Supports filters (`kind`, `status`, `mime_type`, `search`) and cursor pagination (`limit` + `cursor`).
 
 ### Error Contract
 
