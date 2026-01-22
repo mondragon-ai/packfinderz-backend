@@ -11,12 +11,14 @@ import (
 	"time"
 
 	"github.com/angelmondragon/packfinderz-backend/internal/auth"
+	"github.com/angelmondragon/packfinderz-backend/internal/licenses"
 	"github.com/angelmondragon/packfinderz-backend/internal/media"
 	"github.com/angelmondragon/packfinderz-backend/internal/memberships"
 	"github.com/angelmondragon/packfinderz-backend/internal/stores"
 	pkgAuth "github.com/angelmondragon/packfinderz-backend/pkg/auth"
 	"github.com/angelmondragon/packfinderz-backend/pkg/auth/session"
 	"github.com/angelmondragon/packfinderz-backend/pkg/config"
+	"github.com/angelmondragon/packfinderz-backend/pkg/db/models"
 	"github.com/angelmondragon/packfinderz-backend/pkg/enums"
 	"github.com/angelmondragon/packfinderz-backend/pkg/logger"
 	"github.com/angelmondragon/packfinderz-backend/pkg/redis"
@@ -109,6 +111,13 @@ func (s stubStoreService) Update(ctx context.Context, userID uuid.UUID, storeID 
 	panic("unimplemented")
 }
 
+type stubLicensesService struct{}
+
+// CreateLicense implements [licenses.Service].
+func (s stubLicensesService) CreateLicense(ctx context.Context, userID uuid.UUID, storeID uuid.UUID, input licenses.CreateLicenseInput) (*models.License, error) {
+	panic("unimplemented")
+}
+
 func testConfig() *config.Config {
 	return &config.Config{
 		App: config.AppConfig{Env: "test", Port: "0"},
@@ -135,6 +144,7 @@ func newTestRouter(cfg *config.Config) http.Handler {
 		stubSwitchService{},   // auth.SwitchStoreService
 		stubStoreService{},
 		stubMediaService{},
+		stubLicensesService{},
 	)
 }
 
