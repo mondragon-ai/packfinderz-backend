@@ -404,6 +404,43 @@ func (c *Client) SignedURL(bucket, object, contentType string, expires time.Dura
 	return fmt.Sprintf("https://storage.googleapis.com/%s/%s?%s", bucket, objPath, values.Encode()), nil
 }
 
+// SignedReadURL builds a V2 signed GET URL for reading the specified object.
+func (c *Client) SignedReadURL(bucket, object string, expires time.Duration) (string, error) {
+	if c == nil {
+		return "", errors.New("gcs client not initialized")
+	}
+	if bucket == "" {
+		bucket = c.defaultBucket
+	}
+	if bucket == "" {
+		return "", errors.New("gcs bucket not configured")
+	}
+	if object == "" {
+		return "", errors.New("object name required")
+	}
+	if expires <= 0 {
+		return "", errors.New("expires must be positive")
+	}
+	if c.serviceAccount == nil || c.serviceAccount.clientEmail == "" || c.serviceAccount.privateKey == nil {
+		return "", errors.New("gcs signing credentials unavailable")
+	}
+
+	expiry := time.Now().Add(expires).Unix()
+	stringToSign := fmt.Sprintf("%s\n\n\n%d\n/%s/%s", http.MethodGet, expiry, bucket, object)
+	signature, err := signWithKey(stringToSign, c.serviceAccount.privateKey)
+	if err != nil {
+		return "", err
+	}
+
+	values := url.Values{}
+	values.Set("GoogleAccessId", c.serviceAccount.clientEmail)
+	values.Set("Expires", strconv.FormatInt(expiry, 10))
+	values.Set("Signature", signature)
+
+	objPath := escapeObjectPath(object)
+	return fmt.Sprintf("https://storage.googleapis.com/%s/%s?%s", bucket, objPath, values.Encode()), nil
+}
+
 func escapeObjectPath(object string) string {
 	if object == "" {
 		return ""

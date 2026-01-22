@@ -2,6 +2,7 @@ package media
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"path"
 	"strings"
@@ -12,6 +13,7 @@ import (
 	"github.com/angelmondragon/packfinderz-backend/pkg/enums"
 	pkgerrors "github.com/angelmondragon/packfinderz-backend/pkg/errors"
 	"github.com/google/uuid"
+	"gorm.io/gorm"
 )
 
 const maxUploadBytes = 20 * 1024 * 1024
@@ -24,16 +26,19 @@ type mediaRepository interface {
 	Create(ctx context.Context, media *models.Media) (*models.Media, error)
 	Delete(ctx context.Context, id uuid.UUID) error
 	List(ctx context.Context, opts listQuery) ([]models.Media, error)
+	FindByID(ctx context.Context, id uuid.UUID) (*models.Media, error)
 }
 
 type gcsClient interface {
 	SignedURL(bucket, object, contentType string, expires time.Duration) (string, error)
+	SignedReadURL(bucket, object string, expires time.Duration) (string, error)
 }
 
 // Service exposes media-presign semantics.
 type Service interface {
 	PresignUpload(ctx context.Context, userID, storeID uuid.UUID, input PresignInput) (*PresignOutput, error)
 	ListMedia(ctx context.Context, params ListParams) (*ListResult, error)
+	GenerateReadURL(ctx context.Context, params ReadURLParams) (*ReadURLOutput, error)
 }
 
 type service struct {
@@ -42,11 +47,12 @@ type service struct {
 	gcs          gcsClient
 	bucket       string
 	uploadTTL    time.Duration
+	downloadTTL  time.Duration
 	allowedRoles []enums.MemberRole
 }
 
 // NewService constructs a media service backed by the provided repositories and GCS signer.
-func NewService(repo mediaRepository, memberships membershipsRepository, gcsClient gcsClient, bucket string, uploadTTL time.Duration) (Service, error) {
+func NewService(repo mediaRepository, memberships membershipsRepository, gcsClient gcsClient, bucket string, uploadTTL, downloadTTL time.Duration) (Service, error) {
 	if repo == nil {
 		return nil, fmt.Errorf("media repository required")
 	}
@@ -62,12 +68,16 @@ func NewService(repo mediaRepository, memberships membershipsRepository, gcsClie
 	if uploadTTL <= 0 {
 		return nil, fmt.Errorf("upload ttl must be positive")
 	}
+	if downloadTTL <= 0 {
+		return nil, fmt.Errorf("download ttl must be positive")
+	}
 	return &service{
 		repo:        repo,
 		memberships: memberships,
 		gcs:         gcsClient,
 		bucket:      bucket,
 		uploadTTL:   uploadTTL,
+		downloadTTL: downloadTTL,
 		allowedRoles: []enums.MemberRole{
 			enums.MemberRoleOwner,
 			enums.MemberRoleAdmin,
@@ -179,6 +189,55 @@ func (s *service) PresignUpload(ctx context.Context, userID, storeID uuid.UUID, 
 		ContentType:  mimeType,
 		ExpiresAt:    expiresAt,
 	}, nil
+}
+
+type ReadURLParams struct {
+	StoreID uuid.UUID
+	MediaID uuid.UUID
+}
+
+type ReadURLOutput struct {
+	URL       string    `json:"url"`
+	ExpiresAt time.Time `json:"expires_at"`
+}
+
+func (s *service) GenerateReadURL(ctx context.Context, params ReadURLParams) (*ReadURLOutput, error) {
+	if params.StoreID == uuid.Nil {
+		return nil, pkgerrors.New(pkgerrors.CodeValidation, "active store id required")
+	}
+	if params.MediaID == uuid.Nil {
+		return nil, pkgerrors.New(pkgerrors.CodeValidation, "media id required")
+	}
+
+	mediaRow, err := s.repo.FindByID(ctx, params.MediaID)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, pkgerrors.New(pkgerrors.CodeNotFound, "media not found")
+		}
+		return nil, pkgerrors.Wrap(pkgerrors.CodeDependency, err, "lookup media")
+	}
+
+	if mediaRow.StoreID != params.StoreID {
+		return nil, pkgerrors.New(pkgerrors.CodeForbidden, "media does not belong to active store")
+	}
+
+	if !isReadableStatus(mediaRow.Status) {
+		return nil, pkgerrors.New(pkgerrors.CodeConflict, "media not available for download")
+	}
+
+	url, err := s.gcs.SignedReadURL(s.bucket, mediaRow.GCSKey, s.downloadTTL)
+	if err != nil {
+		return nil, pkgerrors.Wrap(pkgerrors.CodeDependency, err, "generate download url")
+	}
+
+	return &ReadURLOutput{
+		URL:       url,
+		ExpiresAt: time.Now().Add(s.downloadTTL),
+	}, nil
+}
+
+func isReadableStatus(status enums.MediaStatus) bool {
+	return status == enums.MediaStatusUploaded || status == enums.MediaStatusReady
 }
 
 func isAllowedMime(kind enums.MediaKind, mimeType string) bool {

@@ -63,6 +63,11 @@ func (stubSwitchService) Switch(ctx context.Context, input auth.SwitchStoreInput
 
 type stubMediaService struct{}
 
+// GenerateReadURL implements [media.Service].
+func (s stubMediaService) GenerateReadURL(ctx context.Context, params media.ReadURLParams) (*media.ReadURLOutput, error) {
+	panic("unimplemented")
+}
+
 // ListMedia implements [media.Service].
 func (s stubMediaService) ListMedia(ctx context.Context, params media.ListParams) (*media.ListResult, error) {
 	panic("unimplemented")

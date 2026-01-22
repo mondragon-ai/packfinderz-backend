@@ -78,6 +78,55 @@ func TestSignedURLSuccess(t *testing.T) {
 	}
 }
 
+func TestSignedReadURLSuccess(t *testing.T) {
+	t.Parallel()
+
+	key := mustGenerateKey(t)
+	client := &Client{
+		defaultBucket: "bucket",
+		serviceAccount: &serviceAccountInfo{
+			clientEmail: "signer@example.com",
+			privateKey:  key,
+		},
+	}
+
+	object := "media/product/file.pdf"
+	urlStr, err := client.SignedReadURL("bucket", object, 5*time.Minute)
+	if err != nil {
+		t.Fatalf("SignedReadURL returned error: %v", err)
+	}
+
+	parsed, err := url.Parse(urlStr)
+	if err != nil {
+		t.Fatalf("parse signed read url: %v", err)
+	}
+
+	values := parsed.Query()
+	expireParam := values.Get("Expires")
+	if expireParam == "" {
+		t.Fatal("Expires missing")
+	}
+	expiration, err := strconv.ParseInt(expireParam, 10, 64)
+	if err != nil {
+		t.Fatalf("parse expires: %v", err)
+	}
+	expireParam = strconv.FormatInt(expiration, 10)
+	signature := values.Get("Signature")
+	if signature == "" {
+		t.Fatal("signature missing")
+	}
+
+	data := []byte("GET\n\n\n" + expireParam + "\n/" + "bucket" + "/" + object)
+	hash := sha256.Sum256(data)
+	rawSig, err := base64.RawURLEncoding.DecodeString(signature)
+	if err != nil {
+		t.Fatalf("decode signature: %v", err)
+	}
+	if err := rsa.VerifyPKCS1v15(&key.PublicKey, crypto.SHA256, hash[:], rawSig); err != nil {
+		t.Fatalf("verify read signature: %v", err)
+	}
+}
+
 func TestSignedURLErrors(t *testing.T) {
 	t.Parallel()
 
