@@ -4,9 +4,8 @@
 
 GO := go
 
-API_CMD := cmd/api/main.go
-WORKER_ROOT := cmd/worker
-DEFAULT_WORKER := main.go
+API_PKG := ./cmd/api
+WORKER_PKG := ./cmd/worker
 
 # Migrations
 MIGRATE_CMD := ./cmd/migrate
@@ -22,24 +21,25 @@ help: ## Show available targets
 # =========================
 
 .PHONY: dev
-dev: ## Run API + default worker
+dev:
 	@echo "Starting API + Worker..."
-	@trap 'kill 0' SIGINT; \
-	$(GO) run $(API_CMD) & \
-	$(GO) run $(WORKER_ROOT)/$(DEFAULT_WORKER) & \
+	@trap 'kill 0' INT TERM; \
+	$(GO) run $(API_PKG) & \
+	$(GO) run $(WORKER_PKG) & \
 	wait
 
 # =========================
 # Individual services
 # =========================
 
+
 .PHONY: api
-api: ## Run API only
-	$(GO) run $(API_CMD)
+api:
+	$(GO) run $(API_PKG)
 
 .PHONY: worker
-worker: ## Run default worker only
-	$(GO) run $(WORKER_ROOT)/$(DEFAULT_WORKER)
+worker:
+	$(GO) run $(WORKER_PKG)
 
 # =========================
 # Migrations (Goose)

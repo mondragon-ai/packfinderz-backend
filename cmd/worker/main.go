@@ -2,17 +2,19 @@ package main
 
 import (
 	"context"
+	"errors"
 	"os"
 	"os/signal"
-	"time"
+
+	"github.com/joho/godotenv"
 
 	"github.com/angelmondragon/packfinderz-backend/pkg/config"
 	"github.com/angelmondragon/packfinderz-backend/pkg/db"
 	"github.com/angelmondragon/packfinderz-backend/pkg/logger"
 	"github.com/angelmondragon/packfinderz-backend/pkg/migrate"
+	"github.com/angelmondragon/packfinderz-backend/pkg/pubsub"
 	"github.com/angelmondragon/packfinderz-backend/pkg/redis"
 	"github.com/angelmondragon/packfinderz-backend/pkg/storage/gcs"
-	"github.com/joho/godotenv"
 )
 
 func main() {
@@ -27,6 +29,8 @@ func main() {
 		logg.Error(context.Background(), "failed to load config", err)
 		os.Exit(1)
 	}
+
+	cfg.Service.Kind = "worker"
 
 	logg = logger.New(logger.Options{
 		ServiceName: "worker",
@@ -61,6 +65,17 @@ func main() {
 		}
 	}()
 
+	pubsubClient, err := pubsub.NewClient(context.Background(), cfg.GCP, cfg.PubSub, logg)
+	if err != nil {
+		logg.Error(context.Background(), "failed to bootstrap pubsub", err)
+		os.Exit(1)
+	}
+	defer func() {
+		if err := pubsubClient.Close(); err != nil {
+			logg.Error(context.Background(), "error closing pubsub client", err)
+		}
+	}()
+
 	gcsClient, err := gcs.NewClient(context.Background(), cfg.GCS, cfg.GCP, logg)
 	if err != nil {
 		logg.Error(context.Background(), "failed to bootstrap gcs", err)
@@ -72,51 +87,31 @@ func main() {
 		}
 	}()
 
+	service, err := NewService(ServiceParams{
+		Config: cfg,
+		Logger: logg,
+		DB:     dbClient,
+		Redis:  redisClient,
+		PubSub: pubsubClient,
+		GCS:    gcsClient,
+	})
+	if err != nil {
+		logg.Error(context.Background(), "failed to create worker service", err)
+		os.Exit(1)
+	}
+
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
 	ctx = logg.WithFields(ctx, map[string]any{
-		// "instance":    instance.GetID(),
 		"env":         cfg.App.Env,
 		"serviceKind": cfg.Service.Kind,
 	})
 	logg.Info(ctx, "starting worker")
 
-	if gcsClient != nil {
-		if err := gcsClient.Ping(ctx); err != nil {
-			logg.Error(ctx, "gcs ping failed", err)
-		} else {
-			logg.Info(ctx, "gcs ping succeeded")
-		}
+	if err := service.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
+		logg.Error(ctx, "worker stopped unexpectedly", err)
+		os.Exit(1)
 	}
 
-	runWorker(ctx, cfg, logg, dbClient, redisClient)
 	logg.Info(ctx, "worker shutting down gracefully")
-}
-
-func runWorker(ctx context.Context, cfg *config.Config, logg *logger.Logger, dbClient *db.Client, redisClient *redis.Client) {
-	ctx = logg.WithFields(ctx, map[string]any{
-		"job": "heartbeat",
-		// "pubsub_media": cfg.PubSub.MediaTopic,
-	})
-	if err := dbClient.Ping(ctx); err != nil {
-		logg.Error(ctx, "database ping failed", err)
-	} else {
-		logg.Info(ctx, "database ping succeeded")
-	}
-	if err := redisClient.Ping(ctx); err != nil {
-		logg.Error(ctx, "redis ping failed", err)
-	} else {
-		logg.Info(ctx, "redis ping succeeded")
-	}
-	ticker := time.NewTicker(5 * time.Second)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-			logg.Info(ctx, "worker.heartbeat")
-		}
-	}
 }
