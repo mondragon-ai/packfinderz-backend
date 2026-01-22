@@ -2,6 +2,7 @@ package media
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -11,6 +12,7 @@ import (
 	"github.com/angelmondragon/packfinderz-backend/pkg/enums"
 	pkgerrors "github.com/angelmondragon/packfinderz-backend/pkg/errors"
 	"github.com/google/uuid"
+	"gorm.io/gorm"
 )
 
 type stubMediaRepo struct {
@@ -18,6 +20,8 @@ type stubMediaRepo struct {
 	deleteID  uuid.UUID
 	createErr error
 	deleteErr error
+	findMedia *models.Media
+	findErr   error
 }
 
 func (s *stubMediaRepo) Create(ctx context.Context, media *models.Media) (*models.Media, error) {
@@ -31,6 +35,16 @@ func (s *stubMediaRepo) Create(ctx context.Context, media *models.Media) (*model
 func (s *stubMediaRepo) Delete(ctx context.Context, id uuid.UUID) error {
 	s.deleteID = id
 	return s.deleteErr
+}
+
+func (s *stubMediaRepo) FindByID(ctx context.Context, id uuid.UUID) (*models.Media, error) {
+	if s.findErr != nil {
+		return nil, s.findErr
+	}
+	if s.findMedia == nil {
+		return nil, gorm.ErrRecordNotFound
+	}
+	return s.findMedia, nil
 }
 
 func (s *stubMediaRepo) List(ctx context.Context, opts listQuery) ([]models.Media, error) {
@@ -55,6 +69,8 @@ type stubGCS struct {
 	lastBucket   string
 	lastObject   string
 	lastMimeType string
+	readURL      string
+	readErr      error
 }
 
 func (s *stubGCS) SignedURL(bucket, object, contentType string, expires time.Duration) (string, error) {
@@ -67,6 +83,18 @@ func (s *stubGCS) SignedURL(bucket, object, contentType string, expires time.Dur
 	return s.url, nil
 }
 
+func (s *stubGCS) SignedReadURL(bucket, object string, expires time.Duration) (string, error) {
+	if s.readErr != nil {
+		return "", s.readErr
+	}
+	s.lastBucket = bucket
+	s.lastObject = object
+	if s.readURL == "" {
+		return "https://download.example", nil
+	}
+	return s.readURL, nil
+}
+
 func TestMediaServicePresignSuccess(t *testing.T) {
 	t.Parallel()
 
@@ -74,7 +102,7 @@ func TestMediaServicePresignSuccess(t *testing.T) {
 	members := stubMemberships{ok: true}
 	gcs := &stubGCS{url: "https://signed.example"}
 
-	svc, err := NewService(repo, members, gcs, "bucket", time.Minute)
+	svc, err := NewService(repo, members, gcs, "bucket", time.Minute, 15*time.Minute)
 	if err != nil {
 		t.Fatalf("NewService: %v", err)
 	}
@@ -118,7 +146,7 @@ func TestMediaServicePresignValidation(t *testing.T) {
 	repo := &stubMediaRepo{}
 	members := stubMemberships{ok: true}
 	gcs := &stubGCS{url: "ok"}
-	svc, err := NewService(repo, members, gcs, "bucket", time.Minute)
+	svc, err := NewService(repo, members, gcs, "bucket", time.Minute, 15*time.Minute)
 	if err != nil {
 		t.Fatalf("NewService: %v", err)
 	}
@@ -166,7 +194,7 @@ func TestMediaServicePresignForbidden(t *testing.T) {
 	repo := &stubMediaRepo{}
 	members := stubMemberships{ok: false}
 	gcs := &stubGCS{}
-	svc, err := NewService(repo, members, gcs, "bucket", time.Minute)
+	svc, err := NewService(repo, members, gcs, "bucket", time.Minute, 15*time.Minute)
 	if err != nil {
 		t.Fatalf("NewService: %v", err)
 	}
@@ -185,13 +213,136 @@ func TestMediaServicePresignForbidden(t *testing.T) {
 	}
 }
 
+func TestMediaServiceGenerateReadURLSuccess(t *testing.T) {
+	t.Parallel()
+
+	storeID := uuid.New()
+	mediaID := uuid.New()
+	repo := &stubMediaRepo{
+		findMedia: &models.Media{
+			ID:      mediaID,
+			StoreID: storeID,
+			Status:  enums.MediaStatusUploaded,
+			GCSKey:  "media/key",
+		},
+	}
+	members := stubMemberships{ok: true}
+	gcs := &stubGCS{readURL: "https://download.example"}
+
+	svc, err := NewService(repo, members, gcs, "bucket", time.Minute, 15*time.Minute)
+	if err != nil {
+		t.Fatalf("NewService: %v", err)
+	}
+
+	resp, err := svc.GenerateReadURL(context.Background(), ReadURLParams{
+		StoreID: storeID,
+		MediaID: mediaID,
+	})
+	if err != nil {
+		t.Fatalf("GenerateReadURL returned error: %v", err)
+	}
+	if resp.URL != "https://download.example" {
+		t.Fatalf("unexpected url %s", resp.URL)
+	}
+	if resp.ExpiresAt.Before(time.Now().Add(15*time.Minute - time.Second)) {
+		t.Fatalf("expires at too soon: %s", resp.ExpiresAt)
+	}
+	if gcs.lastBucket != "bucket" || gcs.lastObject != "media/key" {
+		t.Fatalf("unexpected gcs call %v", gcs)
+	}
+}
+
+func TestMediaServiceGenerateReadURLStoreMismatch(t *testing.T) {
+	t.Parallel()
+
+	repo := &stubMediaRepo{
+		findMedia: &models.Media{
+			ID:      uuid.New(),
+			StoreID: uuid.New(),
+			Status:  enums.MediaStatusUploaded,
+			GCSKey:  "media/key",
+		},
+	}
+	members := stubMemberships{ok: true}
+	gcs := &stubGCS{}
+	svc, err := NewService(repo, members, gcs, "bucket", time.Minute, 15*time.Minute)
+	if err != nil {
+		t.Fatalf("NewService: %v", err)
+	}
+
+	if _, err := svc.GenerateReadURL(context.Background(), ReadURLParams{
+		StoreID: uuid.New(),
+		MediaID: repo.findMedia.ID,
+	}); err == nil {
+		t.Fatal("expected store mismatch error")
+	} else if typed := pkgerrors.As(err); typed == nil || typed.Code() != pkgerrors.CodeForbidden {
+		t.Fatalf("expected forbidden code, got %v", err)
+	}
+}
+
+func TestMediaServiceGenerateReadURLInvalidStatus(t *testing.T) {
+	t.Parallel()
+
+	repo := &stubMediaRepo{
+		findMedia: &models.Media{
+			ID:      uuid.New(),
+			StoreID: uuid.New(),
+			Status:  enums.MediaStatusPending,
+			GCSKey:  "media/key",
+		},
+	}
+	members := stubMemberships{ok: true}
+	gcs := &stubGCS{}
+	svc, err := NewService(repo, members, gcs, "bucket", time.Minute, 15*time.Minute)
+	if err != nil {
+		t.Fatalf("NewService: %v", err)
+	}
+
+	if _, err := svc.GenerateReadURL(context.Background(), ReadURLParams{
+		StoreID: repo.findMedia.StoreID,
+		MediaID: repo.findMedia.ID,
+	}); err == nil {
+		t.Fatal("expected conflict error")
+	} else if typed := pkgerrors.As(err); typed == nil || typed.Code() != pkgerrors.CodeConflict {
+		t.Fatalf("expected conflict code, got %v", err)
+	}
+}
+
+func TestMediaServiceGenerateReadURLDependencyError(t *testing.T) {
+	t.Parallel()
+
+	repo := &stubMediaRepo{
+		findMedia: &models.Media{
+			ID:      uuid.New(),
+			StoreID: uuid.New(),
+			Status:  enums.MediaStatusUploaded,
+			GCSKey:  "media/key",
+		},
+	}
+	members := stubMemberships{ok: true}
+	gcs := &stubGCS{readErr: errors.New("boom")}
+	svc, err := NewService(repo, members, gcs, "bucket", time.Minute, 15*time.Minute)
+	if err != nil {
+		t.Fatalf("NewService: %v", err)
+	}
+
+	if _, err := svc.GenerateReadURL(context.Background(), ReadURLParams{
+		StoreID: repo.findMedia.StoreID,
+		MediaID: repo.findMedia.ID,
+	}); err == nil {
+		t.Fatal("expected dependency error")
+	} else if typed := pkgerrors.As(err); typed == nil || typed.Code() != pkgerrors.CodeDependency {
+		t.Fatalf("expected dependency code, got %v", err)
+	}
+}
+
 func TestMediaServicePresignGcsErrorCleansUp(t *testing.T) {
 	t.Parallel()
 
 	repo := &stubMediaRepo{}
 	members := stubMemberships{ok: true}
 	gcs := &stubGCS{err: errTest}
-	svc, err := NewService(repo, members, gcs, "bucket", time.Minute)
+	svc, err := NewService(repo, members, gcs, "bucket", time.Minute, 15*time.Minute)
 	if err != nil {
 		t.Fatalf("NewService: %v", err)
 	}

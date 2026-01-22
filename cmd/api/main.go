@@ -123,7 +123,14 @@ func main() {
 		os.Exit(1)
 	}
 
-	mediaService, err := media.NewService(media.NewRepository(dbClient.DB()), membershipsRepo, gcsClient, cfg.GCS.BucketName, cfg.GCS.UploadURLExpiry)
+	mediaService, err := media.NewService(
+		media.NewRepository(dbClient.DB()),
+		membershipsRepo,
+		gcsClient,
+		cfg.GCS.BucketName,
+		cfg.GCS.UploadURLExpiry,
+		cfg.GCS.DownloadURLExpiry,
+	)
 	if err != nil {
 		logg.Error(context.Background(), "failed to create media service", err)
 		os.Exit(1)
