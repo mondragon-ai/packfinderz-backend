@@ -1,3 +1,4 @@
+// pkg/pubsub/client.go
 package pubsub
 
 import (
@@ -6,14 +7,18 @@ import (
 	"fmt"
 	"strings"
 
-	"cloud.google.com/go/pubsub"
+	pubsub "cloud.google.com/go/pubsub/v2"
+	"cloud.google.com/go/pubsub/v2/apiv1/pubsubpb"
 	"github.com/angelmondragon/packfinderz-backend/pkg/config"
 	"github.com/angelmondragon/packfinderz-backend/pkg/logger"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 type Client struct {
-	client *pubsub.Client
-	cfg    config.PubSubConfig
+	client    *pubsub.Client
+	projectID string
+	cfg       config.PubSubConfig
 }
 
 var (
@@ -21,9 +26,9 @@ var (
 	errNoSubscriptions   = errors.New("pubsub subscription name is required")
 )
 
-// NewClient creates a Pub/Sub client and ensures the configured subscriptions exist.
+// NewClient creates a Pub/Sub v2 client and ensures the configured subscriptions exist.
 func NewClient(ctx context.Context, gcp config.GCPConfig, cfg config.PubSubConfig, logg *logger.Logger) (*Client, error) {
-	if gcp.ProjectID == "" {
+	if strings.TrimSpace(gcp.ProjectID) == "" {
 		return nil, errProjectIDRequired
 	}
 
@@ -33,8 +38,9 @@ func NewClient(ctx context.Context, gcp config.GCPConfig, cfg config.PubSubConfi
 	}
 
 	c := &Client{
-		client: psClient,
-		cfg:    cfg,
+		client:    psClient,
+		projectID: gcp.ProjectID,
+		cfg:       cfg,
 	}
 
 	if err := c.ensureSubscriptionsConfigured(ctx); err != nil {
@@ -77,43 +83,50 @@ func subscriptionNames(cfg config.PubSubConfig) []string {
 }
 
 func (c *Client) ensureSubscriptionExists(ctx context.Context, name string) error {
-	sub := c.Subscription(name)
-	if sub == nil {
+	fullName := c.subscriptionResourceName(name)
+	if fullName == "" {
 		return fmt.Errorf("subscription %q not configured", name)
 	}
-	ok, err := sub.Exists(ctx)
+
+	_, err := c.client.SubscriptionAdminClient.GetSubscription(
+		ctx,
+		&pubsubpb.GetSubscriptionRequest{Subscription: fullName},
+	)
 	if err != nil {
+		// v2 uses gRPC errors; NotFound means the subscription doesn't exist.
+		if status.Code(err) == codes.NotFound {
+			return fmt.Errorf("subscription %q does not exist", name)
+		}
 		return fmt.Errorf("checking subscription %q: %w", name, err)
 	}
-	if !ok {
-		return fmt.Errorf("subscription %q does not exist", name)
-	}
+
 	return nil
 }
 
-// Subscription returns the named subscription handle or nil if it is not configured.
-func (c *Client) Subscription(name string) *pubsub.Subscription {
+// Subscription returns a v2 Subscriber handle for the configured subscription name (ID or full resource name).
+func (c *Client) Subscription(name string) *pubsub.Subscriber {
 	if c == nil || c.client == nil {
 		return nil
 	}
-	if strings.TrimSpace(name) == "" {
+	fullName := c.subscriptionResourceName(name)
+	if fullName == "" {
 		return nil
 	}
-	return c.client.Subscription(name)
+	return c.client.Subscriber(fullName)
 }
 
-// MediaSubscription returns the configured media subscription.
-func (c *Client) MediaSubscription() *pubsub.Subscription {
+// MediaSubscription returns the configured media subscription subscriber.
+func (c *Client) MediaSubscription() *pubsub.Subscriber {
 	return c.Subscription(c.cfg.MediaSubscription)
 }
 
-// OrdersSubscription returns the configured orders subscription.
-func (c *Client) OrdersSubscription() *pubsub.Subscription {
+// OrdersSubscription returns the configured orders subscription subscriber.
+func (c *Client) OrdersSubscription() *pubsub.Subscriber {
 	return c.Subscription(c.cfg.OrdersSubscription)
 }
 
-// BillingSubscription returns the configured billing subscription.
-func (c *Client) BillingSubscription() *pubsub.Subscription {
+// BillingSubscription returns the configured billing subscription subscriber.
+func (c *Client) BillingSubscription() *pubsub.Subscriber {
 	return c.Subscription(c.cfg.BillingSubscription)
 }
 
@@ -131,4 +144,24 @@ func (c *Client) Close() error {
 		return nil
 	}
 	return c.client.Close()
+}
+
+func (c *Client) subscriptionResourceName(name string) string {
+	if c == nil {
+		return ""
+	}
+	n := strings.TrimSpace(name)
+	if n == "" {
+		return ""
+	}
+
+	if strings.HasPrefix(n, "projects/") && strings.Contains(n, "/subscriptions/") {
+		return n
+	}
+
+	p := strings.TrimSpace(c.projectID)
+	if p == "" {
+		return ""
+	}
+	return fmt.Sprintf("projects/%s/subscriptions/%s", p, n)
 }
