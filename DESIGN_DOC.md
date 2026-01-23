@@ -2749,6 +2749,8 @@ FKs
 
 **Media attachments:** `product_media` rows (see §2.8.a) keep `gcs_key` and ordering per `position`; the lowest position entry can be normalized as the `main_media` while the ordered set forms the `media` payload when presenting products.
 
+**Implementation note:** the GORM models for `products`, `inventory_items`, `product_volume_discounts`, and `product_media` live in `pkg/db/models/*`, and `internal/products/repo.Repository` surfaces CRUD plus detail/list reads that preload inventory, volume discounts (descending `min_qty`), media (ascending `position`), and a `VendorSummary` built from the lateral `media_attachments` logo join for service-layer responses (pkg/db/models/product.go:9-45; pkg/db/models/inventory_item.go:9-24; pkg/db/models/product_volume_discount.go:9-24; pkg/db/models/product_media.go:11-29; internal/products/repo/repository.go:12-208).
+
 
 We need a vendor object that has the vendor name, gcs & public url (nullable) of the vendor logo, and vendor ID (or join when calling in the service). Do we join the inventory or add natively? Not sure how that works
 
