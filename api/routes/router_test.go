@@ -123,6 +123,11 @@ func (s stubLicensesService) CreateLicense(ctx context.Context, userID uuid.UUID
 	panic("unimplemented")
 }
 
+// DeleteLicense implements [licenses.Service].
+func (s stubLicensesService) DeleteLicense(ctx context.Context, userID uuid.UUID, storeID uuid.UUID, licenseID uuid.UUID) error {
+	panic("unimplemented")
+}
+
 func testConfig() *config.Config {
 	return &config.Config{
 		App: config.AppConfig{Env: "test", Port: "0"},

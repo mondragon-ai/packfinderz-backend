@@ -4,6 +4,8 @@ import (
 	"context"
 
 	"github.com/angelmondragon/packfinderz-backend/pkg/db/models"
+	"github.com/angelmondragon/packfinderz-backend/pkg/enums"
+	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
 
@@ -40,4 +42,27 @@ func (r *Repository) List(ctx context.Context, opts listQuery) ([]models.License
 		return nil, err
 	}
 	return rows, nil
+}
+
+func (r *Repository) FindByID(ctx context.Context, id uuid.UUID) (*models.License, error) {
+	var row models.License
+	if err := r.db.WithContext(ctx).First(&row, "id = ?", id).Error; err != nil {
+		return nil, err
+	}
+	return &row, nil
+}
+
+func (r *Repository) Delete(ctx context.Context, id uuid.UUID) error {
+	return r.db.WithContext(ctx).Where("id = ?", id).Delete(&models.License{}).Error
+}
+
+func (r *Repository) CountValidLicenses(ctx context.Context, storeID uuid.UUID) (int64, error) {
+	var count int64
+	if err := r.db.WithContext(ctx).
+		Model(&models.License{}).
+		Where("store_id = ? AND status = ?", storeID, enums.LicenseStatusVerified).
+		Count(&count).Error; err != nil {
+		return 0, err
+	}
+	return count, nil
 }

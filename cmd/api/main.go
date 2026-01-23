@@ -118,7 +118,8 @@ func main() {
 		os.Exit(1)
 	}
 
-	storeService, err := stores.NewService(stores.NewRepository(dbClient.DB()), membershipsRepo, usersRepo, cfg.Password)
+	storeRepo := stores.NewRepository(dbClient.DB())
+	storeService, err := stores.NewService(storeRepo, membershipsRepo, usersRepo, cfg.Password)
 	if err != nil {
 		logg.Error(context.Background(), "failed to create store service", err)
 		os.Exit(1)
@@ -144,6 +145,7 @@ func main() {
 		gcsClient,
 		cfg.GCS.BucketName,
 		cfg.GCS.DownloadURLExpiry,
+		storeRepo,
 	)
 	if err != nil {
 		logg.Error(context.Background(), "failed to create license service", err)

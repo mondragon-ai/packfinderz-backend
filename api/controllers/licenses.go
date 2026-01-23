@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
 	"github.com/angelmondragon/packfinderz-backend/api/middleware"
@@ -141,6 +142,59 @@ func LicenseList(svc licenses.Service, logg *logger.Logger) http.HandlerFunc {
 		}
 
 		responses.WriteSuccess(w, resp)
+	}
+}
+
+// LicenseDelete removes an expired or rejected license when the requestor owns the store.
+func LicenseDelete(svc licenses.Service, logg *logger.Logger) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if svc == nil {
+			responses.WriteError(r.Context(), logg, w, pkgerrors.New(pkgerrors.CodeInternal, "license service unavailable"))
+			return
+		}
+
+		storeID := middleware.StoreIDFromContext(r.Context())
+		if storeID == "" {
+			responses.WriteError(r.Context(), logg, w, pkgerrors.New(pkgerrors.CodeForbidden, "store context missing"))
+			return
+		}
+
+		userID := middleware.UserIDFromContext(r.Context())
+		if userID == "" {
+			responses.WriteError(r.Context(), logg, w, pkgerrors.New(pkgerrors.CodeUnauthorized, "user context missing"))
+			return
+		}
+
+		sid, err := uuid.Parse(storeID)
+		if err != nil {
+			responses.WriteError(r.Context(), logg, w, pkgerrors.Wrap(pkgerrors.CodeValidation, err, "invalid store id"))
+			return
+		}
+
+		licenseIDParam := strings.TrimSpace(chi.URLParam(r, "licenseId"))
+		if licenseIDParam == "" {
+			responses.WriteError(r.Context(), logg, w, pkgerrors.New(pkgerrors.CodeValidation, "license id is required"))
+			return
+		}
+
+		lid, err := uuid.Parse(licenseIDParam)
+		if err != nil {
+			responses.WriteError(r.Context(), logg, w, pkgerrors.Wrap(pkgerrors.CodeValidation, err, "invalid license id"))
+			return
+		}
+
+		uid, err := uuid.Parse(userID)
+		if err != nil {
+			responses.WriteError(r.Context(), logg, w, pkgerrors.Wrap(pkgerrors.CodeValidation, err, "invalid user id"))
+			return
+		}
+
+		if err := svc.DeleteLicense(r.Context(), uid, sid, lid); err != nil {
+			responses.WriteError(r.Context(), logg, w, err)
+			return
+		}
+
+		responses.WriteSuccess(w, map[string]bool{"deleted": true})
 	}
 }
 
