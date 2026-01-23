@@ -392,11 +392,15 @@ All enums implement:
 * Repository wiring now includes `FindByID`, `Delete`, and `CountValidLicenses` so services can enforce store ownership and compute the `verified` remainder.
 * `controllers.LicenseDelete` (registered under `DELETE /api/v1/licenses/{licenseId}`) parses docs/UUID, relies on the same middleware-based context, and returns the canonical success error envelope.
 * `Service.VerifyLicense` plus `controllers.AdminLicenseVerify` implemented the admin-only `/api/v1/admin/licenses/{licenseId}/verify` route, validating `verified|rejected` decisions, Idempotency-buffered requests, and conflict handling for non-pending licenses.
-* Approvals/rejections now recompute `stores.kyc_status` in the same transaction by reviewing every license for the store and using `determineStoreKYCStatus` (internal/licenses/service.go:385-425) so the mirror flips to `verified`, `rejected`, or `expired` only when the aggregated outcome changes.
+* Approvals/rejections now recompute `stores.kyc_status` in the same transaction by reviewing every license for the store and using `DetermineStoreKYCStatus` (internal/licenses/service.go:385-425) so the mirror flips to `verified`, `rejected`, or `expired` only when the aggregated outcome changes.
 
 ### `internal/notifications`
 * `Repository.Create` inserts compliance notifications so the worker can persist alerts after consuming events (internal/notifications/repo.go:1-23).
 * `Consumer` subscribes to `license_status_changed` events, honors `pkg/outbox/idempotency.Manager` TTLs, and writes `NotificationTypeCompliance` rows with the right admin/store link plus rejection details when present, keeping the event tied to the originating store (internal/notifications/consumer.go:18-186; cmd/worker/main.go:83-116).
+
+### `internal/schedulers/licenses`
+* Scheduler runs every 24h from `cmd/worker`, warning stores 14 days before a license's `expiration_date` and expiring licenses on their due date (`internal/schedulers/licenses/service.go`:1-220).
+* `warnExpiring`/`expireLicenses` each execute inside `WithTx`, emit `license_status_changed` outbox events (warnings include the `expires on` message plus `warningType=expiry_warning`), and `expireLicense` reloads the license, skips already expired rows, updates the status, emits the event, and reconciles `stores.kyc_status` via `DetermineStoreKYCStatus` (`internal/schedulers/licenses/service.go`:61-210; internal/licenses/service.go:405-416).
 
 ## Auth (Canonical)
 

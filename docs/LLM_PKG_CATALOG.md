@@ -64,6 +64,11 @@
 - `Repository` supports `Create`, `FindByID`, `List`, `MarkUploaded`, and `MarkDeleted` for metadata lifecycle updates (internal/media/repo.go:14-110).
 - `consumer.Consumer.Run` processes GCS `OBJECT_FINALIZE` notifications, looks up media by GCS key, and calls `MarkUploaded` with retries/nacks for transient DB errors (internal/media/consumer/consumer.go:30-235).
 
+## internal/schedulers/licenses
+- `Service` runs inside the worker loop every 24h, warning stores 14 days before a license `expiration_date` and expiring licenses on the day of expiration (`internal/schedulers/licenses/service.go:1-220`).
+- `warnExpiring`/`expireLicenses` scan via `FindExpiringBetween`/`FindExpiredByDate`, emit `license_status_changed` events via `outbox.Service.Emit`, and keep each transition atomic inside `WithTx`, including the `Reason` text when warning or expiring (internal/schedulers/licenses/service.go:61-173).
+- `reconcileKYC` mirrors store `kyc_status` after expiration by calling `DetermineStoreKYCStatus` on current license statuses and writing back via `stores.Repository` so stores with no remaining valid licenses get the correct KYC (`internal/schedulers/licenses/service.go`: lines 174-220; internal/licenses/service.go:405-416).
+
 ## internal/licenses
 - `Service` `CreateLicense` validates role/media ownership/mime, persists `License`, and `ListLicenses` applies cursor pagination plus signed downloads (internal/licenses/service.go:18-224).
 - `CreateLicenseInput`, `ListParams`, `ListResult`, and `ListItem` describe license creation/listing payloads (internal/licenses/service.go:51-213; internal/licenses/list.go:12-59).
@@ -72,5 +77,5 @@
 
 ## internal/notifications
 - `Repository.Create` inserts `models.Notification` rows used by the compliance consumer (`internal/notifications/repo.go:1-23`).
-- `Consumer` acquires `pubsub.DomainSubscription()` plus an `idempotency.Manager`, filters for `license_status_changed` events, and writes `NotificationTypeCompliance` records via `handlePayload` after checking `pf:evt:processed:<consumer>:<event_id>` (internal/notifications/consumer.go:18-197; cmd/worker/main.go:83-116).
+- `Consumer` acquires `pubsub.NotificationSubscription()` plus an `idempotency.Manager`, filters for `license_status_changed` events, and writes `NotificationTypeCompliance` records via `handlePayload` after checking `pf:evt:processed:<consumer>:<event_id>` (internal/notifications/consumer.go:18-197; cmd/worker/main.go:83-116).
 - `createStoreNotification` links `/stores/{storeId}/licenses/{licenseId}`, uses the optional rejection `reason`, and notifies stores when approvals/rejections land while `createAdminNotification` links `/admin/licenses/{licenseId}` when licenses return to pending review (internal/notifications/consumer.go:128-186).

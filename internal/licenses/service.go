@@ -339,7 +339,7 @@ func (s *service) emitLicenseStatusEvent(ctx context.Context, tx *gorm.DB, licen
 		return fmt.Errorf("license is required for outbox event")
 	}
 	trimmedReason := strings.TrimSpace(reason)
-	payload := licenseStatusChangedEvent{
+	payload := LicenseStatusChangedEvent{
 		LicenseID: license.ID,
 		StoreID:   license.StoreID,
 		Status:    status,
@@ -375,11 +375,12 @@ func isDeletableLicenseStatus(status enums.LicenseStatus) bool {
 	return status == enums.LicenseStatusExpired || status == enums.LicenseStatusRejected
 }
 
-type licenseStatusChangedEvent struct {
-	LicenseID uuid.UUID           `json:"licenseId"`
-	StoreID   uuid.UUID           `json:"storeId"`
-	Status    enums.LicenseStatus `json:"status"`
-	Reason    string              `json:"reason,omitempty"`
+type LicenseStatusChangedEvent struct {
+	LicenseID   uuid.UUID           `json:"licenseId"`
+	StoreID     uuid.UUID           `json:"storeId"`
+	Status      enums.LicenseStatus `json:"status"`
+	Reason      string              `json:"reason,omitempty"`
+	WarningType string              `json:"warningType,omitempty"`
 }
 
 func (s *service) reconcileStoreKYC(ctx context.Context, tx *gorm.DB, storeID uuid.UUID) error {
@@ -387,7 +388,7 @@ func (s *service) reconcileStoreKYC(ctx context.Context, tx *gorm.DB, storeID uu
 	if err != nil {
 		return err
 	}
-	newStatus := determineStoreKYCStatus(statuses)
+	newStatus := DetermineStoreKYCStatus(statuses)
 	if newStatus == enums.KYCStatusPendingVerification {
 		return nil
 	}
@@ -402,7 +403,7 @@ func (s *service) reconcileStoreKYC(ctx context.Context, tx *gorm.DB, storeID uu
 	return s.storeRepo.UpdateWithTx(tx, store)
 }
 
-func determineStoreKYCStatus(statuses []enums.LicenseStatus) enums.KYCStatus {
+func DetermineStoreKYCStatus(statuses []enums.LicenseStatus) enums.KYCStatus {
 	hasExpired := false
 	hasRejected := false
 	for _, status := range statuses {

@@ -8,13 +8,17 @@ import (
 
 	"github.com/joho/godotenv"
 
+	"github.com/angelmondragon/packfinderz-backend/internal/licenses"
 	"github.com/angelmondragon/packfinderz-backend/internal/media"
 	"github.com/angelmondragon/packfinderz-backend/internal/media/consumer"
 	"github.com/angelmondragon/packfinderz-backend/internal/notifications"
+	schedulers "github.com/angelmondragon/packfinderz-backend/internal/schedulers/licenses"
+	"github.com/angelmondragon/packfinderz-backend/internal/stores"
 	"github.com/angelmondragon/packfinderz-backend/pkg/config"
 	"github.com/angelmondragon/packfinderz-backend/pkg/db"
 	"github.com/angelmondragon/packfinderz-backend/pkg/logger"
 	"github.com/angelmondragon/packfinderz-backend/pkg/migrate"
+	"github.com/angelmondragon/packfinderz-backend/pkg/outbox"
 	"github.com/angelmondragon/packfinderz-backend/pkg/outbox/idempotency"
 	"github.com/angelmondragon/packfinderz-backend/pkg/pubsub"
 	"github.com/angelmondragon/packfinderz-backend/pkg/redis"
@@ -105,9 +109,25 @@ func main() {
 	}
 
 	notificationRepo := notifications.NewRepository(dbClient.DB())
-	notificationConsumer, err := notifications.NewConsumer(notificationRepo, pubsubClient.DomainSubscription(), idempotencyManager, logg)
+	notificationConsumer, err := notifications.NewConsumer(notificationRepo, pubsubClient.NotificationSubscription(), idempotencyManager, logg)
 	if err != nil {
 		logg.Error(context.Background(), "failed to create notifications consumer", err)
+		os.Exit(1)
+	}
+
+	licenseRepo := licenses.NewRepository(dbClient.DB())
+	storeRepo := stores.NewRepository(dbClient.DB())
+	outboxRepo := outbox.NewRepository(dbClient.DB())
+	outboxSvc := outbox.NewService(outboxRepo, logg)
+	licenseScheduler, err := schedulers.NewService(schedulers.ServiceParams{
+		Logger:    logg,
+		DB:        dbClient,
+		Repo:      licenseRepo,
+		StoreRepo: storeRepo,
+		Outbox:    outboxSvc,
+	})
+	if err != nil {
+		logg.Error(context.Background(), "failed to create license scheduler", err)
 		os.Exit(1)
 	}
 
@@ -119,6 +139,7 @@ func main() {
 		PubSub:               pubsubClient,
 		MediaConsumer:        mediaConsumer,
 		NotificationConsumer: notificationConsumer,
+		LicenseScheduler:     licenseScheduler,
 		GCS:                  gcsClient,
 	})
 	if err != nil {

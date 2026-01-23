@@ -8,6 +8,7 @@ import (
 
 	"github.com/angelmondragon/packfinderz-backend/internal/media/consumer"
 	"github.com/angelmondragon/packfinderz-backend/internal/notifications"
+	schedulers "github.com/angelmondragon/packfinderz-backend/internal/schedulers/licenses"
 	"github.com/angelmondragon/packfinderz-backend/pkg/config"
 	"github.com/angelmondragon/packfinderz-backend/pkg/db"
 	"github.com/angelmondragon/packfinderz-backend/pkg/logger"
@@ -23,6 +24,7 @@ type ServiceParams struct {
 	Redis                *redis.Client
 	PubSub               *pubsub.Client
 	MediaConsumer        *consumer.Consumer
+	LicenseScheduler     *schedulers.Service
 	NotificationConsumer *notifications.Consumer
 	GCS                  *gcs.Client
 }

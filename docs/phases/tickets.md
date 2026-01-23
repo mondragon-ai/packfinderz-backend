@@ -85,7 +85,7 @@
 
 ---
 
-## **Phase 3 — Compliance & Licensing (OMMA Core)** ⚠️ PARTIAL (Core Done)
+## **Phase 3 — Compliance & Licensing (OMMA Core)**  ✅ DONE
 
 **Goal:** Store-level compliance gating via licenses
 
@@ -97,12 +97,12 @@
 
 **Remaining (not yet implemented):**
 
-* [ ] License delete endpoint (status + attachment safety)
-* [ ] Admin approve/reject license endpoint
-* [ ] Mirror license status → store KYC status
-* [ ] Emit license status outbox events
-* [ ] License expiry scheduler (14-day warn, expire)
-* [ ] Compliance notifications (store + admin)
+* [x] License delete endpoint (status + attachment safety)
+* [x] Admin approve/reject license endpoint
+* [x] Mirror license status → store KYC status
+* [x] Emit license status outbox events
+* [x] License expiry scheduler (14-day warn, expire)
+* [x] Compliance notifications (store + admin)
 
 ➡️ **Creation path is correct; enforcement + lifecycle remain.**
 

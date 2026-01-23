@@ -165,14 +165,14 @@ type MediaConfig struct {
 }
 
 type PubSubConfig struct {
-	MediaTopic          string `envconfig:"PACKFINDERZ_PUBSUB_MEDIA_TOPIC" required:"true"`
-	MediaSubscription   string `envconfig:"PACKFINDERZ_PUBSUB_MEDIA_SUBSCRIPTION" required:"true"`
-	OrdersTopic         string `envconfig:"PACKFINDERZ_PUBSUB_ORDERS_TOPIC" required:"true"`
-	OrdersSubscription  string `envconfig:"PACKFINDERZ_PUBSUB_ORDERS_SUBSCRIPTION" required:"true"`
-	BillingTopic        string `envconfig:"PACKFINDERZ_PUBSUB_BILLING_TOPIC" required:"true"`
-	BillingSubscription string `envconfig:"PACKFINDERZ_PUBSUB_BILLING_SUBSCRIPTION" required:"true"`
-	DomainTopic         string `envconfig:"PACKFINDERZ_PUBSUB_DOMAIN_TOPIC" default:"pf-domain-events"`
-	DomainSubscription  string `envconfig:"PACKFINDERZ_PUBSUB_DOMAIN_SUBSCRIPTION" required:"true"`
+	MediaTopic               string `envconfig:"PACKFINDERZ_PUBSUB_MEDIA_TOPIC" required:"true"`
+	MediaSubscription        string `envconfig:"PACKFINDERZ_PUBSUB_MEDIA_SUBSCRIPTION" required:"true"`
+	OrdersTopic              string `envconfig:"PACKFINDERZ_PUBSUB_ORDERS_TOPIC" required:"true"`
+	OrdersSubscription       string `envconfig:"PACKFINDERZ_PUBSUB_ORDERS_SUBSCRIPTION" required:"true"`
+	BillingTopic             string `envconfig:"PACKFINDERZ_PUBSUB_BILLING_TOPIC" required:"true"`
+	BillingSubscription      string `envconfig:"PACKFINDERZ_PUBSUB_BILLING_SUBSCRIPTION" required:"true"`
+	NotificationTopic        string `envconfig:"PACKFINDERZ_PUBSUB_NOTIFICATION_TOPIC" default:"pf-notification-events"`
+	NotificationSubscription string `envconfig:"PACKFINDERZ_PUBSUB_NOTIFICATION_SUBSCRIPTION" required:"true"`
 }
 
 type OutboxConfig struct {

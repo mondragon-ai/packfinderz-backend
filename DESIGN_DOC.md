@@ -106,7 +106,7 @@ Future (ACH):
   * `pending_verification → verified | rejected → expired | suspended`
 * Expiry:
 
-  * daily scheduler queries expiring in 14d + expired today, notifies + flips status (indexed query assumed cheap).
+  * daily scheduler queries expiring in 14d + expired today, notifies + flips status (indexed query assumed cheap, implemented by `internal/schedulers/licenses.Service` so warnings/expirations run in `WithTx` and emit `license_status_changed` events) (`internal/schedulers/licenses/service.go`:1-220).
 * Spoof mitigation (MVP):
 
   * manual approval + name/address match vs OMMA.
@@ -310,7 +310,7 @@ Outbox pattern: YES:
   * `pkg/outbox.DomainEvent` + `PayloadEnvelope` wrap business metadata before the service queues an `OutboxEvent` row (pkg/outbox/service.go:1-98).
   * `cmd/outbox-publisher/service.go` loops over `Repository.FetchUnpublishedForPublish`, publishes via `pubsub.DomainPublisher`, marks `published_at`/attempts, and backs off with jitter when idle/errors so the worker publishes batches safely (cmd/outbox-publisher/service.go:66-235).
   * Consumers use the registry built via `pkg/outbox/registry.DecoderRegistry` so payload parsing stays deterministic and versioned (pkg/outbox/registry.go:1-32).
-* `license_status_changed` events flow through the domain topic so `internal/notifications/consumer` (bootstrapped in `cmd/worker/main` with `pubsub.DomainSubscription()` and `pkg/outbox/idempotency.Manager`) can decode the envelope, check `pf:evt:processed:<consumer>:<event_id>`, and write `NotificationTypeCompliance` rows for pending uploads (admin link) and verified/rejected statuses (store link + rejection reason) while logging the `licenseId/storeId` context for audits (internal/notifications/consumer.go:18-186; pkg/outbox/idempotency/idempotency.go:1-66).
+* `license_status_changed` events flow through the domain topic so `internal/notifications/consumer` (bootstrapped in `cmd/worker/main` with `pubsub.NotificationSubscription()` and `pkg/outbox/idempotency.Manager`) can decode the envelope, check `pf:evt:processed:<consumer>:<event_id>`, and write `NotificationTypeCompliance` rows for pending uploads (admin link) and verified/rejected statuses (store link + rejection reason) while logging the `licenseId/storeId` context for audits (internal/notifications/consumer.go:18-186; pkg/outbox/idempotency/idempotency.go:1-66).
 
 ---
 
@@ -1248,7 +1248,7 @@ sequenceDiagram
 
 * Buyers MUST be verified to checkout.
 * Vendors MUST be licensed + subscribed to appear in search.
-* License expiry is handled by scheduler, not API requests.
+* License expiry is handled by scheduler, not API requests (`internal/schedulers/licenses/service.go`:1-220).
 * `license_status_changed` outbox rows are emitted inside the same transaction that updates the license/store row so downstream consumers see consistent state (internal/licenses/service.go:334-419).
 
 ---
@@ -3751,6 +3751,8 @@ WHERE published_at IS NOT NULL
   * find licenses expiring in 14d (notify)
   * find expired today (flip status, update store kyc mirror)
   * emit outbox events for notifications/analytics
+* Implementation: `internal/schedulers/licenses.Service` (started from `cmd/worker/main`) ticks every 24h, calls `warnExpiring`/`expireLicenses`, and runs each transition inside `db.WithTx` so the emitted `license_status_changed` warning/expiration events and optional KYC mirror updates stay atomic; `reconcileKYC` reuses `DetermineStoreKYCStatus` before writing to `stores` and respects `expiration_date` indexing for efficient scans (`internal/schedulers/licenses/service.go`:1-220; `internal/licenses/service.go:405-416`).
+* Idempotency: `expireLicense` reloads the license inside the same transaction, skips updates if the status is already `expired`, and clears `pf:evt:processed` gating by letting the outbox handle duplicates, so rerunning the job at the same day is safe (`internal/schedulers/licenses/service.go`: lines 183-210).
 
 ### 7.5 Orphaned media GC
 
