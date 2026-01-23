@@ -12,6 +12,7 @@ import (
 	"github.com/angelmondragon/packfinderz-backend/internal/licenses"
 	"github.com/angelmondragon/packfinderz-backend/internal/media"
 	"github.com/angelmondragon/packfinderz-backend/internal/memberships"
+	products "github.com/angelmondragon/packfinderz-backend/internal/products"
 	"github.com/angelmondragon/packfinderz-backend/internal/stores"
 	"github.com/angelmondragon/packfinderz-backend/internal/users"
 	"github.com/angelmondragon/packfinderz-backend/pkg/auth/session"
@@ -126,8 +127,9 @@ func main() {
 		os.Exit(1)
 	}
 
+	mediaRepo := media.NewRepository(dbClient.DB())
 	mediaService, err := media.NewService(
-		media.NewRepository(dbClient.DB()),
+		mediaRepo,
 		membershipsRepo,
 		gcsClient,
 		cfg.GCS.BucketName,
@@ -136,6 +138,13 @@ func main() {
 	)
 	if err != nil {
 		logg.Error(context.Background(), "failed to create media service", err)
+		os.Exit(1)
+	}
+
+	productRepo := products.NewRepository(dbClient.DB())
+	productService, err := products.NewService(productRepo, dbClient, storeRepo, membershipsRepo, mediaRepo)
+	if err != nil {
+		logg.Error(context.Background(), "failed to create product service", err)
 		os.Exit(1)
 	}
 
@@ -189,6 +198,7 @@ func main() {
 			storeService,
 			mediaService,
 			licenseService,
+			productService,
 		),
 	}
 

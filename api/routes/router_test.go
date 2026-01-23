@@ -14,6 +14,7 @@ import (
 	"github.com/angelmondragon/packfinderz-backend/internal/licenses"
 	"github.com/angelmondragon/packfinderz-backend/internal/media"
 	"github.com/angelmondragon/packfinderz-backend/internal/memberships"
+	product "github.com/angelmondragon/packfinderz-backend/internal/products"
 	"github.com/angelmondragon/packfinderz-backend/internal/stores"
 	pkgAuth "github.com/angelmondragon/packfinderz-backend/pkg/auth"
 	"github.com/angelmondragon/packfinderz-backend/pkg/auth/session"
@@ -133,6 +134,13 @@ func (s stubLicensesService) VerifyLicense(ctx context.Context, licenseID uuid.U
 	panic("unimplemented")
 }
 
+type stubProductService struct{}
+
+// CreateProduct implements [product.Service].
+func (s stubProductService) CreateProduct(ctx context.Context, userID uuid.UUID, storeID uuid.UUID, input product.CreateProductInput) (*product.ProductDTO, error) {
+	panic("unimplemented")
+}
+
 func testConfig() *config.Config {
 	return &config.Config{
 		App: config.AppConfig{Env: "test", Port: "0"},
@@ -160,6 +168,7 @@ func newTestRouter(cfg *config.Config) http.Handler {
 		stubStoreService{},
 		stubMediaService{},
 		stubLicensesService{},
+		stubProductService{},
 	)
 }
 

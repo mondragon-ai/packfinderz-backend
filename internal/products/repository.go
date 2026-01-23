@@ -67,6 +67,11 @@ func NewRepository(db *gorm.DB) *Repository {
 	return &Repository{db: db}
 }
 
+// WithTx returns a repository bound to the provided transaction.
+func (r *Repository) WithTx(tx *gorm.DB) *Repository {
+	return &Repository{db: tx}
+}
+
 // CreateProduct inserts a new product row.
 func (r *Repository) CreateProduct(ctx context.Context, product *models.Product) (*models.Product, error) {
 	if err := r.db.WithContext(ctx).Create(product).Error; err != nil {

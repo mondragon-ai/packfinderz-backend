@@ -360,6 +360,10 @@ Requires an Authorization bearer token; revokes the refresh mapping so the sessi
 POST /api/v1/auth/refresh
 ```
 
+### Vendor Products
+
+* `POST /api/v1/vendor/products` – vendor stores create listings inside the authenticated `/api` surface with a valid `Idempotency-Key`. The request body carries the SKU/title/unit/category/feelings/flavors/usage metadata, `inventory` object (with `available_qty` and optional `reserved_qty`), optional `media_ids` array of `media` UUIDs, and optional `volume_discounts` array (`min_qty`, `unit_price_cents`). The handler validates the active store is a vendor, enforces membership roles, writes the product + inventory + discounts + product media rows in one transaction, and returns the canonical product payload (including inventory, discounts, media, and vendor summary) on success.
+
 Accepts a JSON body with `refresh_token` and the outgoing access token in the Authorization header (even if expired). Returns `200` with a rotated refresh token plus a new access token set in both the response body and `X-PF-Token`.
 
 #### Switch Store
