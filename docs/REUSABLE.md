@@ -407,6 +407,11 @@ All enums implement:
 * `Repository.Create` inserts compliance notifications so the worker can persist alerts after consuming events (internal/notifications/repo.go:1-23).
 * `Consumer` subscribes to `license_status_changed` events, honors `pkg/outbox/idempotency.Manager` TTLs, and writes `NotificationTypeCompliance` rows with the right admin/store link plus rejection details when present, keeping the event tied to the originating store (internal/notifications/consumer.go:18-186; cmd/worker/main.go:83-116).
 
+### `internal/products`
+* `Repository` exposes product CRUD plus detail/list reads that preload `Inventory`, `VolumeDiscounts` (descending `min_qty`), and `Media` (ascending `position`) so services get a single `Product` model with the related SKU, pricing, inventory, discounts, and ordered media (internal/products/repo/repository.go:60-208).
+* `UpsertInventory`/`GetInventoryByProductID` respect the 1:1 `inventory_items.product_id PK` row, while `CreateVolumeDiscount`/`ListVolumeDiscounts`/`DeleteVolumeDiscount` keep the `(product_id,min_qty)` uniqueness and descending salary order for tiered pricing lookups (internal/products/repo/repository.go:133-175).
+* `VendorSummary` is built via `vendorSummaryQuery`, joining `stores` to the latest `media_attachments` logo row and returning `StoreID`, `CompanyName`, and nullable `LogoMediaID`/`LogoGCSKey` for service-layer URL signing (internal/products/repo/repository.go:34-208).
+
 ### `internal/schedulers/licenses`
 * Scheduler runs every 24h from `cmd/worker`, warning stores 14 days before a license's `expiration_date` and expiring licenses on their due date (`internal/schedulers/licenses/service.go`:1-220).
 * `warnExpiring`/`expireLicenses` each execute inside `WithTx`, emit `license_status_changed` outbox events (warnings include the `expires on` message plus `warningType=expiry_warning`), and `expireLicense` reloads the license, skips already expired rows, updates the status, emits the event, and reconciles `stores.kyc_status` via `DetermineStoreKYCStatus` (`internal/schedulers/licenses/service.go`:61-210; internal/licenses/service.go:405-416).

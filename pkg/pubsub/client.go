@@ -11,6 +11,7 @@ import (
 	"cloud.google.com/go/pubsub/v2/apiv1/pubsubpb"
 	"github.com/angelmondragon/packfinderz-backend/pkg/config"
 	"github.com/angelmondragon/packfinderz-backend/pkg/logger"
+	"google.golang.org/api/option"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -32,7 +33,14 @@ func NewClient(ctx context.Context, gcp config.GCPConfig, cfg config.PubSubConfi
 		return nil, errProjectIDRequired
 	}
 
-	psClient, err := pubsub.NewClient(ctx, gcp.ProjectID)
+	var opts []option.ClientOption
+	if strings.TrimSpace(gcp.CredentialsJSON) != "" {
+		opts = append(opts, option.WithCredentialsJSON([]byte(gcp.CredentialsJSON)))
+	} else if strings.TrimSpace(gcp.ApplicationCredentials) != "" {
+		opts = append(opts, option.WithCredentialsFile(gcp.ApplicationCredentials))
+	}
+
+	psClient, err := pubsub.NewClient(ctx, gcp.ProjectID, opts...)
 	if err != nil {
 		return nil, fmt.Errorf("creating pubsub client: %w", err)
 	}

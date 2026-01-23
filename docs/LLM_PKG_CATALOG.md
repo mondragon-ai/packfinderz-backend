@@ -11,6 +11,7 @@
 
 ## pkg/db
 - `New(ctx, cfg, logg)` builds a GORM/Postgres client, applies pool settings, and exposes `DB()`, `Ping()`, `Close()`, `Exec()`, `Raw()`, and `WithTx()` helpers for transactional work (pkg/db/client.go:17-136).
+- Domain models: `Product`, `InventoryItem`, `ProductVolumeDiscount`, and `ProductMedia` mirror the new catalog tables with UUID PKs, enum-backed categories/units, feelings/flavors arrays, and GORM relations for inventory/discount/media preloads (pkg/db/models/product.go:9-45; pkg/db/models/inventory_item.go:9-24; pkg/db/models/product_volume_discount.go:9-24; pkg/db/models/product_media.go:11-29).
 
 ## pkg/redis
 - `Client` (`New`, `Set`, `Get`, `SetNX`, `Incr`, `IncrWithTTL`, `FixedWindowAllow`) unifies redis commands, key namespaces (`IdempotencyKey`, `RateLimitKey`, `AccessSessionKey`) and refresh-token helpers for session handling (pkg/redis/client.go:33-233).
@@ -57,6 +58,11 @@
 
 ## internal/users
 - `Repository` provides `Create`, `FindByEmail`, `FindByID`, `UpdateLastLogin`, `UpdateStoreIDs`, and `UpdatePasswordHash`, while `UserDTO` hides credentials (internal/users/repo.go:12-70; internal/users/dto.go:11-78).
+
+## internal/products
+- `repo.Repository` (internal/products/repo/repository.go:60-208) bundles product, inventory, and discount persistence, exposing CRUD operations plus `GetProductDetail`/`ListProductsByStore` that preload `Inventory`, `VolumeDiscounts` (ordered by `min_qty DESC`), and `Media` (ordered by `position ASC`).
+- Vendor summary helper selects `stores` metadata plus the latest `media_attachments` logo row via the lateral query in `vendorSummaryQuery`, returning `VendorSummary{StoreID,CompanyName,LogoMediaID,LogoGCSKey}` for services to sign URLs (internal/products/repo/repository.go:12-208).
+- Inventory/discount repositories reuse the same DB: `UpsertInventory`, `GetInventoryByProductID`, `CreateVolumeDiscount`, `ListVolumeDiscounts`, and `DeleteVolumeDiscount` keep the 1:1 and unique `(product_id,min_qty)` semantics intact (internal/products/repo/repository.go:133-175).
 
 ## internal/media
 - `Service` operations `PresignUpload`, `ListMedia`, `DeleteMedia`, and `GenerateReadURL` validate roles, enforce mime/kind rules, persist `Media` rows, and sign URLs via GCS (internal/media/service.go:39-332; internal/media/list.go:15-139).

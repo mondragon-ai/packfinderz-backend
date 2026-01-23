@@ -34,6 +34,23 @@
 ### media_attachments
 - `id`, `media_id FK`, `owner_type`, `owner_id`, timestamp, unique constraint `(media_id,owner_type,owner_id)` for attachments (pkg/migrate/migrations/20260120003415_create_media.sql:7-24).
 
+### products
+- `id uuid`, `store_id store_id FK`, `sku`, `title`, optional `subtitle/body_html`, `category category`, `feelings feelings[]`, `flavors flavors[]`, `usage usage[]`, `strain`, `classification classification`, `unit unit`, `moq`, `price_cents`, optional `compare_at_price_cents`, `is_active bool`, `is_featured bool`, optional `thc_percent`, optional `cbd_percent`, timestamps (DESIGN_DOC.md:2710-2757; pkg/db/models/product.go:9-45; pkg/enums/product.go:5-148).
+- Arrays for `feelings`, `flavors`, and `usage` use `text[]` columns to capture multi-select metadata; `category` and `unit` are backed by canonical enums (`pkg/enums/product.go`), ensuring product lookups can rely on consistent values.
+- FK: `store_id -> stores(id)` enforces vendor ownership, and GORM relations define `Inventory`, `VolumeDiscounts`, and `Media` preloads for the primary product repo (pkg/db/models/product.go:30-45).
+
+### inventory_items
+- `product_id uuid PRIMARY KEY REFERENCES products(id)` stores the 1:1 inventory row, along with `available_qty`, `reserved_qty`, and `updated_at` (DESIGN_DOC.md:2813-2824; pkg/db/models/inventory_item.go:9-24).
+- The repository ensures `product_id` is the PK so `UpsertInventory`/`GetInventoryByProductID` always target the single row per product.
+
+### product_volume_discounts
+- `id uuid`, `product_id uuid REFERENCES products(id)`, `min_qty`, `unit_price_cents`, `created_at` plus `unique(product_id,min_qty)` and `order by (product_id,min_qty desc)` for tiered pricing lookups (DESIGN_DOC.md:2780-2804; pkg/db/models/product_volume_discount.go:9-24).
+- The discount repo keeps the `(product_id,min_qty)` uniqueness and orders results descending by `min_qty` for efficient greatest-eligible-tier retrieval.
+
+### product_media
+- `id uuid`, `product_id uuid REFERENCES products(id)`, optional `url`, `gcs_key`, `position`, and timestamps; `unique(product_id, position)` plus ordered `position ASC` is required for canonical media presentation to buyers (DESIGN_DOC.md:2831-2852; pkg/db/models/product_media.go:11-29).
+- Repository preloads `Media` ordered by `position` so services can expose `media[0]` as the primary thumbnail and iteratively display the rest.
+
 ### licenses
 - `id`, `store_id`, `user_id`, `status license_status DEFAULT 'pending'`, `media_id`, `gcs_key UNIQUE` added later, `issuing_state`, optional `issue_date`/`expiration_date`, `type license_type`, unique `number`, timestamps, indexes on `(store_id,status)` and `expiration_date` (pkg/migrate/migrations/20260122192426_create_license_table.sql:1-34; pkg/migrate/migrations/20260122193650_add_gcs_key_license.sql:1-7; pkg/db/models/license.go:11-26).
 - Scheduler logic relies on the `expiration_date` index to find licenses expiring in 14 days and those expiring today; it emits `license_status_changed` events for warnings/expirations and flips `stores.kyc_status` when no valid licenses remain (`internal/schedulers/licenses/service.go`:1-220).
