@@ -231,9 +231,9 @@ Re-running the migration is safe because the statements use `CREATE EXTENSION IF
 
 ### Async & Eventing
 
-* API writes business data + `OutboxEvent` in same transaction
-* Worker publishes to Pub/Sub
-* Consumers **must be idempotent**
+* API writes business data + `OutboxEvent` in the same transaction and logs `event_id`, `event_type`, `aggregate_type`, and `aggregate_id` for each emission.
+* Worker publishes to Pub/Sub and consumers use `pkg/eventing/idempotency.Manager` to enforce `pf:evt:processed:<consumer>:<event_id>` keys before executing side effects.
+* Consumers **must be idempotent**; the TTL for idempotency keys is configurable via `PACKFINDERZ_EVENTING_IDEMPOTENCY_TTL` (default `720h`).
 
 ### Ads & Analytics
 
@@ -412,9 +412,14 @@ REDIS_ADDR=localhost:6379
 
 PACKFINDERZ_LOG_LEVEL=info
 PACKFINDERZ_LOG_WARN_STACK=false
+PACKFINDERZ_EVENTING_IDEMPOTENCY_TTL=720h
 ```
 
 > **Rule:** Do not add new env vars without documentation.
+
+### Eventing Idempotency
+
+`PACKFINDERZ_EVENTING_IDEMPOTENCY_TTL` (default `720h`) controls how long the Redis key `pf:evt:processed:<consumer>:<event_id>` stays locked after a consumer first handles an Outbox event. Workers should wire `pkg/eventing/idempotency.Manager` with this TTL so retries do not re-run side effects.
 
 ### Auth Rate Limiting
 

@@ -1,6 +1,7 @@
 package outbox
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"time"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/angelmondragon/packfinderz-backend/pkg/db/models"
 	"github.com/angelmondragon/packfinderz-backend/pkg/enums"
+	"github.com/angelmondragon/packfinderz-backend/pkg/logger"
 )
 
 type DomainEvent struct {
@@ -24,15 +26,19 @@ type DomainEvent struct {
 
 type Service struct {
 	repo *Repository
+	logg *logger.Logger
 }
 
-func NewService(repo *Repository) *Service {
-	return &Service{repo: repo}
+func NewService(repo *Repository, logg *logger.Logger) *Service {
+	return &Service{repo: repo, logg: logg}
 }
 
-func (s *Service) Emit(tx *gorm.DB, event DomainEvent) error {
+func (s *Service) Emit(ctx context.Context, tx *gorm.DB, event DomainEvent) error {
 	if tx == nil {
 		return errors.New("transaction required")
+	}
+	if ctx == nil {
+		ctx = context.Background()
 	}
 	payload, err := json.Marshal(event.Data)
 	if err != nil {
@@ -58,5 +64,18 @@ func (s *Service) Emit(tx *gorm.DB, event DomainEvent) error {
 		AggregateID:   event.AggregateID,
 		Payload:       json.RawMessage(payloadJSON),
 	}
-	return s.repo.Insert(tx, row)
+	if err := s.repo.Insert(tx, row); err != nil {
+		return err
+	}
+	if s.logg != nil {
+		fields := map[string]any{
+			"event_id":       envelope.EventID,
+			"event_type":     event.EventType,
+			"aggregate_id":   event.AggregateID.String(),
+			"aggregate_type": event.AggregateType,
+		}
+		logCtx := s.logg.WithFields(ctx, fields)
+		s.logg.Info(logCtx, "outbox event queued")
+	}
+	return nil
 }

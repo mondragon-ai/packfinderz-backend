@@ -370,6 +370,7 @@ All enums implement:
 * Helpers: `OutboxEventType`/`OutboxAggregateType` in `pkg/enums/outbox.go`.
 * Outbox payload envelope struct and actor ref definitions live under `pkg/outbox/envelope.go`.
 * Repository/service/registry infrastructure lives under `pkg/outbox` (see `repository.go`, `service.go`, `registry.go`).
+* Idempotency manager: `pkg/eventing/idempotency.Manager` wraps Redis `SETNX` with the `pf:evt:processed:<consumer>:<event_id>` key pattern and respects `PACKFINDERZ_EVENTING_IDEMPOTENCY_TTL` (default `720h`) so consumers skip duplicate deliveries before applying side effects.
 
 ---
 
