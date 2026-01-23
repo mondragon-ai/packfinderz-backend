@@ -100,3 +100,21 @@ func (r *Repository) UpdateStatusWithTx(tx *gorm.DB, id uuid.UUID, status enums.
 	}
 	return tx.Model(&models.License{}).Where("id = ?", id).Update("status", status).Error
 }
+
+func (r *Repository) ListStatusesWithTx(tx *gorm.DB, storeID uuid.UUID) ([]enums.LicenseStatus, error) {
+	if tx == nil {
+		return nil, gorm.ErrInvalidTransaction
+	}
+	type statusRow struct {
+		Status enums.LicenseStatus
+	}
+	var rows []statusRow
+	if err := tx.Model(&models.License{}).Select("status").Where("store_id = ?", storeID).Scan(&rows).Error; err != nil {
+		return nil, err
+	}
+	statuses := make([]enums.LicenseStatus, 0, len(rows))
+	for _, row := range rows {
+		statuses = append(statuses, row.Status)
+	}
+	return statuses, nil
+}

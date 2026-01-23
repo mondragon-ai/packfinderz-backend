@@ -1834,6 +1834,7 @@ Headers:
   * **Idempotent:** YES (required)
   * Success: `200`
   * Errors: `401, 403, 404, 409`
+  * Store KYC is recomputed inside the same transaction by scanning every license status for the store (`internal/licenses/service.go:385-425`) so verified licenses immediately flip `stores.kyc_status` to `verified` while rejected/expired aggregations set `rejected`/`expired` before the outbox event fires.
 
 ---
 
