@@ -112,6 +112,9 @@ func NewRouter(
 		r.Use(middleware.Idempotency(redisClient, logg))
 		r.Use(middleware.RateLimit())
 		r.Get("/ping", controllers.AdminPing())
+		r.Route("/v1/licenses", func(r chi.Router) {
+			r.Post("/{licenseId}/verify", controllers.AdminLicenseVerify(licenseService, logg))
+		})
 	})
 
 	r.Route("/api/agent", func(r chi.Router) {

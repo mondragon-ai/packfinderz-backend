@@ -34,17 +34,19 @@ type licensesRepository interface {
 	FindByID(ctx context.Context, id uuid.UUID) (*models.License, error)
 	Delete(ctx context.Context, id uuid.UUID) error
 	CountValidLicenses(ctx context.Context, storeID uuid.UUID) (int64, error)
+	UpdateStatus(ctx context.Context, id uuid.UUID, status enums.LicenseStatus) error
 }
 
 type gcsClient interface {
 	SignedReadURL(bucket, object string, expires time.Duration) (string, error)
 }
 
-// Service exposes license creation, listing, and deletion semantics.
+// Service exposes license creation, listing, verification, and deletion semantics.
 type Service interface {
 	CreateLicense(ctx context.Context, userID, storeID uuid.UUID, input CreateLicenseInput) (*models.License, error)
 	ListLicenses(ctx context.Context, params ListParams) (*ListResult, error)
 	DeleteLicense(ctx context.Context, userID, storeID, licenseID uuid.UUID) error
+	VerifyLicense(ctx context.Context, licenseID uuid.UUID, decision enums.LicenseStatus, reason string) (*models.License, error)
 }
 
 type service struct {
@@ -313,4 +315,33 @@ func isAllowedLicenseMime(mimeType string) bool {
 
 func isDeletableLicenseStatus(status enums.LicenseStatus) bool {
 	return status == enums.LicenseStatusExpired || status == enums.LicenseStatusRejected
+}
+
+func (s *service) VerifyLicense(ctx context.Context, licenseID uuid.UUID, decision enums.LicenseStatus, reason string) (*models.License, error) {
+	if licenseID == uuid.Nil {
+		return nil, pkgerrors.New(pkgerrors.CodeValidation, "license id is required")
+	}
+	if decision != enums.LicenseStatusVerified && decision != enums.LicenseStatusRejected {
+		return nil, pkgerrors.New(pkgerrors.CodeValidation, "invalid decision")
+	}
+
+	license, err := s.repo.FindByID(ctx, licenseID)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, pkgerrors.New(pkgerrors.CodeNotFound, "license not found")
+		}
+		return nil, pkgerrors.Wrap(pkgerrors.CodeDependency, err, "lookup license")
+	}
+
+	if license.Status != enums.LicenseStatusPending {
+		return nil, pkgerrors.New(pkgerrors.CodeConflict, "license already finalized")
+	}
+
+	if err := s.repo.UpdateStatus(ctx, licenseID, decision); err != nil {
+		return nil, pkgerrors.Wrap(pkgerrors.CodeDependency, err, "update license status")
+	}
+
+	license.Status = decision
+	_ = reason // currently unused, accepted for future use
+	return license, nil
 }

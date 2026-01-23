@@ -66,3 +66,7 @@ func (r *Repository) CountValidLicenses(ctx context.Context, storeID uuid.UUID) 
 	}
 	return count, nil
 }
+
+func (r *Repository) UpdateStatus(ctx context.Context, id uuid.UUID, status enums.LicenseStatus) error {
+	return r.db.WithContext(ctx).Model(&models.License{}).Where("id = ?", id).Update("status", status).Error
+}

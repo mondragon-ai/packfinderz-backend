@@ -382,6 +382,7 @@ These endpoints rely on `activeStoreId` and enforce owner/manager access for mut
 * `POST /api/v1/licenses` – upload license metadata (media_id, issuing_state, type, number, optional issue/expiration dates). Requires owner/manager access for the active store and enforces `Idempotency-Key` to avoid duplicate uploads.
 * `GET /api/v1/licenses` – lists the active store’s licenses with cursor pagination. Responses include signed download URLs from GCS.
 * `DELETE /api/v1/licenses/{licenseId}` – removes expired or rejected licenses owned by the active store. Only `manager`/`owner` roles may call this, the row must be `expired`/`rejected`, and the store is downgraded to `pending_verification` if no `verified` licenses remain. Media rows stay untouched when the license is deleted.
+* `POST /api/v1/admin/licenses/{licenseId}/verify` – admin-only endpoint that approves (`verified`) or rejects (`rejected`) a pending license. The request accepts `{decision, reason?}`, enforces `Idempotency-Key`, and returns the updated license row; invalid or already-finalized licenses yield `409`.
 
 ### Media Uploads
 

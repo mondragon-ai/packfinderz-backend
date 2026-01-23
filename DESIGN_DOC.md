@@ -293,6 +293,10 @@ Day-1 async:
 * BigQuery analytics ingestion
 * media processing
 * license expiry checks
+* Media ingestion + Pub/Sub:
+
+  * `internal/media/consumer.Consumer.Run` (worker binary) watches the configured `MediaSubscription`, decodes `OBJECT_FINALIZE` payloads, and marks the matching media row uploaded while nacking on transient DB errors so retries stay safe (internal/media/consumer/consumer.go:30-235).
+  * The worker keeps a simple ticker/heartbeat while honoring context cancellation so media processing doesn't block shutdown (cmd/worker/service.go:66-110).
 
 Outbox pattern: YES:
 
@@ -301,6 +305,11 @@ Outbox pattern: YES:
 * consumers idempotent + retry-safe
 * duplicates are expected; `event_id` is the global key logged by the publisher and shared with consumers for visibility.
 * consumers must call `pkg/eventing/idempotency.Manager.CheckAndMarkProcessed` before running side effects. Redis keys use the `pf:evt:processed:<consumer>:<event_id>` pattern with a TTL controlled by `PACKFINDERZ_EVENTING_IDEMPOTENCY_TTL` (defaults to 720h).
+* Implementation:
+
+  * `pkg/outbox.DomainEvent` + `PayloadEnvelope` wrap business metadata before the service queues an `OutboxEvent` row (pkg/outbox/service.go:1-98).
+  * `cmd/outbox-publisher/service.go` loops over `Repository.FetchUnpublishedForPublish`, publishes via `pubsub.DomainPublisher`, marks `published_at`/attempts, and backs off with jitter when idle/errors so the worker publishes batches safely (cmd/outbox-publisher/service.go:66-235).
+  * Consumers use the registry built via `pkg/outbox/registry.DecoderRegistry` so payload parsing stays deterministic and versioned (pkg/outbox/registry.go:1-32).
 
 ---
 
@@ -355,6 +364,11 @@ Manifest approach (MVP):
 
 * Prefer **generated PDF** (template) stored in bucket and attached to order.
 * Allow **manual upload override** (vendor/admin).
+* Media ingestion pipeline (`internal/media/service`) is the gatekeeper for these uploads:
+
+  * `PresignUpload` validates the uploader’s role/kind/size, persists a `Media` row in `pending`, and returns a signed PUT URL plus `media_id` so the client can upload directly to GCS (internal/media/service.go:94-195).
+  * `ListMedia` applies filter/cursor pagination, attaches signed GET URLs for `uploaded`/`ready` items, and is used by stores/admins to manage licenses/COAs/manifests (internal/media/list.go:15-139).
+  * `DeleteMedia` enforces ownership/status, removes the GCS object via `pkg/storage/gcs.DeleteObject`, and marks the row `deleted` only after the deletion succeeds, keeping storage & metadata consistent (internal/media/service.go:242-284).
 
 ---
 
@@ -363,6 +377,9 @@ Manifest approach (MVP):
 * MVP: Heroku for API + workers + Redis.
 * GCP: Pub/Sub, Storage, BigQuery.
 * Single repo, multiple binaries under `cmd/*`.
+* `cmd/api/main` loads config, maybe runs `pkg/migrate.MaybeRunDev` (`PACKFINDERZ_AUTO_MIGRATE=true` + `dev`), boots Postgres/Redis/GCS/session services, and exposes `api/routes.NewRouter` on `http.Server.ListenAndServe` (cmd/api/main.go:1-134; pkg/migrate/autorun.go:12-34).
+* `cmd/worker/main` mirrors API bootstrapping, waits for readiness (DB/Redis/PubSub/GCS pings), and runs the worker service that drives `internal/media/consumer` via `media.Consumer.Run` while supervising errors/ticker loops (cmd/worker/main.go:1-74; cmd/worker/service.go:20-110).
+* `cmd/outbox-publisher/main` boots config/logging/DB/PubSub, builds `outbox.Repository`, and loops over unpublished `outbox_events`, publishes via `pubsub.DomainPublisher`, marks rows, and backs off with jitter so the async pipeline keeps flowing (cmd/outbox-publisher/main.go:1-72; cmd/outbox-publisher/service.go:66-235).
 * Local: Docker Compose.
 * Environments: dev + prod; staging later.
 * `pkg/redis` boots go-redis with well-scoped prefixes for idempotency, rate limits, counters, and refresh tokens while adding Redis to the `/health/ready` dependency check.
@@ -413,6 +430,9 @@ Manifest approach (MVP):
 * Controllers under `api/controllers` get validated inputs from `api/validators` (e.g., `DecodeJSONBody`, `ParseQueryInt`, `SanitizeString`) before any business logic runs; validation failures surface as `pkg/errors.CodeValidation`.
 * Validation errors (malformed JSON, missing required fields, query params out of bounds) map to the canonical error envelope so clients always receive `400` + `{ "error": { "details": {...} } }`.
 * Each route group enforces its own auth/role requirements and should be covered by tests for 401/403, plus validation tests that assert the 400 envelope contains field-level messages.
+* `middleware.StoreContext` rejects `/api` requests that lack an `activeStoreId` or reference a store the user no longer belongs to before the controller runs (api/middleware/store.go:6-16).
+* `middleware.Idempotency` hashes request bodies, enforces `Idempotency-Key` for guarded routes, stores responses via `redis.IdempotencyStore.SetNX`, and replays them on retries while honoring TTLs defined in `api/middleware/idempotency.go:37-208`.
+* `middleware.RequireRole("admin")` / `RequireRole("agent")` block the `/api/admin` and `/api/agent` groups, letting the shared router mount role-specific handlers safely (api/middleware/roles.go:1-27).
 
 **Auth middleware (updated semantics)**
 
@@ -423,6 +443,43 @@ Manifest approach (MVP):
   * seeds request context (user/store/role fields)
   * emits structured log fields consistently
 
+**Health & public routes**
+
+* `GET /health/live` – unauthenticated liveliness probe, returns `{"status":"live"}` plus `X-PackFinderz-Env` (api/controllers/health.go:16-21).
+* `GET /health/ready` – dependency check that pings Postgres/Redis/GCS and surfaces failures via `pkg/errors.CodeDependency` (api/controllers/health.go:23-70).
+* `GET /api/public/ping` – no auth, replies `{"scope":"public","status":"ok"}` (api/controllers/ping.go:10-24).
+* `POST /api/public/validate` – validates `name`/`email` payload, sanitizes the values, and echoes them back with optional `limit` (api/controllers/validate.go:11-35).
+
+**Auth & session endpoints**
+
+* `POST /api/v1/auth/login` – returns `auth.LoginResponse` plus `X-PF-Token`, letting clients boot authenticated sessions with bearer tokens from `auth.Service.Login` (api/controllers/auth.go:13-36; internal/auth/service.go:24-153).
+* `POST /api/v1/auth/register` – requires `Idempotency-Key`, creates user + store, auto-logins, and returns tokens + `X-PF-Token` (api/controllers/register.go:13-41; internal/auth/register.go:21-133).
+* `POST /api/v1/auth/logout` – revokes the Redis session via `session.Manager.Revoke` and responds `{"status":"logged_out"}` (api/controllers/session.go:47-79).
+* `POST /api/v1/auth/refresh` – rotates the Redis session, issues fresh access/refresh tokens, and mirrors them via `X-PF-Token` for convenience (api/controllers/session.go:81-143).
+* `POST /api/v1/auth/switch-store` – validates membership, rotates sessions, and emits new tokens + `StoreSummary` for the selected store (api/controllers/switch_store.go:18-68).
+
+**Store-scoped APIs**
+
+* `GET /api/ping` – auth + store context, echoes the resolved scope/store_id for quick debugging (api/controllers/ping.go:16-24).
+* `GET /api/v1/stores/me` – returns `stores.StoreDTO` with company info, KYC, ratings, socials, and addresses for the active store (api/controllers/stores.go:21-48).
+* `PUT /api/v1/stores/me` – owner/manager only, accepts storefront updates and returns the refreshed DTO (api/controllers/stores.go:51-124).
+* `GET /api/v1/stores/me/users` – owner/manager only, lists memberships with role/status/last_login (api/controllers/stores.go:126-165).
+* `POST /api/v1/stores/me/users/invite` – owner/manager only, requires `Idempotency-Key`, invites new users, returns membership DTO +/- temporary password (api/controllers/stores.go:221-302).
+* `DELETE /api/v1/stores/me/users/{userId}` – owner/manager only, enforces the last-owner guard, removes memberships, returns `204` (api/controllers/stores.go:168-219).
+* `GET /api/v1/media` – paginated results with signed GET URLs via `internal/media/list.go` for the requested kind/status (api/controllers/media.go:134-198).
+* `POST /api/v1/media/presign` – requires `Idempotency-Key`, validates role/kind/size, saves a pending `Media` row, and issues a signed PUT URL (api/controllers/media.go:20-91; internal/media/service.go:94-195).
+* `DELETE /api/v1/media/{mediaId}` – ownership/status check, deletes the GCS object, and marks the row deleted after success (api/controllers/media.go:94-132; internal/media/service.go:242-284).
+* `POST /api/v1/licenses` – requires `Idempotency-Key`, ties uploads to approved media, enforces issuing state/type/dates, and returns the license record (api/controllers/licenses.go:21-103; internal/licenses/service.go:18-165).
+* `GET /api/v1/licenses` – cursor pagination, signed download URLs, and metadata for staging/production needs (api/controllers/licenses.go:105-144; internal/licenses/list.go:12-59).
+
+**Admin/Agent probes**
+
+* `GET /api/admin/ping` – admin role required, shares store context if present, and is exempt from Idempotency checks even though middleware is mounted (api/routes/router.go:64-81; api/controllers/ping.go:26-43).
+* `GET /api/agent/ping` – agent role required, same context behavior as admin ping (api/routes/router.go:83-101; api/controllers/ping.go:36-43).
+
+**Idempotency guards**
+
+* `Idempotency-Key` is mandatory for `POST /api/v1/auth/register`, `/api/v1/stores/me/users/invite`, `/api/v1/licenses`, and `/api/v1/media/presign`; keys are hashed and stored in Redis so retries replay cached responses (api/middleware/idempotency.go:37-208).
 ---
 
 ## 18) Error Handling (Canonical)

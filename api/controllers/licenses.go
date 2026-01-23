@@ -229,3 +229,53 @@ func licenseResponseFromModel(m *models.License) licenseResponse {
 		UpdatedAt:      m.UpdatedAt,
 	}
 }
+
+type adminLicenseVerifyRequest struct {
+	Decision string `json:"decision" validate:"required"`
+	Reason   string `json:"reason,omitempty"`
+}
+
+func AdminLicenseVerify(svc licenses.Service, logg *logger.Logger) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if svc == nil {
+			responses.WriteError(r.Context(), logg, w, pkgerrors.New(pkgerrors.CodeInternal, "license service unavailable"))
+			return
+		}
+
+		licenseIDParam := strings.TrimSpace(chi.URLParam(r, "licenseId"))
+		if licenseIDParam == "" {
+			responses.WriteError(r.Context(), logg, w, pkgerrors.New(pkgerrors.CodeValidation, "license id is required"))
+			return
+		}
+
+		lid, err := uuid.Parse(licenseIDParam)
+		if err != nil {
+			responses.WriteError(r.Context(), logg, w, pkgerrors.Wrap(pkgerrors.CodeValidation, err, "invalid license id"))
+			return
+		}
+
+		var payload adminLicenseVerifyRequest
+		if err := validators.DecodeJSONBody(r, &payload); err != nil {
+			responses.WriteError(r.Context(), logg, w, err)
+			return
+		}
+
+		status, err := enums.ParseLicenseStatus(strings.TrimSpace(payload.Decision))
+		if err != nil {
+			responses.WriteError(r.Context(), logg, w, pkgerrors.Wrap(pkgerrors.CodeValidation, err, "invalid decision"))
+			return
+		}
+		if status != enums.LicenseStatusVerified && status != enums.LicenseStatusRejected {
+			responses.WriteError(r.Context(), logg, w, pkgerrors.New(pkgerrors.CodeValidation, "decision must be verified or rejected"))
+			return
+		}
+
+		updated, err := svc.VerifyLicense(r.Context(), lid, status, payload.Reason)
+		if err != nil {
+			responses.WriteError(r.Context(), logg, w, err)
+			return
+		}
+
+		responses.WriteSuccess(w, licenseResponseFromModel(updated))
+	}
+}
