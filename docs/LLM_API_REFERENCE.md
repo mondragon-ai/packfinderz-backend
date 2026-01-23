@@ -41,6 +41,7 @@
 
 ## Admin
 - `GET /api/admin/ping` – requires Authorization bearer + role `admin`, share store context if present, no idempotency key required even though idempotency middleware is mounted (api/routes/router.go:64-81; api/controllers/ping.go:26-43).
+- `POST /api/v1/admin/licenses/{licenseId}/verify` – admin-only, path parameter parsed as UUID, body `{"decision":"verified|rejected","reason"?}` drives `licenses.Service.VerifyLicense`, which enforces the license is still pending, writes the new status, emits `license_status_changed`, and returns the updated license DTO; invalid decisions or non-pending licenses are rejected with `4xx` errors (api/controllers/licenses.go:233-279; internal/licenses/service.go:382-419).
 
 ## Agent
 - `GET /api/agent/ping` – requires Authorization + role `agent`, similar to admin ping (api/routes/router.go:83-101; api/controllers/ping.go:36-43).

@@ -19,6 +19,7 @@ import (
 	"github.com/angelmondragon/packfinderz-backend/pkg/db"
 	"github.com/angelmondragon/packfinderz-backend/pkg/logger"
 	"github.com/angelmondragon/packfinderz-backend/pkg/migrate"
+	"github.com/angelmondragon/packfinderz-backend/pkg/outbox"
 	"github.com/angelmondragon/packfinderz-backend/pkg/redis"
 	"github.com/angelmondragon/packfinderz-backend/pkg/storage/gcs"
 )
@@ -138,6 +139,9 @@ func main() {
 		os.Exit(1)
 	}
 
+	outboxRepo := outbox.NewRepository(dbClient.DB())
+	outboxPublisher := outbox.NewService(outboxRepo, logg)
+
 	licenseService, err := licenses.NewService(
 		licenses.NewRepository(dbClient.DB()),
 		media.NewRepository(dbClient.DB()),
@@ -146,6 +150,8 @@ func main() {
 		cfg.GCS.BucketName,
 		cfg.GCS.DownloadURLExpiry,
 		storeRepo,
+		dbClient,
+		outboxPublisher,
 	)
 	if err != nil {
 		logg.Error(context.Background(), "failed to create license service", err)

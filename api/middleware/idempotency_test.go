@@ -45,6 +45,13 @@ func (f *fakeStore) IdempotencyKey(scope, id string) string {
 	return fmt.Sprintf("fake:%s:%s", scope, id)
 }
 
+func (f *fakeStore) Del(_ context.Context, keys ...string) error {
+	for _, key := range keys {
+		delete(f.data, key)
+	}
+	return nil
+}
+
 func requestWithPattern(method, url, pattern string, body io.Reader) *http.Request {
 	req := httptest.NewRequest(method, url, body)
 	rc := chi.NewRouteContext()

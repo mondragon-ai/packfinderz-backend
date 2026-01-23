@@ -10,6 +10,7 @@ import (
 	"github.com/angelmondragon/packfinderz-backend/pkg/db/models"
 	"github.com/angelmondragon/packfinderz-backend/pkg/enums"
 	pkgerrors "github.com/angelmondragon/packfinderz-backend/pkg/errors"
+	"github.com/angelmondragon/packfinderz-backend/pkg/outbox"
 	pkgpagination "github.com/angelmondragon/packfinderz-backend/pkg/pagination"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
@@ -21,6 +22,14 @@ type mediasRepository interface {
 
 type membershipsRepository interface {
 	UserHasRole(ctx context.Context, userID, storeID uuid.UUID, roles ...enums.MemberRole) (bool, error)
+}
+
+type txRunner interface {
+	WithTx(ctx context.Context, fn func(tx *gorm.DB) error) error
+}
+
+type outboxPublisher interface {
+	Emit(ctx context.Context, tx *gorm.DB, event outbox.DomainEvent) error
 }
 
 type storesRepository interface {
@@ -35,6 +44,9 @@ type licensesRepository interface {
 	Delete(ctx context.Context, id uuid.UUID) error
 	CountValidLicenses(ctx context.Context, storeID uuid.UUID) (int64, error)
 	UpdateStatus(ctx context.Context, id uuid.UUID, status enums.LicenseStatus) error
+	CreateWithTx(tx *gorm.DB, license *models.License) (*models.License, error)
+	FindByIDWithTx(tx *gorm.DB, id uuid.UUID) (*models.License, error)
+	UpdateStatusWithTx(tx *gorm.DB, id uuid.UUID, status enums.LicenseStatus) error
 }
 
 type gcsClient interface {
@@ -58,6 +70,8 @@ type service struct {
 	downloadTTL  time.Duration
 	storeRepo    storesRepository
 	allowedRoles []enums.MemberRole
+	tx           txRunner
+	publisher    outboxPublisher
 }
 
 // CreateLicenseInput holds the metadata required to create a license.
@@ -71,7 +85,7 @@ type CreateLicenseInput struct {
 }
 
 // NewService builds a license service backed by the provided repositories and GCS signer.
-func NewService(repo licensesRepository, mediaRepo mediasRepository, memberships membershipsRepository, gcs gcsClient, bucket string, downloadTTL time.Duration, storeRepo storesRepository) (Service, error) {
+func NewService(repo licensesRepository, mediaRepo mediasRepository, memberships membershipsRepository, gcs gcsClient, bucket string, downloadTTL time.Duration, storeRepo storesRepository, tx txRunner, publisher outboxPublisher) (Service, error) {
 	if repo == nil {
 		return nil, fmt.Errorf("license repository required")
 	}
@@ -93,6 +107,12 @@ func NewService(repo licensesRepository, mediaRepo mediasRepository, memberships
 	if storeRepo == nil {
 		return nil, fmt.Errorf("store repository required")
 	}
+	if tx == nil {
+		return nil, fmt.Errorf("transaction runner required")
+	}
+	if publisher == nil {
+		return nil, fmt.Errorf("outbox publisher required")
+	}
 	return &service{
 		repo:        repo,
 		mediaRepo:   mediaRepo,
@@ -101,6 +121,8 @@ func NewService(repo licensesRepository, mediaRepo mediasRepository, memberships
 		bucket:      bucket,
 		downloadTTL: downloadTTL,
 		storeRepo:   storeRepo,
+		tx:          tx,
+		publisher:   publisher,
 		allowedRoles: []enums.MemberRole{
 			enums.MemberRoleOwner,
 			enums.MemberRoleAdmin,
@@ -173,8 +195,19 @@ func (s *service) CreateLicense(ctx context.Context, userID, storeID uuid.UUID, 
 		Number:         strings.TrimSpace(input.Number),
 	}
 
-	created, err := s.repo.Create(ctx, license)
-	if err != nil {
+	var created *models.License
+	if err := s.tx.WithTx(ctx, func(tx *gorm.DB) error {
+		stored, err := s.repo.CreateWithTx(tx, license)
+		if err != nil {
+			return err
+		}
+		created = stored
+		storeRef := storeID
+		return s.emitLicenseStatusEvent(ctx, tx, stored, stored.Status, "", &outbox.ActorRef{
+			UserID:  userID,
+			StoreID: &storeRef,
+		})
+	}); err != nil {
 		return nil, pkgerrors.Wrap(pkgerrors.CodeDependency, err, "create license")
 	}
 	return created, nil
@@ -298,6 +331,28 @@ func (s *service) buildSignedURL(key string) (string, error) {
 	return url, nil
 }
 
+func (s *service) emitLicenseStatusEvent(ctx context.Context, tx *gorm.DB, license *models.License, status enums.LicenseStatus, reason string, actor *outbox.ActorRef) error {
+	if license == nil {
+		return fmt.Errorf("license is required for outbox event")
+	}
+	trimmedReason := strings.TrimSpace(reason)
+	payload := licenseStatusChangedEvent{
+		LicenseID: license.ID,
+		StoreID:   license.StoreID,
+		Status:    status,
+		Reason:    trimmedReason,
+	}
+	event := outbox.DomainEvent{
+		EventType:     enums.EventLicenseStatusChanged,
+		AggregateType: enums.AggregateLicense,
+		AggregateID:   license.ID,
+		Actor:         actor,
+		Data:          payload,
+		Version:       1,
+	}
+	return s.publisher.Emit(ctx, tx, event)
+}
+
 func isLicenseMediaStatus(status enums.MediaStatus) bool {
 	return status == enums.MediaStatusUploaded || status == enums.MediaStatusReady
 }
@@ -317,6 +372,13 @@ func isDeletableLicenseStatus(status enums.LicenseStatus) bool {
 	return status == enums.LicenseStatusExpired || status == enums.LicenseStatusRejected
 }
 
+type licenseStatusChangedEvent struct {
+	LicenseID uuid.UUID           `json:"licenseId"`
+	StoreID   uuid.UUID           `json:"storeId"`
+	Status    enums.LicenseStatus `json:"status"`
+	Reason    string              `json:"reason,omitempty"`
+}
+
 func (s *service) VerifyLicense(ctx context.Context, licenseID uuid.UUID, decision enums.LicenseStatus, reason string) (*models.License, error) {
 	if licenseID == uuid.Nil {
 		return nil, pkgerrors.New(pkgerrors.CodeValidation, "license id is required")
@@ -325,23 +387,33 @@ func (s *service) VerifyLicense(ctx context.Context, licenseID uuid.UUID, decisi
 		return nil, pkgerrors.New(pkgerrors.CodeValidation, "invalid decision")
 	}
 
-	license, err := s.repo.FindByID(ctx, licenseID)
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, pkgerrors.New(pkgerrors.CodeNotFound, "license not found")
+	var updated *models.License
+	err := s.tx.WithTx(ctx, func(tx *gorm.DB) error {
+		license, err := s.repo.FindByIDWithTx(tx, licenseID)
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return pkgerrors.New(pkgerrors.CodeNotFound, "license not found")
+			}
+			return err
 		}
-		return nil, pkgerrors.Wrap(pkgerrors.CodeDependency, err, "lookup license")
-	}
 
-	if license.Status != enums.LicenseStatusPending {
-		return nil, pkgerrors.New(pkgerrors.CodeConflict, "license already finalized")
-	}
+		if license.Status != enums.LicenseStatusPending {
+			return pkgerrors.New(pkgerrors.CodeConflict, "license already finalized")
+		}
 
-	if err := s.repo.UpdateStatus(ctx, licenseID, decision); err != nil {
+		if err := s.repo.UpdateStatusWithTx(tx, licenseID, decision); err != nil {
+			return err
+		}
+		license.Status = decision
+		updated = license
+		return s.emitLicenseStatusEvent(ctx, tx, license, decision, reason, nil)
+	})
+	if err != nil {
+		if pkgErr := pkgerrors.As(err); pkgErr != nil {
+			return nil, pkgErr
+		}
 		return nil, pkgerrors.Wrap(pkgerrors.CodeDependency, err, "update license status")
 	}
 
-	license.Status = decision
-	_ = reason // currently unused, accepted for future use
-	return license, nil
+	return updated, nil
 }

@@ -200,6 +200,17 @@ flowchart TD
 
 This guarantees **at-most-once side effects per consumer**, even with at-least-once delivery.
 
+## License status changes & compliance notifications
+
+Whenever a license is uploaded, approved, or rejected the domain service queues a `license_status_changed` outbox event whose payload contains `licenseId`, `storeId`, `status`, and an optional `reason`.
+
+The publisher flows these envelopes through `PACKFINDERZ_PUBSUB_DOMAIN_TOPIC`, and the worker listens via `PACKFINDERZ_PUBSUB_DOMAIN_SUBSCRIPTION`. The compliance consumer invokes `pkg/outbox/idempotency.Manager.CheckAndMarkProcessed` with `PACKFINDERZ_EVENTING_IDEMPOTENCY_TTL`, then persists notifications:
+
+* **Admin notice** – `status=pending` writes a `notifications` record (type `compliance`) so admins know a review ticket is waiting.
+* **Store notice** – `status=verified` or `status=rejected` publishes the decision back to the originating store, linking the license and sharing any reason.
+
+Failures remove the idempotency key (`Manager.Delete`) so Pub/Sub redelivers once the dependency recovers. Success simply ACKs the message and lets `notifications` remain the audit trail.
+
 ---
 
 ## Retries & success signals

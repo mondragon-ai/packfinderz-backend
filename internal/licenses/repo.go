@@ -7,6 +7,7 @@ import (
 	"github.com/angelmondragon/packfinderz-backend/pkg/enums"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // Repository exposes license persistence operations.
@@ -69,4 +70,33 @@ func (r *Repository) CountValidLicenses(ctx context.Context, storeID uuid.UUID) 
 
 func (r *Repository) UpdateStatus(ctx context.Context, id uuid.UUID, status enums.LicenseStatus) error {
 	return r.db.WithContext(ctx).Model(&models.License{}).Where("id = ?", id).Update("status", status).Error
+}
+
+func (r *Repository) CreateWithTx(tx *gorm.DB, license *models.License) (*models.License, error) {
+	if tx == nil {
+		return nil, gorm.ErrInvalidTransaction
+	}
+	if err := tx.Create(license).Error; err != nil {
+		return nil, err
+	}
+	return license, nil
+}
+
+func (r *Repository) FindByIDWithTx(tx *gorm.DB, id uuid.UUID) (*models.License, error) {
+	if tx == nil {
+		return nil, gorm.ErrInvalidTransaction
+	}
+	var row models.License
+	if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+		First(&row, "id = ?", id).Error; err != nil {
+		return nil, err
+	}
+	return &row, nil
+}
+
+func (r *Repository) UpdateStatusWithTx(tx *gorm.DB, id uuid.UUID, status enums.LicenseStatus) error {
+	if tx == nil {
+		return gorm.ErrInvalidTransaction
+	}
+	return tx.Model(&models.License{}).Where("id = ?", id).Update("status", status).Error
 }

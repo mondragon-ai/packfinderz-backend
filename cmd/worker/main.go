@@ -10,10 +10,12 @@ import (
 
 	"github.com/angelmondragon/packfinderz-backend/internal/media"
 	"github.com/angelmondragon/packfinderz-backend/internal/media/consumer"
+	"github.com/angelmondragon/packfinderz-backend/internal/notifications"
 	"github.com/angelmondragon/packfinderz-backend/pkg/config"
 	"github.com/angelmondragon/packfinderz-backend/pkg/db"
 	"github.com/angelmondragon/packfinderz-backend/pkg/logger"
 	"github.com/angelmondragon/packfinderz-backend/pkg/migrate"
+	"github.com/angelmondragon/packfinderz-backend/pkg/outbox/idempotency"
 	"github.com/angelmondragon/packfinderz-backend/pkg/pubsub"
 	"github.com/angelmondragon/packfinderz-backend/pkg/redis"
 	"github.com/angelmondragon/packfinderz-backend/pkg/storage/gcs"
@@ -96,14 +98,28 @@ func main() {
 		os.Exit(1)
 	}
 
+	idempotencyManager, err := idempotency.NewManager(redisClient, cfg.Eventing.OutboxIdempotencyTTL)
+	if err != nil {
+		logg.Error(context.Background(), "failed to bootstrap idempotency manager", err)
+		os.Exit(1)
+	}
+
+	notificationRepo := notifications.NewRepository(dbClient.DB())
+	notificationConsumer, err := notifications.NewConsumer(notificationRepo, pubsubClient.DomainSubscription(), idempotencyManager, logg)
+	if err != nil {
+		logg.Error(context.Background(), "failed to create notifications consumer", err)
+		os.Exit(1)
+	}
+
 	service, err := NewService(ServiceParams{
-		Config:        cfg,
-		Logger:        logg,
-		DB:            dbClient,
-		Redis:         redisClient,
-		PubSub:        pubsubClient,
-		MediaConsumer: mediaConsumer,
-		GCS:           gcsClient,
+		Config:               cfg,
+		Logger:               logg,
+		DB:                   dbClient,
+		Redis:                redisClient,
+		PubSub:               pubsubClient,
+		MediaConsumer:        mediaConsumer,
+		NotificationConsumer: notificationConsumer,
+		GCS:                  gcsClient,
 	})
 	if err != nil {
 		logg.Error(context.Background(), "failed to create worker service", err)

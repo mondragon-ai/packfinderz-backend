@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/angelmondragon/packfinderz-backend/internal/media/consumer"
+	"github.com/angelmondragon/packfinderz-backend/internal/notifications"
 	"github.com/angelmondragon/packfinderz-backend/pkg/config"
 	"github.com/angelmondragon/packfinderz-backend/pkg/db"
 	"github.com/angelmondragon/packfinderz-backend/pkg/logger"
@@ -16,23 +17,25 @@ import (
 )
 
 type ServiceParams struct {
-	Config        *config.Config
-	Logger        *logger.Logger
-	DB            *db.Client
-	Redis         *redis.Client
-	PubSub        *pubsub.Client
-	MediaConsumer *consumer.Consumer
-	GCS           *gcs.Client
+	Config               *config.Config
+	Logger               *logger.Logger
+	DB                   *db.Client
+	Redis                *redis.Client
+	PubSub               *pubsub.Client
+	MediaConsumer        *consumer.Consumer
+	NotificationConsumer *notifications.Consumer
+	GCS                  *gcs.Client
 }
 
 type Service struct {
-	cfg      *config.Config
-	logg     *logger.Logger
-	db       *db.Client
-	redis    *redis.Client
-	pubsub   *pubsub.Client
-	consumer *consumer.Consumer
-	gcs      *gcs.Client
+	cfg                  *config.Config
+	logg                 *logger.Logger
+	db                   *db.Client
+	redis                *redis.Client
+	pubsub               *pubsub.Client
+	consumer             *consumer.Consumer
+	notificationConsumer *notifications.Consumer
+	gcs                  *gcs.Client
 }
 
 func NewService(params ServiceParams) (*Service, error) {
@@ -54,18 +57,22 @@ func NewService(params ServiceParams) (*Service, error) {
 	if params.MediaConsumer == nil {
 		return nil, errors.New("media consumer is required")
 	}
+	if params.NotificationConsumer == nil {
+		return nil, errors.New("notification consumer is required")
+	}
 	if params.GCS == nil {
 		return nil, errors.New("gcs client is required")
 	}
 
 	return &Service{
-		cfg:      params.Config,
-		logg:     params.Logger,
-		db:       params.DB,
-		redis:    params.Redis,
-		pubsub:   params.PubSub,
-		consumer: params.MediaConsumer,
-		gcs:      params.GCS,
+		cfg:                  params.Config,
+		logg:                 params.Logger,
+		db:                   params.DB,
+		redis:                params.Redis,
+		pubsub:               params.PubSub,
+		consumer:             params.MediaConsumer,
+		notificationConsumer: params.NotificationConsumer,
+		gcs:                  params.GCS,
 	}, nil
 }
 
@@ -106,9 +113,12 @@ func (s *Service) Run(ctx context.Context) error {
 
 	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
-	errCh := make(chan error, 1)
+	errCh := make(chan error, 2)
 	go func() {
 		errCh <- s.consumer.Run(ctx)
+	}()
+	go func() {
+		errCh <- s.notificationConsumer.Run(ctx)
 	}()
 
 	for {
@@ -118,7 +128,7 @@ func (s *Service) Run(ctx context.Context) error {
 			return ctx.Err()
 		case err := <-errCh:
 			if err != nil && !errors.Is(err, context.Canceled) {
-				s.logg.Error(ctx, "media consumer stopped unexpectedly", err)
+				s.logg.Error(ctx, "consumer stopped unexpectedly", err)
 				return err
 			}
 			return err

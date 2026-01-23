@@ -310,6 +310,7 @@ Outbox pattern: YES:
   * `pkg/outbox.DomainEvent` + `PayloadEnvelope` wrap business metadata before the service queues an `OutboxEvent` row (pkg/outbox/service.go:1-98).
   * `cmd/outbox-publisher/service.go` loops over `Repository.FetchUnpublishedForPublish`, publishes via `pubsub.DomainPublisher`, marks `published_at`/attempts, and backs off with jitter when idle/errors so the worker publishes batches safely (cmd/outbox-publisher/service.go:66-235).
   * Consumers use the registry built via `pkg/outbox/registry.DecoderRegistry` so payload parsing stays deterministic and versioned (pkg/outbox/registry.go:1-32).
+* `license_status_changed` events flow through the domain topic so `internal/notifications/consumer` (bootstrapped in `cmd/worker/main` with `pubsub.DomainSubscription()` and `pkg/outbox/idempotency.Manager`) can decode the envelope, check `pf:evt:processed:<consumer>:<event_id>`, and write `NotificationTypeCompliance` rows for pending uploads (admin link) and verified/rejected statuses (store link + rejection reason) while logging the `licenseId/storeId` context for audits (internal/notifications/consumer.go:18-186; pkg/outbox/idempotency/idempotency.go:1-66).
 
 ---
 
@@ -1248,6 +1249,7 @@ sequenceDiagram
 * Buyers MUST be verified to checkout.
 * Vendors MUST be licensed + subscribed to appear in search.
 * License expiry is handled by scheduler, not API requests.
+* `license_status_changed` outbox rows are emitted inside the same transaction that updates the license/store row so downstream consumers see consistent state (internal/licenses/service.go:334-419).
 
 ---
 
@@ -3412,6 +3414,8 @@ Indexes
 FKs
 
 * `store_id -> stores(id) on delete cascade`
+
+Compliance workflows append to this table whenever the `license_status_changed` outbox event fires; the compliance consumer (from the domain subscription) writes `NotificationType=compliance` rows for admins or stores, attaches the relevant `/admin/licenses/{licenseId}` or `/stores/{storeId}/licenses/{licenseId}` link, and surfaces rejection reasons so the event stays tied to the originating store for auditability (internal/notifications/consumer.go:128-186).
 
 ---
 

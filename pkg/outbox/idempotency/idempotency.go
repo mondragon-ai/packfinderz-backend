@@ -35,17 +35,32 @@ func NewManager(store redis.IdempotencyStore, ttl time.Duration) (*Manager, erro
 // CheckAndMarkProcessed returns true if the event has already been processed and
 // otherwise marks it as processed with the configured TTL.
 func (m *Manager) CheckAndMarkProcessed(ctx context.Context, consumer string, eventID uuid.UUID) (bool, error) {
-	if consumer == "" {
-		return false, errors.New("consumer name is required")
+	key, err := m.processedKey(consumer, eventID)
+	if err != nil {
+		return false, err
 	}
-	if eventID == uuid.Nil {
-		return false, errors.New("event id is required")
-	}
-	scope := fmt.Sprintf("evt:processed:%s", consumer)
-	key := m.store.IdempotencyKey(scope, eventID.String())
 	set, err := m.store.SetNX(ctx, key, "1", m.ttl)
 	if err != nil {
 		return false, err
 	}
 	return !set, nil
+}
+
+func (m *Manager) Delete(ctx context.Context, consumer string, eventID uuid.UUID) error {
+	key, err := m.processedKey(consumer, eventID)
+	if err != nil {
+		return err
+	}
+	return m.store.Del(ctx, key)
+}
+
+func (m *Manager) processedKey(consumer string, eventID uuid.UUID) (string, error) {
+	if consumer == "" {
+		return "", errors.New("consumer name is required")
+	}
+	if eventID == uuid.Nil {
+		return "", errors.New("event id is required")
+	}
+	scope := fmt.Sprintf("evt:processed:%s", consumer)
+	return m.store.IdempotencyKey(scope, eventID.String()), nil
 }

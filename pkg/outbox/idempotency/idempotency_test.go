@@ -14,6 +14,7 @@ type fakeStore struct {
 	setNXError  error
 	lastKey     string
 	lastTTL     time.Duration
+	lastDeleted string
 }
 
 func (f *fakeStore) Get(context.Context, string) (string, error) {
@@ -28,6 +29,13 @@ func (f *fakeStore) SetNX(ctx context.Context, key string, value any, ttl time.D
 
 func (f *fakeStore) IdempotencyKey(scope, id string) string {
 	return "pf:idempotency:" + scope + ":" + id
+}
+
+func (f *fakeStore) Del(_ context.Context, keys ...string) error {
+	if len(keys) > 0 {
+		f.lastDeleted = keys[0]
+	}
+	return nil
 }
 
 func TestCheckAndMarkProcessed_FirstTime(t *testing.T) {
@@ -82,5 +90,21 @@ func TestCheckAndMarkProcessed_Error(t *testing.T) {
 	_, err = manager.CheckAndMarkProcessed(context.Background(), "orders-worker", uuid.New())
 	if err == nil {
 		t.Fatal("expected error")
+	}
+}
+func TestDeleteProcessed(t *testing.T) {
+	store := &fakeStore{}
+	manager, err := NewManager(store, 1*time.Hour)
+	if err != nil {
+		t.Fatalf("NewManager: %v", err)
+	}
+
+	eventID := uuid.New()
+	if err := manager.Delete(context.Background(), "orders-worker", eventID); err != nil {
+		t.Fatalf("Delete: %v", err)
+	}
+	expected := "pf:idempotency:evt:processed:orders-worker:" + eventID.String()
+	if store.lastDeleted != expected {
+		t.Fatalf("unexpected deleted key %q", store.lastDeleted)
 	}
 }

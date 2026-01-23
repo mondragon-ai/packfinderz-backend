@@ -8,6 +8,7 @@ import (
 	"github.com/angelmondragon/packfinderz-backend/pkg/db/models"
 	"github.com/angelmondragon/packfinderz-backend/pkg/enums"
 	pkgerrors "github.com/angelmondragon/packfinderz-backend/pkg/errors"
+	"github.com/angelmondragon/packfinderz-backend/pkg/outbox"
 	"github.com/angelmondragon/packfinderz-backend/pkg/pagination"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
@@ -73,6 +74,37 @@ func (s *stubLicenseRepo) UpdateStatus(ctx context.Context, id uuid.UUID, status
 		return s.updateErr
 	}
 	s.updateStatus = status
+	return nil
+}
+
+func (s *stubLicenseRepo) CreateWithTx(_ *gorm.DB, license *models.License) (*models.License, error) {
+	return s.Create(context.Background(), license)
+}
+
+func (s *stubLicenseRepo) FindByIDWithTx(_ *gorm.DB, id uuid.UUID) (*models.License, error) {
+	return s.FindByID(context.Background(), id)
+}
+
+func (s *stubLicenseRepo) UpdateStatusWithTx(_ *gorm.DB, id uuid.UUID, status enums.LicenseStatus) error {
+	return s.UpdateStatus(context.Background(), id, status)
+}
+
+type stubTxRunner struct{}
+
+func (stubTxRunner) WithTx(ctx context.Context, fn func(tx *gorm.DB) error) error {
+	return fn(nil)
+}
+
+type stubOutboxPublisher struct {
+	events []outbox.DomainEvent
+	err    error
+}
+
+func (s *stubOutboxPublisher) Emit(ctx context.Context, tx *gorm.DB, event outbox.DomainEvent) error {
+	if s.err != nil {
+		return s.err
+	}
+	s.events = append(s.events, event)
 	return nil
 }
 
@@ -151,7 +183,7 @@ func (s *stubGCS) SignedReadURL(bucket, object string, expires time.Duration) (s
 	return "https://download.example", nil
 }
 
-func newServiceForTests(media *models.Media, members *stubMemberships, repo *stubLicenseRepo, storeRepo *stubStoreRepo) (Service, *stubLicenseRepo, *stubGCS, *stubStoreRepo) {
+func newServiceForTests(media *models.Media, members *stubMemberships, repo *stubLicenseRepo, storeRepo *stubStoreRepo) (Service, *stubLicenseRepo, *stubGCS, *stubStoreRepo, *stubOutboxPublisher) {
 	if repo == nil {
 		repo = &stubLicenseRepo{}
 	}
@@ -171,11 +203,12 @@ func newServiceForTests(media *models.Media, members *stubMemberships, repo *stu
 			},
 		}
 	}
-	svc, err := NewService(repo, mediaRepo, members, gcsStub, "bucket", time.Minute, storeRepo)
+	pub := &stubOutboxPublisher{}
+	svc, err := NewService(repo, mediaRepo, members, gcsStub, "bucket", time.Minute, storeRepo, &stubTxRunner{}, pub)
 	if err != nil {
 		panic(err)
 	}
-	return svc, repo, gcsStub, storeRepo
+	return svc, repo, gcsStub, storeRepo, pub
 }
 
 func TestCreateLicenseSuccess(t *testing.T) {
@@ -193,7 +226,7 @@ func TestCreateLicenseSuccess(t *testing.T) {
 	}
 
 	members := &stubMemberships{ok: true}
-	svc, repo, _, _ := newServiceForTests(mediaRow, members, nil, nil)
+	svc, repo, _, _, pub := newServiceForTests(mediaRow, members, nil, nil)
 
 	input := CreateLicenseInput{
 		MediaID:      mediaRow.ID,
@@ -215,12 +248,29 @@ func TestCreateLicenseSuccess(t *testing.T) {
 	if repo.created == nil {
 		t.Fatalf("expected license created")
 	}
+	if len(pub.events) != 1 {
+		t.Fatalf("expected 1 outbox event, got %d", len(pub.events))
+	}
+	event := pub.events[0]
+	if event.EventType != enums.EventLicenseStatusChanged {
+		t.Fatalf("unexpected event type %s", event.EventType)
+	}
+	payload, ok := event.Data.(licenseStatusChangedEvent)
+	if !ok {
+		t.Fatalf("expected license status payload, got %T", event.Data)
+	}
+	if payload.LicenseID != license.ID {
+		t.Fatalf("expected payload license id %s, got %s", license.ID, payload.LicenseID)
+	}
+	if payload.Status != enums.LicenseStatusPending {
+		t.Fatalf("expected payload status pending, got %s", payload.Status)
+	}
 }
 
 func TestCreateLicenseRequiresMembership(t *testing.T) {
 	storeID := uuid.New()
 	members := &stubMemberships{ok: false}
-	svc, _, _, _ := newServiceForTests(&models.Media{StoreID: storeID, Status: enums.MediaStatusUploaded, Kind: enums.MediaKindLicenseDoc, MimeType: "application/pdf"}, members, nil, nil)
+	svc, _, _, _, _ := newServiceForTests(&models.Media{StoreID: storeID, Status: enums.MediaStatusUploaded, Kind: enums.MediaKindLicenseDoc, MimeType: "application/pdf"}, members, nil, nil)
 
 	if _, err := svc.CreateLicense(context.Background(), uuid.New(), storeID, CreateLicenseInput{
 		MediaID:      uuid.New(),
@@ -241,7 +291,8 @@ func TestCreateLicenseMediaNotFound(t *testing.T) {
 	repo := &stubLicenseRepo{}
 	gcs := &stubGCS{}
 	storeRepo := &stubStoreRepo{store: &models.Store{ID: storeID, KYCStatus: enums.KYCStatusVerified}}
-	svc, err := NewService(repo, mediaRepo, &stubMemberships{ok: true}, gcs, "bucket", time.Minute, storeRepo)
+	pub := &stubOutboxPublisher{}
+	svc, err := NewService(repo, mediaRepo, &stubMemberships{ok: true}, gcs, "bucket", time.Minute, storeRepo, &stubTxRunner{}, pub)
 	if err != nil {
 		t.Fatalf("NewService failed: %v", err)
 	}
@@ -268,7 +319,7 @@ func TestCreateLicenseMediaStoreMismatch(t *testing.T) {
 		Kind:     enums.MediaKindLicenseDoc,
 		MimeType: "application/pdf",
 	}
-	svc, _, _, _ := newServiceForTests(mediaRow, &stubMemberships{ok: true}, nil, nil)
+	svc, _, _, _, _ := newServiceForTests(mediaRow, &stubMemberships{ok: true}, nil, nil)
 
 	if _, err := svc.CreateLicense(context.Background(), userID, storeID, CreateLicenseInput{
 		MediaID:      mediaRow.ID,
@@ -292,7 +343,7 @@ func TestCreateLicenseInvalidStatus(t *testing.T) {
 		Kind:     enums.MediaKindLicenseDoc,
 		MimeType: "application/pdf",
 	}
-	svc, _, _, _ := newServiceForTests(mediaRow, &stubMemberships{ok: true}, nil, nil)
+	svc, _, _, _, _ := newServiceForTests(mediaRow, &stubMemberships{ok: true}, nil, nil)
 
 	if _, err := svc.CreateLicense(context.Background(), userID, storeID, CreateLicenseInput{
 		MediaID:      mediaRow.ID,
@@ -316,7 +367,7 @@ func TestCreateLicenseInvalidMime(t *testing.T) {
 		Kind:     enums.MediaKindLicenseDoc,
 		MimeType: "application/octet-stream",
 	}
-	svc, _, _, _ := newServiceForTests(mediaRow, &stubMemberships{ok: true}, nil, nil)
+	svc, _, _, _, _ := newServiceForTests(mediaRow, &stubMemberships{ok: true}, nil, nil)
 
 	if _, err := svc.CreateLicense(context.Background(), userID, storeID, CreateLicenseInput{
 		MediaID:      mediaRow.ID,
@@ -340,7 +391,7 @@ func TestCreateLicenseInvalidKind(t *testing.T) {
 		Kind:     enums.MediaKindProduct,
 		MimeType: "image/png",
 	}
-	svc, _, _, _ := newServiceForTests(mediaRow, &stubMemberships{ok: true}, nil, nil)
+	svc, _, _, _, _ := newServiceForTests(mediaRow, &stubMemberships{ok: true}, nil, nil)
 
 	if _, err := svc.CreateLicense(context.Background(), userID, storeID, CreateLicenseInput{
 		MediaID:      mediaRow.ID,
@@ -365,7 +416,7 @@ func TestCreateLicenseChecksAllMemberRoles(t *testing.T) {
 		MimeType: "application/pdf",
 	}
 	members := &stubMemberships{ok: false}
-	svc, _, _, _ := newServiceForTests(mediaRow, members, nil, nil)
+	svc, _, _, _, _ := newServiceForTests(mediaRow, members, nil, nil)
 
 	if _, err := svc.CreateLicense(context.Background(), userID, storeID, CreateLicenseInput{
 		MediaID:      mediaRow.ID,
@@ -402,7 +453,7 @@ func TestDeleteLicenseStatusRestriction(t *testing.T) {
 	}
 	repo := &stubLicenseRepo{findResult: license}
 	storeRepo := &stubStoreRepo{store: &models.Store{ID: storeID, KYCStatus: enums.KYCStatusVerified}}
-	svc, _, _, _ := newServiceForTests(nil, &stubMemberships{ok: true}, repo, storeRepo)
+	svc, _, _, _, _ := newServiceForTests(nil, &stubMemberships{ok: true}, repo, storeRepo)
 
 	if err := svc.DeleteLicense(context.Background(), uuid.New(), storeID, license.ID); err == nil {
 		t.Fatal("expected conflict error")
@@ -423,7 +474,7 @@ func TestDeleteLicenseDowngradesStoreWhenNoValidLicenses(t *testing.T) {
 		validCount: 0,
 	}
 	storeRepo := &stubStoreRepo{store: &models.Store{ID: storeID, KYCStatus: enums.KYCStatusVerified}}
-	svc, _, _, _ := newServiceForTests(nil, &stubMemberships{ok: true}, repo, storeRepo)
+	svc, _, _, _, _ := newServiceForTests(nil, &stubMemberships{ok: true}, repo, storeRepo)
 
 	if err := svc.DeleteLicense(context.Background(), uuid.New(), storeID, license.ID); err != nil {
 		t.Fatalf("DeleteLicense returned error: %v", err)
@@ -448,7 +499,7 @@ func TestDeleteLicenseKeepsStoreWhenValidLicenseExists(t *testing.T) {
 		validCount: 2,
 	}
 	storeRepo := &stubStoreRepo{store: &models.Store{ID: storeID, KYCStatus: enums.KYCStatusVerified}}
-	svc, _, _, _ := newServiceForTests(nil, &stubMemberships{ok: true}, repo, storeRepo)
+	svc, _, _, _, _ := newServiceForTests(nil, &stubMemberships{ok: true}, repo, storeRepo)
 
 	if err := svc.DeleteLicense(context.Background(), uuid.New(), storeID, license.ID); err != nil {
 		t.Fatalf("DeleteLicense returned error: %v", err)
@@ -466,7 +517,7 @@ func TestVerifyLicenseSuccess(t *testing.T) {
 	repo := &stubLicenseRepo{
 		findResult: license,
 	}
-	svc, _, _, _ := newServiceForTests(nil, nil, repo, nil)
+	svc, _, _, _, pub := newServiceForTests(nil, nil, repo, nil)
 
 	updated, err := svc.VerifyLicense(context.Background(), license.ID, enums.LicenseStatusVerified, "approved")
 	if err != nil {
@@ -478,6 +529,24 @@ func TestVerifyLicenseSuccess(t *testing.T) {
 	if repo.updateStatus != enums.LicenseStatusVerified {
 		t.Fatalf("expected repo update to verified, got %s", repo.updateStatus)
 	}
+	if len(pub.events) != 1 {
+		t.Fatalf("expected 1 outbox event, got %d", len(pub.events))
+	}
+	if event := pub.events[0]; event.EventType != enums.EventLicenseStatusChanged {
+		t.Fatalf("unexpected event type %s", event.EventType)
+	} else if payload, ok := event.Data.(licenseStatusChangedEvent); !ok {
+		t.Fatalf("unexpected payload type %T", event.Data)
+	} else {
+		if payload.Status != enums.LicenseStatusVerified {
+			t.Fatalf("expected payload status verified, got %s", payload.Status)
+		}
+		if payload.Reason != "approved" {
+			t.Fatalf("expected reason approved, got %q", payload.Reason)
+		}
+		if payload.LicenseID != license.ID {
+			t.Fatalf("unexpected license id %s", payload.LicenseID)
+		}
+	}
 }
 
 func TestVerifyLicenseConflict(t *testing.T) {
@@ -486,7 +555,7 @@ func TestVerifyLicenseConflict(t *testing.T) {
 		Status: enums.LicenseStatusVerified,
 	}
 	repo := &stubLicenseRepo{findResult: license}
-	svc, _, _, _ := newServiceForTests(nil, nil, repo, nil)
+	svc, _, _, _, _ := newServiceForTests(nil, nil, repo, nil)
 
 	if _, err := svc.VerifyLicense(context.Background(), license.ID, enums.LicenseStatusRejected, "reject"); err == nil {
 		t.Fatal("expected conflict error")
@@ -501,7 +570,7 @@ func TestVerifyLicenseInvalidDecision(t *testing.T) {
 		Status: enums.LicenseStatusPending,
 	}
 	repo := &stubLicenseRepo{findResult: license}
-	svc, _, _, _ := newServiceForTests(nil, nil, repo, nil)
+	svc, _, _, _, _ := newServiceForTests(nil, nil, repo, nil)
 
 	if _, err := svc.VerifyLicense(context.Background(), license.ID, enums.LicenseStatusExpired, ""); err == nil {
 		t.Fatal("expected validation error")
@@ -552,7 +621,7 @@ func TestListLicensesPagination(t *testing.T) {
 		},
 	}
 	repo := &stubLicenseRepo{listRows: rows}
-	svc, _, gcs, _ := newServiceForTests(nil, nil, repo, nil)
+	svc, _, gcs, _, _ := newServiceForTests(nil, nil, repo, nil)
 	gcs.url = "https://signed.example"
 
 	resp, err := svc.ListLicenses(context.Background(), ListParams{
@@ -581,7 +650,7 @@ func TestListLicensesPagination(t *testing.T) {
 
 func TestListLicensesInvalidCursor(t *testing.T) {
 	storeID := uuid.New()
-	svc, _, _, _ := newServiceForTests(nil, nil, &stubLicenseRepo{}, nil)
+	svc, _, _, _, _ := newServiceForTests(nil, nil, &stubLicenseRepo{}, nil)
 
 	if _, err := svc.ListLicenses(context.Background(), ListParams{
 		StoreID: storeID,

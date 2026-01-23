@@ -372,7 +372,17 @@ All enums implement:
 * Repository/service/registry infrastructure lives under `pkg/outbox` (see `repository.go`, `service.go`, `registry.go`).
 * Idempotency manager: `pkg/eventing/idempotency.Manager` wraps Redis `SETNX` with the `pf:evt:processed:<consumer>:<event_id>` key pattern and respects `PACKFINDERZ_EVENTING_IDEMPOTENCY_TTL` (default `720h`) so consumers skip duplicate deliveries before applying side effects.
 * Publisher worker: `cmd/outbox-publisher` fetches batches with `FOR UPDATE SKIP LOCKED`, publishes to `PACKFINDERZ_PUBSUB_DOMAIN_TOPIC`, and marks `published_at` or increments `attempt_count`/`last_error` (bounded length) before committing; see `docs/outbox.md` for operational expectations.
-* Config knobs: `PACKFINDERZ_OUTBOX_PUBLISH_BATCH_SIZE` (default `50`), `PACKFINDERZ_OUTBOX_PUBLISH_POLL_MS` (default `500`), `PACKFINDERZ_OUTBOX_MAX_ATTEMPTS` (default `25`), and the domain topic via `PACKFINDERZ_PUBSUB_DOMAIN_TOPIC`.
+* Config knobs: `PACKFINDERZ_OUTBOX_PUBLISH_BATCH_SIZE` (default `50`), `PACKFINDERZ_OUTBOX_PUBLISH_POLL_MS` (default `500`), `PACKFINDERZ_OUTBOX_MAX_ATTEMPTS` (default `25`), the domain topic via `PACKFINDERZ_PUBSUB_DOMAIN_TOPIC`, and the compliance subscription via `PACKFINDERZ_PUBSUB_DOMAIN_SUBSCRIPTION` where `license_status_changed` consumers run.
+* `license_status_changed` events are emitted by `internal/licenses/service` whenever a license is created or an admin decision lands, and `emitLicenseStatusEvent` runs inside the same transaction as the license mutation so the downstream worker sees consistent state (`internal/licenses/service.go`:136-419).
+* `internal/notifications/consumer` (set up in `cmd/worker/main`) subscribes to the domain topic, uses `pkg/outbox/idempotency.Manager` to honor the `pf:evt:processed:<consumer>:<event_id>` TTL, and writes `NotificationTypeCompliance` rows with links and rejection details for admins/stores based on the status in the event payload (internal/notifications/consumer.go:18-186; cmd/worker/main.go:83-116).
+
+### `NotificationType`
+
+* `system_announcement`
+* `market_update`
+* `security_alert`
+* `order_alert`
+* `compliance`
 
 ---
 
@@ -382,6 +392,10 @@ All enums implement:
 * Repository wiring now includes `FindByID`, `Delete`, and `CountValidLicenses` so services can enforce store ownership and compute the `verified` remainder.
 * `controllers.LicenseDelete` (registered under `DELETE /api/v1/licenses/{licenseId}`) parses docs/UUID, relies on the same middleware-based context, and returns the canonical success error envelope.
 * `Service.VerifyLicense` plus `controllers.AdminLicenseVerify` implemented the admin-only `/api/v1/admin/licenses/{licenseId}/verify` route, validating `verified|rejected` decisions, Idempotency-buffered requests, and conflict handling for non-pending licenses.
+
+### `internal/notifications`
+* `Repository.Create` inserts compliance notifications so the worker can persist alerts after consuming events (internal/notifications/repo.go:1-23).
+* `Consumer` subscribes to `license_status_changed` events, honors `pkg/outbox/idempotency.Manager` TTLs, and writes `NotificationTypeCompliance` rows with the right admin/store link plus rejection details when present, keeping the event tied to the originating store (internal/notifications/consumer.go:18-186; cmd/worker/main.go:83-116).
 
 ## Auth (Canonical)
 
