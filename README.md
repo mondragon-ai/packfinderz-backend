@@ -257,7 +257,7 @@ Re-running the migration is safe because the statements use `CREATE EXTENSION IF
 
 * Stores, users, memberships (store_memberships join + member_role/membership_status enums)
 * Products + `product_media` attachments (category/classification/unit/flavors/feelings/usage enums govern vendor listings)
-* Inventory, orders
+* Inventory (`inventory_items` tracks available/reserved counts per product), orders
 * Payments, ledger events
 * Ads, subscriptions
 * Outbox events
