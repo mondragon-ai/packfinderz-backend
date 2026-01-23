@@ -90,6 +90,7 @@ func NewRouter(
 
 		r.Route("/v1/vendor", func(r chi.Router) {
 			r.Post("/products", controllers.VendorCreateProduct(productService, logg))
+			r.Patch("/products/{productId}", controllers.VendorUpdateProduct(productService, logg))
 		})
 
 		r.Route("/v1/stores", func(r chi.Router) {

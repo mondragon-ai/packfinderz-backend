@@ -1,0 +1,174 @@
+package product
+
+import (
+	"context"
+	"testing"
+
+	"github.com/angelmondragon/packfinderz-backend/pkg/db/models"
+	"github.com/angelmondragon/packfinderz-backend/pkg/enums"
+	pkgerrors "github.com/angelmondragon/packfinderz-backend/pkg/errors"
+	"github.com/google/uuid"
+	"gorm.io/gorm"
+)
+
+func TestEnsureUniqueDiscounts(t *testing.T) {
+	t.Run("uniqueMinQty", func(t *testing.T) {
+		err := ensureUniqueDiscounts([]VolumeDiscountInput{
+			{MinQty: 1, UnitPriceCents: 100},
+			{MinQty: 2, UnitPriceCents: 90},
+		})
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+	})
+
+	t.Run("duplicateMinQty", func(t *testing.T) {
+		err := ensureUniqueDiscounts([]VolumeDiscountInput{
+			{MinQty: 1, UnitPriceCents: 100},
+			{MinQty: 1, UnitPriceCents: 80},
+		})
+		if err == nil {
+			t.Fatal("expected validation error for duplicate min_qty")
+		}
+		if typed := pkgerrors.As(err); typed == nil || typed.Code() != pkgerrors.CodeValidation {
+			t.Fatalf("expected validation error code, got %v", err)
+		}
+	})
+}
+
+func TestApplyUpdateToProductTrimsAndCopies(t *testing.T) {
+	product := &models.Product{
+		SKU:   "old-sku",
+		Title: "old title",
+	}
+
+	feelings := []string{"relaxed", "focused"}
+	flavors := []string{"citrus"}
+	usage := []string{"stress_relief"}
+
+	input := UpdateProductInput{
+		SKU:      stringPtr("  new-sku  "),
+		Title:    stringPtr("  New Title "),
+		Feelings: &feelings,
+		Flavors:  &flavors,
+		Usage:    &usage,
+	}
+
+	applyUpdateToProduct(product, input)
+
+	if product.SKU != "new-sku" {
+		t.Fatalf("expected trimmed sku, got %s", product.SKU)
+	}
+	if product.Title != "New Title" {
+		t.Fatalf("expected trimmed title, got %s", product.Title)
+	}
+	if len(product.Feelings) != len(feelings) {
+		t.Fatalf("expected %d feelings, got %d", len(feelings), len(product.Feelings))
+	}
+	for i, val := range product.Feelings {
+		if val != feelings[i] {
+			t.Fatalf("expected feeling %q at %d, got %q", feelings[i], i, val)
+		}
+	}
+	if len(product.Flavors) != len(flavors) || product.Flavors[0] != flavors[0] {
+		t.Fatalf("expected flavors %v, got %v", flavors, product.Flavors)
+	}
+	if len(product.Usage) != len(usage) || product.Usage[0] != usage[0] {
+		t.Fatalf("expected usage %v, got %v", usage, product.Usage)
+	}
+}
+
+func TestBuildProductMediaRows(t *testing.T) {
+	storeID := uuid.New()
+	productID := uuid.New()
+	mediaProductID := uuid.New()
+	storeMismatchID := uuid.New()
+	adsMediaID := uuid.New()
+
+	repo := &fakeMediaReader{
+		rows: map[uuid.UUID]*models.Media{
+			mediaProductID: {
+				ID:      mediaProductID,
+				StoreID: storeID,
+				Kind:    enums.MediaKindProduct,
+				GCSKey:  "gcs-key-product",
+			},
+			storeMismatchID: {
+				ID:      storeMismatchID,
+				StoreID: uuid.New(),
+				Kind:    enums.MediaKindProduct,
+				GCSKey:  "gcs-key-other-store",
+			},
+			adsMediaID: {
+				ID:      adsMediaID,
+				StoreID: storeID,
+				Kind:    enums.MediaKindAds,
+				GCSKey:  "gcs-key-ads",
+			},
+		},
+	}
+	svc := &service{
+		mediaRepo: repo,
+	}
+
+	t.Run("success", func(t *testing.T) {
+		rows, err := svc.buildProductMediaRows(context.Background(), storeID, productID, []uuid.UUID{mediaProductID})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(rows) != 1 {
+			t.Fatalf("expected 1 media row, got %d", len(rows))
+		}
+		if rows[0].Position != 0 {
+			t.Fatalf("expected position 0, got %d", rows[0].Position)
+		}
+		if rows[0].GCSKey != "gcs-key-product" {
+			t.Fatalf("expected gcs key, got %s", rows[0].GCSKey)
+		}
+	})
+
+	t.Run("duplicate ids", func(t *testing.T) {
+		_, err := svc.buildProductMediaRows(context.Background(), storeID, productID, []uuid.UUID{mediaProductID, mediaProductID})
+		if err == nil {
+			t.Fatal("expected error for duplicate media ids")
+		}
+		if typed := pkgerrors.As(err); typed == nil || typed.Code() != pkgerrors.CodeValidation {
+			t.Fatalf("expected validation error, got %v", err)
+		}
+	})
+
+	t.Run("store mismatch", func(t *testing.T) {
+		_, err := svc.buildProductMediaRows(context.Background(), storeID, productID, []uuid.UUID{storeMismatchID})
+		if err == nil {
+			t.Fatal("expected error for media from other store")
+		}
+		if typed := pkgerrors.As(err); typed == nil || typed.Code() != pkgerrors.CodeValidation {
+			t.Fatalf("expected validation error, got %v", err)
+		}
+	})
+
+	t.Run("kind mismatch", func(t *testing.T) {
+		_, err := svc.buildProductMediaRows(context.Background(), storeID, productID, []uuid.UUID{adsMediaID})
+		if err == nil {
+			t.Fatal("expected error for wrong media kind")
+		}
+		if typed := pkgerrors.As(err); typed == nil || typed.Code() != pkgerrors.CodeValidation {
+			t.Fatalf("expected validation error, got %v", err)
+		}
+	})
+}
+
+func stringPtr(value string) *string {
+	return &value
+}
+
+type fakeMediaReader struct {
+	rows map[uuid.UUID]*models.Media
+}
+
+func (f *fakeMediaReader) FindByID(ctx context.Context, id uuid.UUID) (*models.Media, error) {
+	if row, ok := f.rows[id]; ok {
+		return row, nil
+	}
+	return nil, gorm.ErrRecordNotFound
+}

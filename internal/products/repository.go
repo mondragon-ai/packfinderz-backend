@@ -72,6 +72,39 @@ func (r *Repository) WithTx(tx *gorm.DB) *Repository {
 	return &Repository{db: tx}
 }
 
+// FindByID loads the product without associations.
+func (r *Repository) FindByID(ctx context.Context, id uuid.UUID) (*models.Product, error) {
+	var product models.Product
+	if err := r.db.WithContext(ctx).First(&product, "id = ?", id).Error; err != nil {
+		return nil, err
+	}
+	return &product, nil
+}
+
+// ReplaceVolumeDiscounts replaces all volume discounts for the product.
+func (r *Repository) ReplaceVolumeDiscounts(ctx context.Context, productID uuid.UUID, tiers []models.ProductVolumeDiscount) error {
+	tx := r.db.WithContext(ctx)
+	if err := tx.Where("product_id = ?", productID).Delete(&models.ProductVolumeDiscount{}).Error; err != nil {
+		return err
+	}
+	if len(tiers) == 0 {
+		return nil
+	}
+	return tx.Create(&tiers).Error
+}
+
+// ReplaceProductMedia replaces media attachments for the product.
+func (r *Repository) ReplaceProductMedia(ctx context.Context, productID uuid.UUID, media []models.ProductMedia) error {
+	tx := r.db.WithContext(ctx)
+	if err := tx.Where("product_id = ?", productID).Delete(&models.ProductMedia{}).Error; err != nil {
+		return err
+	}
+	if len(media) == 0 {
+		return nil
+	}
+	return tx.Create(&media).Error
+}
+
 // CreateProduct inserts a new product row.
 func (r *Repository) CreateProduct(ctx context.Context, product *models.Product) (*models.Product, error) {
 	if err := r.db.WithContext(ctx).Create(product).Error; err != nil {
