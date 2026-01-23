@@ -27,6 +27,8 @@ type stubLicenseRepo struct {
 	countErr     error
 	updateStatus enums.LicenseStatus
 	updateErr    error
+	statusRows   []enums.LicenseStatus
+	statusErr    error
 }
 
 func (s *stubLicenseRepo) Create(ctx context.Context, license *models.License) (*models.License, error) {
@@ -75,6 +77,13 @@ func (s *stubLicenseRepo) UpdateStatus(ctx context.Context, id uuid.UUID, status
 	}
 	s.updateStatus = status
 	return nil
+}
+
+func (s *stubLicenseRepo) ListStatusesWithTx(_ *gorm.DB, storeID uuid.UUID) ([]enums.LicenseStatus, error) {
+	if s.statusErr != nil {
+		return nil, s.statusErr
+	}
+	return s.statusRows, nil
 }
 
 func (s *stubLicenseRepo) CreateWithTx(_ *gorm.DB, license *models.License) (*models.License, error) {
@@ -160,6 +169,14 @@ func (s *stubStoreRepo) Update(ctx context.Context, store *models.Store) error {
 	}
 	s.updated = store
 	return nil
+}
+
+func (s *stubStoreRepo) FindByIDWithTx(tx *gorm.DB, id uuid.UUID) (*models.Store, error) {
+	return s.FindByID(context.Background(), id)
+}
+
+func (s *stubStoreRepo) UpdateWithTx(tx *gorm.DB, store *models.Store) error {
+	return s.Update(context.Background(), store)
 }
 
 type stubGCS struct {
@@ -511,13 +528,16 @@ func TestDeleteLicenseKeepsStoreWhenValidLicenseExists(t *testing.T) {
 
 func TestVerifyLicenseSuccess(t *testing.T) {
 	license := &models.License{
-		ID:     uuid.New(),
-		Status: enums.LicenseStatusPending,
+		ID:      uuid.New(),
+		Status:  enums.LicenseStatusPending,
+		StoreID: uuid.New(),
 	}
 	repo := &stubLicenseRepo{
 		findResult: license,
 	}
-	svc, _, _, _, pub := newServiceForTests(nil, nil, repo, nil)
+	storeRepo := &stubStoreRepo{store: &models.Store{ID: license.StoreID, KYCStatus: enums.KYCStatusPendingVerification}}
+	repo.statusRows = []enums.LicenseStatus{enums.LicenseStatusVerified}
+	svc, _, _, storeRepo, pub := newServiceForTests(nil, nil, repo, storeRepo)
 
 	updated, err := svc.VerifyLicense(context.Background(), license.ID, enums.LicenseStatusVerified, "approved")
 	if err != nil {
@@ -528,6 +548,9 @@ func TestVerifyLicenseSuccess(t *testing.T) {
 	}
 	if repo.updateStatus != enums.LicenseStatusVerified {
 		t.Fatalf("expected repo update to verified, got %s", repo.updateStatus)
+	}
+	if storeRepo.updated == nil || storeRepo.updated.KYCStatus != enums.KYCStatusVerified {
+		t.Fatalf("expected store kyc verified, got %v", storeRepo.updated)
 	}
 	if len(pub.events) != 1 {
 		t.Fatalf("expected 1 outbox event, got %d", len(pub.events))
@@ -576,6 +599,27 @@ func TestVerifyLicenseInvalidDecision(t *testing.T) {
 		t.Fatal("expected validation error")
 	} else if typed := pkgerrors.As(err); typed == nil || typed.Code() != pkgerrors.CodeValidation {
 		t.Fatalf("expected validation code, got %v", err)
+	}
+}
+
+func TestVerifyLicenseStoreKYCRejected(t *testing.T) {
+	license := &models.License{
+		ID:      uuid.New(),
+		Status:  enums.LicenseStatusPending,
+		StoreID: uuid.New(),
+	}
+	storeRepo := &stubStoreRepo{store: &models.Store{ID: license.StoreID, KYCStatus: enums.KYCStatusVerified}}
+	repo := &stubLicenseRepo{
+		findResult: license,
+		statusRows: []enums.LicenseStatus{enums.LicenseStatusRejected},
+	}
+	svc, _, _, storeRepo, _ := newServiceForTests(nil, nil, repo, storeRepo)
+
+	if _, err := svc.VerifyLicense(context.Background(), license.ID, enums.LicenseStatusRejected, "denied"); err != nil {
+		t.Fatalf("VerifyLicense returned error: %v", err)
+	}
+	if storeRepo.updated == nil || storeRepo.updated.KYCStatus != enums.KYCStatusRejected {
+		t.Fatalf("expected store kyc rejected, got %v", storeRepo.updated)
 	}
 }
 

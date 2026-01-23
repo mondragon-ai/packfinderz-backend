@@ -35,6 +35,8 @@ type outboxPublisher interface {
 type storesRepository interface {
 	FindByID(ctx context.Context, id uuid.UUID) (*models.Store, error)
 	Update(ctx context.Context, store *models.Store) error
+	FindByIDWithTx(tx *gorm.DB, id uuid.UUID) (*models.Store, error)
+	UpdateWithTx(tx *gorm.DB, store *models.Store) error
 }
 
 type licensesRepository interface {
@@ -47,6 +49,7 @@ type licensesRepository interface {
 	CreateWithTx(tx *gorm.DB, license *models.License) (*models.License, error)
 	FindByIDWithTx(tx *gorm.DB, id uuid.UUID) (*models.License, error)
 	UpdateStatusWithTx(tx *gorm.DB, id uuid.UUID, status enums.LicenseStatus) error
+	ListStatusesWithTx(tx *gorm.DB, storeID uuid.UUID) ([]enums.LicenseStatus, error)
 }
 
 type gcsClient interface {
@@ -379,6 +382,48 @@ type licenseStatusChangedEvent struct {
 	Reason    string              `json:"reason,omitempty"`
 }
 
+func (s *service) reconcileStoreKYC(ctx context.Context, tx *gorm.DB, storeID uuid.UUID) error {
+	statuses, err := s.repo.ListStatusesWithTx(tx, storeID)
+	if err != nil {
+		return err
+	}
+	newStatus := determineStoreKYCStatus(statuses)
+	if newStatus == enums.KYCStatusPendingVerification {
+		return nil
+	}
+	store, err := s.storeRepo.FindByIDWithTx(tx, storeID)
+	if err != nil {
+		return err
+	}
+	if store.KYCStatus == newStatus {
+		return nil
+	}
+	store.KYCStatus = newStatus
+	return s.storeRepo.UpdateWithTx(tx, store)
+}
+
+func determineStoreKYCStatus(statuses []enums.LicenseStatus) enums.KYCStatus {
+	hasExpired := false
+	hasRejected := false
+	for _, status := range statuses {
+		switch status {
+		case enums.LicenseStatusVerified:
+			return enums.KYCStatusVerified
+		case enums.LicenseStatusExpired:
+			hasExpired = true
+		case enums.LicenseStatusRejected:
+			hasRejected = true
+		}
+	}
+	if hasExpired && !hasRejected {
+		return enums.KYCStatusExpired
+	}
+	if hasRejected {
+		return enums.KYCStatusRejected
+	}
+	return enums.KYCStatusPendingVerification
+}
+
 func (s *service) VerifyLicense(ctx context.Context, licenseID uuid.UUID, decision enums.LicenseStatus, reason string) (*models.License, error) {
 	if licenseID == uuid.Nil {
 		return nil, pkgerrors.New(pkgerrors.CodeValidation, "license id is required")
@@ -405,6 +450,9 @@ func (s *service) VerifyLicense(ctx context.Context, licenseID uuid.UUID, decisi
 			return err
 		}
 		license.Status = decision
+		if err := s.reconcileStoreKYC(ctx, tx, license.StoreID); err != nil {
+			return err
+		}
 		updated = license
 		return s.emitLicenseStatusEvent(ctx, tx, license, decision, reason, nil)
 	})

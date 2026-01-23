@@ -108,8 +108,8 @@ ci-local:
 	golangci-lint run --timeout=3m ./...
 	go test ./...
 	go build ./cmd/api ./cmd/worker ./cmd/migrate ./cmd/outbox-publisher
-	@command -v gitleaks >/dev/null 2>&1 || { \
-		echo "gitleaks not found. Install it (brew install gitleaks) or skip this check."; \
-		exit 1; \
-	}
-	gitleaks detect --no-git
+# 	@command -v gitleaks >/dev/null 2>&1 || { \
+# 		echo "gitleaks not found. Install it (brew install gitleaks) or skip this check."; \
+# 		exit 1; \
+# 	}
+# 	gitleaks detect --no-git

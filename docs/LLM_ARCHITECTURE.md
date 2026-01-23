@@ -20,6 +20,7 @@
 - `DecoderRegistry` registers custom decoders for consumed events, enabling deterministic payload parsing downstream (pkg/outbox/registry.go:1-32).
 - `pkg/outbox/idempotency.Manager` paired with `cfg.Eventing.OutboxIdempotencyTTL` prevents duplicate consumer side effects via `pf:idempotency:evt:processed:<consumer>:<event_id>` keys (pkg/outbox/idempotency/idempotency.go:1-66; pkg/config/config.go:131-181).
 - `license_status_changed` events flow through the domain topic so the compliance consumer can branch between admin notifications for pending uploads and store notifications for verified/rejected licenses while honoring the idempotency key tracking (`internal/notifications/consumer.go:71-186`).
+- Admin license decisions recompute `stores.kyc_status` inside the same transaction by scanning all licenses and calling `determineStoreKYCStatus`, ensuring the mirror flips to `verified`, `rejected`, or `expired` before the outbox event fires (`internal/licenses/service.go:385-425`).
 
 ## Session & Idempotency
 - `pkg/auth/session.Manager` ensures refresh TTL exceeds access TTL, stores refresh tokens keyed by `AccessSessionKey`, rotates/revokes tokens, and supports middleware `HasSession` checks (pkg/auth/session/manager.go:45-154).
