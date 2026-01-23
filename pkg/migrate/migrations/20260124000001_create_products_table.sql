@@ -3,7 +3,7 @@
 
 DO $$
 BEGIN
-  CREATE TYPE IF NOT EXISTS category AS ENUM (
+  CREATE TYPE category AS ENUM (
     'flower',
     'cart',
     'pre_roll',
@@ -23,7 +23,7 @@ END $$;
 
 DO $$
 BEGIN
-  CREATE TYPE IF NOT EXISTS classification AS ENUM (
+  CREATE TYPE classification AS ENUM (
     'sativa',
     'hybrid',
     'indica',
@@ -37,7 +37,7 @@ END $$;
 
 DO $$
 BEGIN
-  CREATE TYPE IF NOT EXISTS unit AS ENUM (
+  CREATE TYPE unit AS ENUM (
     'unit',
     'gram',
     'ounce',
@@ -51,7 +51,7 @@ END $$;
 
 DO $$
 BEGIN
-  CREATE TYPE IF NOT EXISTS flavors AS ENUM (
+  CREATE TYPE flavors AS ENUM (
     'earthy',
     'citrus',
     'fruity',
@@ -69,7 +69,7 @@ END $$;
 
 DO $$
 BEGIN
-  CREATE TYPE IF NOT EXISTS feelings AS ENUM (
+  CREATE TYPE feelings AS ENUM (
     'relaxed',
     'happy',
     'euphoric',
@@ -87,7 +87,7 @@ END $$;
 
 DO $$
 BEGIN
-  CREATE TYPE IF NOT EXISTS usage AS ENUM (
+  CREATE TYPE usage AS ENUM (
     'stress_relief',
     'pain_relief',
     'sleep',
@@ -154,20 +154,5 @@ CREATE TABLE IF NOT EXISTS product_media (
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_product_media_product_position
   ON product_media (product_id, position);
-
--- +goose StatementEnd
-
--- +goose Down
--- +goose StatementBegin
-
-DROP TABLE IF EXISTS product_media;
-DROP TABLE IF EXISTS products;
-
-DROP TYPE IF EXISTS usage;
-DROP TYPE IF EXISTS feelings;
-DROP TYPE IF EXISTS flavors;
-DROP TYPE IF EXISTS unit;
-DROP TYPE IF EXISTS classification;
-DROP TYPE IF EXISTS category;
 
 -- +goose StatementEnd
