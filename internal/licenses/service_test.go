@@ -272,7 +272,7 @@ func TestCreateLicenseSuccess(t *testing.T) {
 	if event.EventType != enums.EventLicenseStatusChanged {
 		t.Fatalf("unexpected event type %s", event.EventType)
 	}
-	payload, ok := event.Data.(licenseStatusChangedEvent)
+	payload, ok := event.Data.(LicenseStatusChangedEvent)
 	if !ok {
 		t.Fatalf("expected license status payload, got %T", event.Data)
 	}
@@ -557,7 +557,7 @@ func TestVerifyLicenseSuccess(t *testing.T) {
 	}
 	if event := pub.events[0]; event.EventType != enums.EventLicenseStatusChanged {
 		t.Fatalf("unexpected event type %s", event.EventType)
-	} else if payload, ok := event.Data.(licenseStatusChangedEvent); !ok {
+	} else if payload, ok := event.Data.(LicenseStatusChangedEvent); !ok {
 		t.Fatalf("unexpected payload type %T", event.Data)
 	} else {
 		if payload.Status != enums.LicenseStatusVerified {

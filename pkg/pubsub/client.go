@@ -74,7 +74,7 @@ func subscriptionNames(cfg config.PubSubConfig) []string {
 		cfg.MediaSubscription,
 		cfg.OrdersSubscription,
 		cfg.BillingSubscription,
-		cfg.DomainSubscription,
+		cfg.NotificationSubscription,
 	} {
 		if trimmed := strings.TrimSpace(name); trimmed != "" {
 			names = append(names, trimmed)
@@ -131,9 +131,9 @@ func (c *Client) BillingSubscription() *pubsub.Subscriber {
 	return c.Subscription(c.cfg.BillingSubscription)
 }
 
-// DomainSubscription returns the configured domain subscription handle.
-func (c *Client) DomainSubscription() *pubsub.Subscriber {
-	return c.Subscription(c.cfg.DomainSubscription)
+// NotificationSubscription returns the configured domain subscription handle.
+func (c *Client) NotificationSubscription() *pubsub.Subscriber {
+	return c.Subscription(c.cfg.NotificationSubscription)
 }
 
 // Publisher returns a publisher handle for the given topic ID/resource name.
@@ -150,7 +150,7 @@ func (c *Client) Publisher(name string) *pubsub.Publisher {
 
 // DomainPublisher returns the configured domain event publisher.
 func (c *Client) DomainPublisher() *pubsub.Publisher {
-	return c.Publisher(c.cfg.DomainTopic)
+	return c.Publisher(c.cfg.NotificationTopic)
 }
 
 // Ping verifies Pub/Sub connectivity by checking configured subscriptions exist.

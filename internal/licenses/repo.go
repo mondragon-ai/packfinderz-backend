@@ -2,6 +2,7 @@ package licenses
 
 import (
 	"context"
+	"time"
 
 	"github.com/angelmondragon/packfinderz-backend/pkg/db/models"
 	"github.com/angelmondragon/packfinderz-backend/pkg/enums"
@@ -99,6 +100,24 @@ func (r *Repository) UpdateStatusWithTx(tx *gorm.DB, id uuid.UUID, status enums.
 		return gorm.ErrInvalidTransaction
 	}
 	return tx.Model(&models.License{}).Where("id = ?", id).Update("status", status).Error
+}
+
+func (r *Repository) FindExpiringBetween(ctx context.Context, from, to time.Time) ([]models.License, error) {
+	var rows []models.License
+	err := r.db.WithContext(ctx).
+		Where("expiration_date >= ? AND expiration_date < ? AND status != ?", from, to, enums.LicenseStatusExpired).
+		Find(&rows).Error
+	return rows, err
+}
+
+func (r *Repository) FindExpiredByDate(ctx context.Context, day time.Time) ([]models.License, error) {
+	start := time.Date(day.Year(), day.Month(), day.Day(), 0, 0, 0, 0, time.UTC)
+	end := start.Add(24 * time.Hour)
+	var rows []models.License
+	err := r.db.WithContext(ctx).
+		Where("expiration_date >= ? AND expiration_date < ? AND status != ?", start, end, enums.LicenseStatusExpired).
+		Find(&rows).Error
+	return rows, err
 }
 
 func (r *Repository) ListStatusesWithTx(tx *gorm.DB, storeID uuid.UUID) ([]enums.LicenseStatus, error) {

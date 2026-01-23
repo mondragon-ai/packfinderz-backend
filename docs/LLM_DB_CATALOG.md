@@ -36,6 +36,7 @@
 
 ### licenses
 - `id`, `store_id`, `user_id`, `status license_status DEFAULT 'pending'`, `media_id`, `gcs_key UNIQUE` added later, `issuing_state`, optional `issue_date`/`expiration_date`, `type license_type`, unique `number`, timestamps, indexes on `(store_id,status)` and `expiration_date` (pkg/migrate/migrations/20260122192426_create_license_table.sql:1-34; pkg/migrate/migrations/20260122193650_add_gcs_key_license.sql:1-7; pkg/db/models/license.go:11-26).
+- Scheduler logic relies on the `expiration_date` index to find licenses expiring in 14 days and those expiring today; it emits `license_status_changed` events for warnings/expirations and flips `stores.kyc_status` when no valid licenses remain (`internal/schedulers/licenses/service.go`:1-220).
 
 ### outbox_events
 - Append-only stream with `id`, `event_type event_type_enum`, `aggregate_type aggregate_type_enum`, `aggregate_id`, `payload jsonb`, `created_at` default now, nullable `published_at`, `attempt_count` default 0, `last_error` text; indexes on `published_at`, `event_type`, `(aggregate_type,aggregate_id)` (pkg/migrate/migrations/20260123000001_create_outbox_events.sql:1-39; pkg/db/models/outbox_event.go:12-23).
