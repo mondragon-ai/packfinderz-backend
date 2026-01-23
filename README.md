@@ -377,6 +377,12 @@ These endpoints rely on `activeStoreId` and enforce owner/manager access for mut
 * `POST /api/v1/stores/me/users/invite` – invites (or reuses) a user, creates a membership, and issues a temporary password for new accounts (passwords are never logged).
 * `DELETE /api/v1/stores/me/users/{userId}` – removes only the membership row, returns `409` if the target is the last owner, and leaves the user record intact.
 
+### Licenses
+
+* `POST /api/v1/licenses` – upload license metadata (media_id, issuing_state, type, number, optional issue/expiration dates). Requires owner/manager access for the active store and enforces `Idempotency-Key` to avoid duplicate uploads.
+* `GET /api/v1/licenses` – lists the active store’s licenses with cursor pagination. Responses include signed download URLs from GCS.
+* `DELETE /api/v1/licenses/{licenseId}` – removes expired or rejected licenses owned by the active store. Only `manager`/`owner` roles may call this, the row must be `expired`/`rejected`, and the store is downgraded to `pending_verification` if no `verified` licenses remain. Media rows stay untouched when the license is deleted.
+
 ### Media Uploads
 
 * `POST /api/v1/media/presign` – creates a `media` row in `pending` state, computes a deterministic `gcs_key` containing the newly minted `media_id`, and returns `{media_id, gcs_key, signed_put_url, content_type, expires_at}` for clients to PUT directly to GCS.

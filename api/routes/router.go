@@ -101,6 +101,7 @@ func NewRouter(
 		r.Route("/v1/licenses", func(r chi.Router) {
 			r.Get("/", controllers.LicenseList(licenseService, logg))
 			r.Post("/", controllers.LicenseCreate(licenseService, logg))
+			r.Delete("/{licenseId}", controllers.LicenseDelete(licenseService, logg))
 		})
 	})
 
