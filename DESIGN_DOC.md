@@ -1914,6 +1914,7 @@ Headers:
   * **Idempotent:** YES (required)
   * Success: `201`
   * Errors: `400, 401, 403, 409`
+  * Implementation: normalized enums + inventory/discount/media payloads flow through `internal/products.Service.CreateProduct`, which verifies the store is a vendor, the caller holds an organization role (owner/admin/manager/staff/agent/ops), `reserved_qty` ≤ `available_qty`, volume discounts have distinct `min_qty`, and any provided media belong to the same store with `kind=product` before inserting the product, inventory, discount, and product media rows inside a single transaction and returning the DTO with its vendor summary (api/controllers/products.go:8-206; internal/products/service.go:63-204).
 
 **Vendor: update product**
 

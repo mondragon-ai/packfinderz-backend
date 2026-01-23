@@ -23,6 +23,9 @@
 ## Private (store-scoped)
 - `GET /api/ping` – auth + store context, echoes scope/store_id for health (api/controllers/ping.go:16-24).
 
+## Vendor
+- `POST /api/v1/vendor/products` – requires auth, store context, and `Idempotency-Key` (api/middleware/idempotency.go:45-48); body accepts `sku`, `title`, `category`, `unit`, `feelings`, `flavors`, `usage`, inventory quantities, optional `media_ids`, and `volume_discounts`; the controller normalizes enums, validates required fields, and calls `internal/products.Service.CreateProduct`, which ensures the store is a vendor, the caller has one of the allowed store roles, inventory/reserved values make sense, volume discounts have unique `min_qty`, and provided media belong to the same store with `kind=product` before writing the product, inventory, discounts, and media rows in one transaction and returning the created product DTO (api/controllers/products.go:8-206; internal/products/service.go:63-204). Returns `201` on success, `400` for validation failures, `401/403` for auth/role denials, and `409` for conflicts.
+
 ### Stores
 - `GET /api/v1/stores/me` – requires active store JWT, returns `stores.StoreDTO` with company, address, owner, KYC, ratings, categories, social links (api/controllers/stores.go:21-48; internal/stores/dto.go:13-105).
 - `PUT /api/v1/stores/me` – owner/manager role required, accepts `storeUpdateRequest` (company_name, description, contact, social, banner/logo, ratings, categories), returns updated `StoreDTO` (api/controllers/stores.go:51-124).

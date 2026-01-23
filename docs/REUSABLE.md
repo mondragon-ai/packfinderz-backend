@@ -411,6 +411,7 @@ All enums implement:
 * `Repository` exposes product CRUD plus detail/list reads that preload `Inventory`, `VolumeDiscounts` (descending `min_qty`), and `Media` (ascending `position`) so services get a single `Product` model with the related SKU, pricing, inventory, discounts, and ordered media (internal/products/repo/repository.go:60-208).
 * `UpsertInventory`/`GetInventoryByProductID` respect the 1:1 `inventory_items.product_id PK` row, while `CreateVolumeDiscount`/`ListVolumeDiscounts`/`DeleteVolumeDiscount` keep the `(product_id,min_qty)` uniqueness and descending salary order for tiered pricing lookups (internal/products/repo/repository.go:133-175).
 * `VendorSummary` is built via `vendorSummaryQuery`, joining `stores` to the latest `media_attachments` logo row and returning `StoreID`, `CompanyName`, and nullable `LogoMediaID`/`LogoGCSKey` for service-layer URL signing (internal/products/repo/repository.go:34-208).
+* `service` enforces vendor store type, allowed user roles, `reserved_qty <= available_qty`, unique `min_qty` per discount, and that each requested media belongs to the store with `kind=product`; product, inventory, discounts, and product media are saved inside a single transaction before `NewProductDTO` returns the created record with the preloaded vendor summary (internal/products/service.go:63-204).
 
 ### `internal/schedulers/licenses`
 * Scheduler runs every 24h from `cmd/worker`, warning stores 14 days before a license's `expiration_date` and expiring licenses on their due date (`internal/schedulers/licenses/service.go`:1-220).
