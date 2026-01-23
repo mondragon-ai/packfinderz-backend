@@ -130,6 +130,23 @@ func (c *Client) BillingSubscription() *pubsub.Subscriber {
 	return c.Subscription(c.cfg.BillingSubscription)
 }
 
+// Publisher returns a publisher handle for the given topic ID/resource name.
+func (c *Client) Publisher(name string) *pubsub.Publisher {
+	if c == nil || c.client == nil {
+		return nil
+	}
+	fullName := c.topicResourceName(name)
+	if fullName == "" {
+		return nil
+	}
+	return c.client.Publisher(fullName)
+}
+
+// DomainPublisher returns the configured domain event publisher.
+func (c *Client) DomainPublisher() *pubsub.Publisher {
+	return c.Publisher(c.cfg.DomainTopic)
+}
+
 // Ping verifies Pub/Sub connectivity by checking configured subscriptions exist.
 func (c *Client) Ping(ctx context.Context) error {
 	if c == nil {
@@ -164,4 +181,22 @@ func (c *Client) subscriptionResourceName(name string) string {
 		return ""
 	}
 	return fmt.Sprintf("projects/%s/subscriptions/%s", p, n)
+}
+
+func (c *Client) topicResourceName(name string) string {
+	if c == nil {
+		return ""
+	}
+	n := strings.TrimSpace(name)
+	if n == "" {
+		return ""
+	}
+	if strings.HasPrefix(n, "projects/") && strings.Contains(n, "/topics/") {
+		return n
+	}
+	p := strings.TrimSpace(c.projectID)
+	if p == "" {
+		return ""
+	}
+	return fmt.Sprintf("projects/%s/topics/%s", p, n)
 }

@@ -123,7 +123,7 @@ func (s *Service) Run(ctx context.Context) error {
 			}
 			return err
 		case <-ticker.C:
-			s.logg.Info(ctx, "worker.heartbeat")
+			// s.logg.Info(ctx, "worker.heartbeat")
 		}
 	}
 }

@@ -27,6 +27,7 @@ type Config struct {
 	PubSub        PubSubConfig
 	Stripe        StripeConfig
 	Sendgrid      SendgridConfig
+	Outbox        OutboxConfig
 }
 
 func Load() (*Config, error) {
@@ -170,6 +171,13 @@ type PubSubConfig struct {
 	OrdersSubscription  string `envconfig:"PACKFINDERZ_PUBSUB_ORDERS_SUBSCRIPTION" required:"true"`
 	BillingTopic        string `envconfig:"PACKFINDERZ_PUBSUB_BILLING_TOPIC" required:"true"`
 	BillingSubscription string `envconfig:"PACKFINDERZ_PUBSUB_BILLING_SUBSCRIPTION" required:"true"`
+	DomainTopic         string `envconfig:"PACKFINDERZ_PUBSUB_DOMAIN_TOPIC" default:"pf-domain-events"`
+}
+
+type OutboxConfig struct {
+	BatchSize      int `envconfig:"PACKFINDERZ_OUTBOX_PUBLISH_BATCH_SIZE" default:"50"`
+	PollIntervalMS int `envconfig:"PACKFINDERZ_OUTBOX_PUBLISH_POLL_MS" default:"500"`
+	MaxAttempts    int `envconfig:"PACKFINDERZ_OUTBOX_MAX_ATTEMPTS" default:"25"`
 }
 
 type StripeConfig struct {
