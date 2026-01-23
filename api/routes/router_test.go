@@ -128,6 +128,11 @@ func (s stubLicensesService) DeleteLicense(ctx context.Context, userID uuid.UUID
 	panic("unimplemented")
 }
 
+// VerifyLicense implements [licenses.Service].
+func (s stubLicensesService) VerifyLicense(ctx context.Context, licenseID uuid.UUID, decision enums.LicenseStatus, reason string) (*models.License, error) {
+	panic("unimplemented")
+}
+
 func testConfig() *config.Config {
 	return &config.Config{
 		App: config.AppConfig{Env: "test", Port: "0"},

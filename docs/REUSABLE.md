@@ -381,6 +381,7 @@ All enums implement:
 * `Service` exposes `CreateLicense`, `ListLicenses`, and the new `DeleteLicense` (owner/manager only, expired/rejected rows only, rewrites `stores.kyc_status` to `pending_verification` when no `verified` licenses remain).
 * Repository wiring now includes `FindByID`, `Delete`, and `CountValidLicenses` so services can enforce store ownership and compute the `verified` remainder.
 * `controllers.LicenseDelete` (registered under `DELETE /api/v1/licenses/{licenseId}`) parses docs/UUID, relies on the same middleware-based context, and returns the canonical success error envelope.
+* `Service.VerifyLicense` plus `controllers.AdminLicenseVerify` implemented the admin-only `/api/v1/admin/licenses/{licenseId}/verify` route, validating `verified|rejected` decisions, Idempotency-buffered requests, and conflict handling for non-pending licenses.
 
 ## Auth (Canonical)
 

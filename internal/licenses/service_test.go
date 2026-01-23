@@ -14,16 +14,18 @@ import (
 )
 
 type stubLicenseRepo struct {
-	created    *models.License
-	listRows   []models.License
-	listErr    error
-	lastQuery  listQuery
-	err        error
-	findResult *models.License
-	findErr    error
-	deleteErr  error
-	validCount int64
-	countErr   error
+	created      *models.License
+	listRows     []models.License
+	listErr      error
+	lastQuery    listQuery
+	err          error
+	findResult   *models.License
+	findErr      error
+	deleteErr    error
+	validCount   int64
+	countErr     error
+	updateStatus enums.LicenseStatus
+	updateErr    error
 }
 
 func (s *stubLicenseRepo) Create(ctx context.Context, license *models.License) (*models.License, error) {
@@ -64,6 +66,14 @@ func (s *stubLicenseRepo) CountValidLicenses(ctx context.Context, storeID uuid.U
 		return 0, s.countErr
 	}
 	return s.validCount, nil
+}
+
+func (s *stubLicenseRepo) UpdateStatus(ctx context.Context, id uuid.UUID, status enums.LicenseStatus) error {
+	if s.updateErr != nil {
+		return s.updateErr
+	}
+	s.updateStatus = status
+	return nil
 }
 
 type stubMediaRepo struct {
@@ -445,6 +455,58 @@ func TestDeleteLicenseKeepsStoreWhenValidLicenseExists(t *testing.T) {
 	}
 	if storeRepo.updated != nil {
 		t.Fatalf("expected no store update, got %v", storeRepo.updated)
+	}
+}
+
+func TestVerifyLicenseSuccess(t *testing.T) {
+	license := &models.License{
+		ID:     uuid.New(),
+		Status: enums.LicenseStatusPending,
+	}
+	repo := &stubLicenseRepo{
+		findResult: license,
+	}
+	svc, _, _, _ := newServiceForTests(nil, nil, repo, nil)
+
+	updated, err := svc.VerifyLicense(context.Background(), license.ID, enums.LicenseStatusVerified, "approved")
+	if err != nil {
+		t.Fatalf("VerifyLicense returned error: %v", err)
+	}
+	if updated.Status != enums.LicenseStatusVerified {
+		t.Fatalf("expected verified status, got %s", updated.Status)
+	}
+	if repo.updateStatus != enums.LicenseStatusVerified {
+		t.Fatalf("expected repo update to verified, got %s", repo.updateStatus)
+	}
+}
+
+func TestVerifyLicenseConflict(t *testing.T) {
+	license := &models.License{
+		ID:     uuid.New(),
+		Status: enums.LicenseStatusVerified,
+	}
+	repo := &stubLicenseRepo{findResult: license}
+	svc, _, _, _ := newServiceForTests(nil, nil, repo, nil)
+
+	if _, err := svc.VerifyLicense(context.Background(), license.ID, enums.LicenseStatusRejected, "reject"); err == nil {
+		t.Fatal("expected conflict error")
+	} else if typed := pkgerrors.As(err); typed == nil || typed.Code() != pkgerrors.CodeConflict {
+		t.Fatalf("expected conflict code, got %v", err)
+	}
+}
+
+func TestVerifyLicenseInvalidDecision(t *testing.T) {
+	license := &models.License{
+		ID:     uuid.New(),
+		Status: enums.LicenseStatusPending,
+	}
+	repo := &stubLicenseRepo{findResult: license}
+	svc, _, _, _ := newServiceForTests(nil, nil, repo, nil)
+
+	if _, err := svc.VerifyLicense(context.Background(), license.ID, enums.LicenseStatusExpired, ""); err == nil {
+		t.Fatal("expected validation error")
+	} else if typed := pkgerrors.As(err); typed == nil || typed.Code() != pkgerrors.CodeValidation {
+		t.Fatalf("expected validation code, got %v", err)
 	}
 }
 
