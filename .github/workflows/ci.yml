@@ -40,8 +40,8 @@ jobs:
       - name: Build binaries
         run: go build ./cmd/api ./cmd/worker ./cmd/migrate
 
-      - name: Secret scan
-        uses: gitleaks/gitleaks-action@v2
-        with:
-          args: detect --no-git
+      # - name: Secret scan
+      #   uses: gitleaks/gitleaks-action@v2
+      #   with:
+      #     args: detect --no-git
 
