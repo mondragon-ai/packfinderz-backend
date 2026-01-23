@@ -63,8 +63,8 @@ func setMinimalEnv(t *testing.T) {
 	t.Setenv(EnvPubSubOrdersSub, "orders-sub")
 	t.Setenv(EnvPubSubBillingTopic, "billing-topic")
 	t.Setenv(EnvPubSubBillingSub, "billing-sub")
-	t.Setenv(EnvPubSubDomainTopic, "domain-topic")
-	t.Setenv(EnvPubSubDomainSub, "domain-sub")
+	t.Setenv(EnvPubSubNotificationTopic, "notification-topic")
+	t.Setenv(EnvPubSubNotificationSub, "notification-sub")
 }
 
 func TestAppConfigEnvHelpers(t *testing.T) {

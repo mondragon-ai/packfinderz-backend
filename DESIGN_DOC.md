@@ -2528,10 +2528,17 @@ erDiagram
 * `ad_type`: `banner`, `promote_store`, `promote_product`
 * `ad_status`: `draft`, `active`, `paused`, `expired`, `archived`
 * `ad_event_type`: `impression`, `click`
-* `billing_provider`: `stripe` (**ASSUMPTION:** CC subs via Stripe), `ach_provider` future
+* `billing_provider`: `stripe` (**ASSUMPTION:** CC subs via Stripe), `ach_provider` future, `cash`
 * `charge_type`: `subscription`, `ad_spend`, `other`
 * `charge_status`: `pending`, `paid`, `failed`, `canceled`
 * `notification_type`: `system_announcement`, `market_update`, `security_alert`, `order_alert`, `compliance`
+* `category`: `flower`, `cart`, `pre_roll`, `edible`, `concentrate`, `beverage`, `vape`, `topical`, `tincture`, `seed`, `seedling`, `accessory`
+* `classification`: `sativa`, `hybrid`, `indica`, `cbd`, `hemp`, `balanced`
+* `unit`: `unit`, `gram`, `ounce`, `pound`, `eighth`, `sixteenth`
+* `flavors`: `earthy`, `citrus`, `fruity`, `floral`, `cheese`, `diesel`, `spicy`, `sweet`, `pine`, `herbal`
+* `feelings`: `relaxed`, `happy`, `euphoric`, `focused`, `hungry`, `talkative`, `creative`, `sleepy`, `uplifted`, `calm`
+* `usage`: `stress_relief`, `pain_relief`, `sleep`, `depression`, `muscle_relaxant`, `nausea`, `anxiety`, `appetite_stimulation`
+
 
 #### Composite types (use `CREATE TYPE ... AS (...)`)
 
@@ -2655,6 +2662,7 @@ Indexes
 FKs
 
 * `store_id -> stores(id) on delete cascade`
+
 * `user_id -> users(id) on delete cascade`
 * `invited_by_user_id -> users(id) on delete set null`
 
@@ -2710,11 +2718,14 @@ Fields
 * `sku text not null`
 * `title text not null`
 * `subtitle text null`
-* `description text null`
-* `category text not null` (**ASSUMPTION:** normalized `categories` table later; MVP text)
+* `body_html text null` (product description accept CLEANED html - prevent injection)
+* `category categories enum not null` (USE ENUM FROM ABOVE)
+* `feelings feelings[] enum not null` (USE ENUM FROM ABOVE)
+* `flavors flavors[] enum not null` (USE ENUM FROM ABOVE)
+* `usage usage[] enum not null` (USE ENUM FROM ABOVE)
 * `strain text null`
-* `classification text null` (sativa/hybrid/indica etc)
-* `unit text not null` (**ASSUMPTION:** `g|lb|unit|oz`; consider enum later)
+* `classification classification enum null` (USE ENUM FROM ABOVE)
+* `unit unit enum not null` (USE ENUM FROM ABOVE)
 * `moq int not null default 1`
 * `price_cents int not null`
 * `compare_at_price_cents int null`
@@ -2735,6 +2746,11 @@ Indexes
 FKs
 
 * `store_id -> stores(id) on delete cascade`
+
+**Media attachments:** `product_media` rows (see §2.8.a) keep `gcs_key` and ordering per `position`; the lowest position entry can be normalized as the `main_media` while the ordered set forms the `media` payload when presenting products.
+
+
+We need a vendor object that has the vendor name, gcs & public url (nullable) of the vendor logo, and vendor ID (or join when calling in the service). Do we join the inventory or add natively? Not sure how that works
 
 ---
 
@@ -2807,6 +2823,29 @@ Constraints
 
 * `CHECK (available_qty >= 0)`
 * `CHECK (reserved_qty >= 0)`
+
+### 2.8.a `product_media`
+
+**Purpose:** vendor product media attachments (ordered by `position`).
+
+Fields
+
+* `id uuid pk`
+* `product_id uuid not null`
+* `url text nullable`
+* `gcs_key text not null`
+* `position int not null default 0`
+* `created_at timestamptz not null default now()`
+* `updated_at timestamptz not null default now()`
+
+Indexes
+
+* `unique(product_id, position)`
+
+FKs
+
+* `product_id -> products(id) on delete cascade`
+
 
 ---
 
