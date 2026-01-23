@@ -2798,6 +2798,10 @@ FKs
 
 * `product_id -> products(id) on delete cascade`
 
+Constraints
+
+* `CHECK (min_qty > 0)`
+
 ---
 
 ### 2.8 `inventory_items`
