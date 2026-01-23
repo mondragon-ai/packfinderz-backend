@@ -1,21 +1,23 @@
 package product
 
 import (
-	"context"
-	"errors"
-	"fmt"
+    "context"
+    "errors"
+    "fmt"
+    "strings"
 
-	"github.com/angelmondragon/packfinderz-backend/pkg/db"
-	"github.com/angelmondragon/packfinderz-backend/pkg/db/models"
-	"github.com/angelmondragon/packfinderz-backend/pkg/enums"
-	pkgerrors "github.com/angelmondragon/packfinderz-backend/pkg/errors"
-	"github.com/google/uuid"
-	"gorm.io/gorm"
+    "github.com/angelmondragon/packfinderz-backend/pkg/db"
+    "github.com/angelmondragon/packfinderz-backend/pkg/db/models"
+    "github.com/angelmondragon/packfinderz-backend/pkg/enums"
+    pkgerrors "github.com/angelmondragon/packfinderz-backend/pkg/errors"
+    "github.com/google/uuid"
+    "gorm.io/gorm"
 )
 
 // Service exposes vendor product management operations.
 type Service interface {
-	CreateProduct(ctx context.Context, userID, storeID uuid.UUID, input CreateProductInput) (*ProductDTO, error)
+    CreateProduct(ctx context.Context, userID, storeID uuid.UUID, input CreateProductInput) (*ProductDTO, error)
+    UpdateProduct(ctx context.Context, userID, storeID, productID uuid.UUID, input UpdateProductInput) (*ProductDTO, error)
 }
 
 // CreateProductInput holds the validated payload to create a product.
@@ -51,8 +53,33 @@ type InventoryInput struct {
 
 // VolumeDiscountInput defines a tiered price for a given min quantity.
 type VolumeDiscountInput struct {
-	MinQty         int
-	UnitPriceCents int
+    MinQty         int
+    UnitPriceCents int
+}
+
+// UpdateProductInput holds optional mutation values for a product.
+type UpdateProductInput struct {
+    SKU                *string
+    Title              *string
+    Subtitle           *string
+    BodyHTML           *string
+    Category           *enums.ProductCategory
+    Feelings           *[]string
+    Flavors            *[]string
+    Usage              *[]string
+    Strain             *string
+    Classification     *enums.ProductClassification
+    Unit               *enums.ProductUnit
+    MOQ                *int
+    PriceCents         *int
+    CompareAtPriceCents *int
+    IsActive           *bool
+    IsFeatured         *bool
+    THCPercent         *float64
+    CBDPercent         *float64
+    Inventory          *InventoryInput
+    MediaIDs           *[]uuid.UUID
+    VolumeDiscounts    *[]VolumeDiscountInput
 }
 
 type storeLoader interface {
@@ -171,31 +198,15 @@ func (s *service) CreateProduct(ctx context.Context, userID, storeID uuid.UUID, 
 			}
 		}
 
-		if len(input.MediaIDs) > 0 {
-			for i, mediaID := range input.MediaIDs {
-				mediaRow, err := s.mediaRepo.FindByID(ctx, mediaID)
-				if err != nil {
-					if errors.Is(err, gorm.ErrRecordNotFound) {
-						return pkgerrors.New(pkgerrors.CodeValidation, "media not found")
-					}
-					return pkgerrors.Wrap(pkgerrors.CodeDependency, err, "load media")
-				}
-				if mediaRow.StoreID != storeID {
-					return pkgerrors.New(pkgerrors.CodeValidation, "media must belong to the active store")
-				}
-				if mediaRow.Kind != enums.MediaKindProduct {
-					return pkgerrors.New(pkgerrors.CodeValidation, "media must be product kind")
-				}
-				pm := &models.ProductMedia{
-					ProductID: created.ID,
-					GCSKey:    mediaRow.GCSKey,
-					Position:  i,
-				}
-				if err := tx.WithContext(ctx).Create(pm).Error; err != nil {
-					return err
-				}
-			}
-		}
+        if len(input.MediaIDs) > 0 {
+            entries, err := s.buildProductMediaRows(ctx, storeID, created.ID, input.MediaIDs)
+            if err != nil {
+                return err
+            }
+            if err := txRepo.ReplaceProductMedia(ctx, created.ID, entries); err != nil {
+                return err
+            }
+        }
 
 		return nil
 	}); err != nil {
@@ -210,6 +221,96 @@ func (s *service) CreateProduct(ctx context.Context, userID, storeID uuid.UUID, 
 		return nil, pkgerrors.Wrap(pkgerrors.CodeDependency, err, "load product detail")
 	}
 	return NewProductDTO(product, summary), nil
+}
+
+// UpdateProduct updates an existing product and related rows.
+func (s *service) UpdateProduct(ctx context.Context, userID, storeID, productID uuid.UUID, input UpdateProductInput) (*ProductDTO, error) {
+	if input.Inventory != nil && input.Inventory.ReservedQty > input.Inventory.AvailableQty {
+		return nil, pkgerrors.New(pkgerrors.CodeValidation, "reserved_qty cannot exceed available_qty")
+	}
+
+	if err := s.ensureVendorStore(ctx, storeID); err != nil {
+		return nil, err
+	}
+	if err := s.ensureUserRole(ctx, userID, storeID); err != nil {
+		return nil, err
+	}
+
+	if input.VolumeDiscounts != nil {
+		if err := ensureUniqueDiscounts(*input.VolumeDiscounts); err != nil {
+			return nil, err
+		}
+	}
+
+	product, err := s.repo.FindByID(ctx, productID)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, pkgerrors.New(pkgerrors.CodeNotFound, "product not found")
+		}
+		return nil, pkgerrors.Wrap(pkgerrors.CodeDependency, err, "load product")
+	}
+	if product.StoreID != storeID {
+		return nil, pkgerrors.New(pkgerrors.CodeForbidden, "product does not belong to store")
+	}
+
+	var updatedID uuid.UUID
+	if err := s.dbClient.WithTx(ctx, func(tx *gorm.DB) error {
+		txRepo := s.repo.WithTx(tx)
+
+		applyUpdateToProduct(product, input)
+		if _, err := txRepo.UpdateProduct(ctx, product); err != nil {
+			return err
+		}
+
+		if input.Inventory != nil {
+			inventory := &models.InventoryItem{
+				ProductID:    product.ID,
+				AvailableQty: input.Inventory.AvailableQty,
+				ReservedQty:  input.Inventory.ReservedQty,
+			}
+			if _, err := txRepo.UpsertInventory(ctx, inventory); err != nil {
+				return err
+			}
+		}
+
+		if input.VolumeDiscounts != nil {
+			tiers := make([]models.ProductVolumeDiscount, len(*input.VolumeDiscounts))
+			for i, tier := range *input.VolumeDiscounts {
+				tiers[i] = models.ProductVolumeDiscount{
+					ProductID:      product.ID,
+					MinQty:         tier.MinQty,
+					UnitPriceCents: tier.UnitPriceCents,
+				}
+			}
+			if err := txRepo.ReplaceVolumeDiscounts(ctx, product.ID, tiers); err != nil {
+				return err
+			}
+		}
+
+		if input.MediaIDs != nil {
+			entries, err := s.buildProductMediaRows(ctx, storeID, product.ID, *input.MediaIDs)
+			if err != nil {
+				return err
+			}
+			if err := txRepo.ReplaceProductMedia(ctx, product.ID, entries); err != nil {
+				return err
+			}
+		}
+
+		updatedID = product.ID
+		return nil
+	}); err != nil {
+		if pkgerrors.As(err) != nil {
+			return nil, err
+		}
+		return nil, pkgerrors.Wrap(pkgerrors.CodeDependency, err, "update product")
+	}
+
+	updated, summary, err := s.repo.GetProductDetail(ctx, updatedID)
+	if err != nil {
+		return nil, pkgerrors.Wrap(pkgerrors.CodeDependency, err, "load product detail")
+	}
+	return NewProductDTO(updated, summary), nil
 }
 
 func (s *service) ensureVendorStore(ctx context.Context, storeID uuid.UUID) error {
@@ -246,12 +347,104 @@ func (s *service) ensureUserRole(ctx context.Context, userID, storeID uuid.UUID)
 }
 
 func ensureUniqueDiscounts(discounts []VolumeDiscountInput) error {
-	seen := make(map[int]struct{}, len(discounts))
-	for _, tier := range discounts {
-		if _, ok := seen[tier.MinQty]; ok {
-			return pkgerrors.New(pkgerrors.CodeValidation, "duplicate volume discount min_qty")
-		}
-		seen[tier.MinQty] = struct{}{}
-	}
-	return nil
+    seen := make(map[int]struct{}, len(discounts))
+    for _, tier := range discounts {
+        if _, ok := seen[tier.MinQty]; ok {
+            return pkgerrors.New(pkgerrors.CodeValidation, "duplicate volume discount min_qty")
+        }
+        seen[tier.MinQty] = struct{}{}
+    }
+    return nil
+}
+
+func applyUpdateToProduct(product *models.Product, input UpdateProductInput) {
+    if input.SKU != nil {
+        product.SKU = strings.TrimSpace(*input.SKU)
+    }
+    if input.Title != nil {
+        product.Title = strings.TrimSpace(*input.Title)
+    }
+    if input.Subtitle != nil {
+        product.Subtitle = input.Subtitle
+    }
+    if input.BodyHTML != nil {
+        product.BodyHTML = input.BodyHTML
+    }
+    if input.Category != nil {
+        product.Category = *input.Category
+    }
+    if input.Feelings != nil {
+        product.Feelings = append([]string(nil), *input.Feelings...)
+    }
+    if input.Flavors != nil {
+        product.Flavors = append([]string(nil), *input.Flavors...)
+    }
+    if input.Usage != nil {
+        product.Usage = append([]string(nil), *input.Usage...)
+    }
+    if input.Strain != nil {
+        product.Strain = input.Strain
+    }
+    if input.Classification != nil {
+        product.Classification = input.Classification
+    }
+    if input.Unit != nil {
+        product.Unit = *input.Unit
+    }
+    if input.MOQ != nil {
+        product.MOQ = *input.MOQ
+    }
+    if input.PriceCents != nil {
+        product.PriceCents = *input.PriceCents
+    }
+    if input.CompareAtPriceCents != nil {
+        product.CompareAtPriceCents = input.CompareAtPriceCents
+    }
+    if input.IsActive != nil {
+        product.IsActive = *input.IsActive
+    }
+    if input.IsFeatured != nil {
+        product.IsFeatured = *input.IsFeatured
+    }
+    if input.THCPercent != nil {
+        product.THCPercent = input.THCPercent
+    }
+    if input.CBDPercent != nil {
+        product.CBDPercent = input.CBDPercent
+    }
+}
+
+func (s *service) buildProductMediaRows(ctx context.Context, storeID, productID uuid.UUID, mediaIDs []uuid.UUID) ([]models.ProductMedia, error) {
+    if len(mediaIDs) == 0 {
+        return nil, nil
+    }
+    seen := make(map[uuid.UUID]struct{}, len(mediaIDs))
+    rows := make([]models.ProductMedia, 0, len(mediaIDs))
+    for idx, mediaID := range mediaIDs {
+        if _, ok := seen[mediaID]; ok {
+            return nil, pkgerrors.New(pkgerrors.CodeValidation, "duplicate media ids")
+        }
+        seen[mediaID] = struct{}{}
+
+        mediaRow, err := s.mediaRepo.FindByID(ctx, mediaID)
+        if err != nil {
+            if errors.Is(err, gorm.ErrRecordNotFound) {
+                return nil, pkgerrors.New(pkgerrors.CodeValidation, "media not found")
+            }
+            return nil, pkgerrors.Wrap(pkgerrors.CodeDependency, err, "load media")
+        }
+        if mediaRow.StoreID != storeID {
+            return nil, pkgerrors.New(pkgerrors.CodeValidation, "media must belong to the active store")
+        }
+        if mediaRow.Kind != enums.MediaKindProduct {
+            return nil, pkgerrors.New(pkgerrors.CodeValidation, "media must be product kind")
+        }
+
+        rows = append(rows, models.ProductMedia{
+            ProductID: productID,
+            GCSKey:    mediaRow.GCSKey,
+            Position:  idx,
+        })
+    }
+    return rows, nil
 }

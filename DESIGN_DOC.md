@@ -1920,6 +1920,7 @@ Headers:
 
 * `PATCH /api/v1/vendor/products/{productId}`
 
+  * Implementation: `controllers.VendorUpdateProduct` validates the product ID, normalizes optional fields, and forwards the request to `internal/products.Service.UpdateProduct`, which verifies the active store is the owning vendor, the caller has one of the allowed store roles, `reserved_qty ≤ available_qty`, and the provided discounts/media honor uniqueness and ownership before updating the product, inventory, volume discounts, and product media rows inside a single transaction. Returns the canonical `ProductDTO`.
   * Success: `200`
   * Errors: `400, 401, 403, 404, 409`
 
