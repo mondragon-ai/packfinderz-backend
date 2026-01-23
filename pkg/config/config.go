@@ -18,6 +18,7 @@ type Config struct {
 	Password      PasswordConfig
 	AuthRateLimit AuthRateLimitConfig
 	FeatureFlags  FeatureFlagsConfig
+	Eventing      EventingConfig
 	OpenAI        OpenAIConfig
 	GoogleMaps    GoogleMapsConfig
 	GCP           GCPConfig
@@ -124,6 +125,10 @@ type FeatureFlagsConfig struct {
 	AutoMigrate   bool   `envconfig:"PACKFINDERZ_AUTO_MIGRATE" default:"false"`
 	AVScan        string `envconfig:"PACKFINDERZ_AV_SCAN" default:"off"`
 	GCSAccessMode string `envconfig:"PACKFINDERZ_GCS_ACCESS_MODE" default:"public"`
+}
+
+type EventingConfig struct {
+	OutboxIdempotencyTTL time.Duration `envconfig:"PACKFINDERZ_EVENTING_IDEMPOTENCY_TTL" default:"720h"`
 }
 
 type OpenAIConfig struct {

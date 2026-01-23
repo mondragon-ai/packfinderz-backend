@@ -299,6 +299,8 @@ Outbox pattern: YES:
 * write business change + outbox row in same DB transaction
 * worker publishes to Pub/Sub
 * consumers idempotent + retry-safe
+* duplicates are expected; `event_id` is the global key logged by the publisher and shared with consumers for visibility.
+* consumers must call `pkg/eventing/idempotency.Manager.CheckAndMarkProcessed` before running side effects. Redis keys use the `pf:evt:processed:<consumer>:<event_id>` pattern with a TTL controlled by `PACKFINDERZ_EVENTING_IDEMPOTENCY_TTL` (defaults to 720h).
 
 ---
 
