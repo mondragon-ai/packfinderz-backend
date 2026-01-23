@@ -30,6 +30,10 @@ func (s *exampleStore) IdempotencyKey(scope, id string) string {
 	return "pf:idempotency:" + scope + ":" + id
 }
 
+func (s *exampleStore) Del(_ context.Context, keys ...string) error {
+	return nil
+}
+
 type exampleConsumer struct {
 	name    string
 	manager *Manager

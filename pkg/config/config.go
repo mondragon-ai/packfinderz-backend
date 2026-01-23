@@ -172,6 +172,7 @@ type PubSubConfig struct {
 	BillingTopic        string `envconfig:"PACKFINDERZ_PUBSUB_BILLING_TOPIC" required:"true"`
 	BillingSubscription string `envconfig:"PACKFINDERZ_PUBSUB_BILLING_SUBSCRIPTION" required:"true"`
 	DomainTopic         string `envconfig:"PACKFINDERZ_PUBSUB_DOMAIN_TOPIC" default:"pf-domain-events"`
+	DomainSubscription  string `envconfig:"PACKFINDERZ_PUBSUB_DOMAIN_SUBSCRIPTION" required:"true"`
 }
 
 type OutboxConfig struct {

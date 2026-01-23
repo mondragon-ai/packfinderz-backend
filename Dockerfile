@@ -5,9 +5,9 @@ WORKDIR /app
 
 # Build deps for CGO + libwebp headers
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
-    pkg-config \
-    libwebp-dev \
+  build-essential \
+  pkg-config \
+  libwebp-dev \
   && rm -rf /var/lib/apt/lists/*
 
 # Cache deps
@@ -30,8 +30,8 @@ WORKDIR /app
 
 # Runtime deps: certs + libwebp shared lib
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    ca-certificates \
-    libwebp7 \
+  ca-certificates \
+  libwebp7 \
   && rm -rf /var/lib/apt/lists/*
 
 # Non-root user (recommended on Heroku too)

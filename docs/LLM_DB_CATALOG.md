@@ -14,6 +14,7 @@
 - `license_type`: producer|grower|dispensary|merchant (pkg/migrate/migrations/20260122192426_create_license_table.sql:1-34; pkg/enums/license.go:47-87).
 - `event_type_enum`: enumerates domain events (order/line item/license/media/payment/cash/vendor notification/reservation/ad) used by `outbox_events` (pkg/migrate/migrations/20260123000001_create_outbox_events.sql:1-38; pkg/enums/outbox.go:16-69).
 - `aggregate_type_enum`: vendor_order|checkout_group|license|store|media|ledger_event|notification|ad for the aggregate_id context (pkg/migrate/migrations/20260123000001_create_outbox_events.sql:39-77; pkg/enums/outbox.go:5-41).
+- `notification_type`: `system_announcement|market_update|security_alert|order_alert|compliance` used by the `notifications` table (pkg/migrate/migrations/20260124000000_create_notifications.sql:1-41; pkg/enums/notification.go:5-41).
 - `geography(Point,4326)`: stored in `stores.geom` and materialized via `types.GeographyPoint` `Value/Scan` (pkg/migrate/migrations/20260120003412_create_stores_table.sql:18-36; pkg/types/geography_point.go:12-117).
 - `ratings` JSONB uses `types.Ratings` for flexible score maps on stores (pkg/migrate/migrations/20260120003414_add_store_profile_fields.sql:1-8; pkg/types/ratings.go:9-47).
 
@@ -38,3 +39,8 @@
 
 ### outbox_events
 - Append-only stream with `id`, `event_type event_type_enum`, `aggregate_type aggregate_type_enum`, `aggregate_id`, `payload jsonb`, `created_at` default now, nullable `published_at`, `attempt_count` default 0, `last_error` text; indexes on `published_at`, `event_type`, `(aggregate_type,aggregate_id)` (pkg/migrate/migrations/20260123000001_create_outbox_events.sql:1-39; pkg/db/models/outbox_event.go:12-23).
+
+### notifications
+- `id`, `store_id`, `type notification_type`, `title`, `message`, optional `link`, `read_at`, `created_at` default `now()` (pkg/migrate/migrations/20260124000000_create_notifications.sql:1-41; pkg/db/models/notification.go:10-24).
+- Indexes on `(store_id,created_at desc)`, `(store_id,read_at)`, and `(created_at)` plus `store_id -> stores(id)` cascade FK (pkg/migrate/migrations/20260124000000_create_notifications.sql:1-41).
+- Compliance workflows insert `notification_type=compliance` rows for pending uploads (admin notices) and verified/rejected licences (store notices) when `license_status_changed` events are consumed, keeping a `store_id` anchor and `link` for UI navigation (internal/notifications/consumer.go:128-186).

@@ -46,6 +46,7 @@ type IdempotencyStore interface {
 	Get(context.Context, string) (string, error)
 	SetNX(context.Context, string, any, time.Duration) (bool, error)
 	IdempotencyKey(scope, id string) string
+	Del(context.Context, ...string) error
 }
 
 // New bootstraps a Redis client with pooling/timeouts and verifies connectivity.

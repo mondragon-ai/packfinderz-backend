@@ -68,3 +68,9 @@
 - `Service` `CreateLicense` validates role/media ownership/mime, persists `License`, and `ListLicenses` applies cursor pagination plus signed downloads (internal/licenses/service.go:18-224).
 - `CreateLicenseInput`, `ListParams`, `ListResult`, and `ListItem` describe license creation/listing payloads (internal/licenses/service.go:51-213; internal/licenses/list.go:12-59).
 - `Repository` `Create` and `List` wrap GORM operations for license rows (internal/licenses/repo.go:10-43).
+- `CreateLicense` and `VerifyLicense` both call `emitLicenseStatusEvent` so `license_status_changed` outbox events (payload: `licenseId`, `storeId`, `status`, optional `reason`) are queued in the same transaction as the license mutation, letting downstream consumers react to pending/approved/rejected transitions without extra polling (`internal/licenses/service.go`: lines 136-419).
+
+## internal/notifications
+- `Repository.Create` inserts `models.Notification` rows used by the compliance consumer (`internal/notifications/repo.go:1-23`).
+- `Consumer` acquires `pubsub.DomainSubscription()` plus an `idempotency.Manager`, filters for `license_status_changed` events, and writes `NotificationTypeCompliance` records via `handlePayload` after checking `pf:evt:processed:<consumer>:<event_id>` (internal/notifications/consumer.go:18-197; cmd/worker/main.go:83-116).
+- `createStoreNotification` links `/stores/{storeId}/licenses/{licenseId}`, uses the optional rejection `reason`, and notifies stores when approvals/rejections land while `createAdminNotification` links `/admin/licenses/{licenseId}` when licenses return to pending review (internal/notifications/consumer.go:128-186).

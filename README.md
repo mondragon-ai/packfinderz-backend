@@ -238,6 +238,7 @@ Re-running the migration is safe because the statements use `CREATE EXTENSION IF
 * API writes business data + `OutboxEvent` in the same transaction and logs `event_id`, `event_type`, `aggregate_type`, and `aggregate_id` for each emission.
 * Worker publishes to Pub/Sub and consumers use `pkg/eventing/idempotency.Manager` to enforce `pf:evt:processed:<consumer>:<event_id>` keys before executing side effects.
 * Consumers **must be idempotent**; the TTL for idempotency keys is configurable via `PACKFINDERZ_EVENTING_IDEMPOTENCY_TTL` (default `720h`).
+* License decisions emit `license_status_changed` events and the worker subscribes via `PACKFINDERZ_PUBSUB_DOMAIN_SUBSCRIPTION` so the compliance consumer can notify stores (verified/rejected) and admins (pending review) while honoring Redis idempotency.
 
 ### Ads & Analytics
 
@@ -440,6 +441,7 @@ These knobs control the publisher worker that reads `outbox_events` and pushes d
 * `PACKFINDERZ_OUTBOX_PUBLISH_POLL_MS` (default `500`) – base sleep when no rows are claimed; applies between healthy loops.
 * `PACKFINDERZ_OUTBOX_MAX_ATTEMPTS` (default `25`) – stop claiming rows once they hit this attempt count so failing rows can be audited.
 * `PACKFINDERZ_PUBSUB_DOMAIN_TOPIC` (default `pf-domain-events`) – the Pub/Sub topic that the worker publishes to; events flow through this topic plus the `event_type` attribute.
+* `PACKFINDERZ_PUBSUB_DOMAIN_SUBSCRIPTION` (required) – the subscription the worker listens to for domain events such as `license_status_changed`.
 
 ### Auth Rate Limiting
 
