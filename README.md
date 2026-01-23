@@ -79,6 +79,10 @@
 
 The worker also consumes the `gcp-meda-sub` Pub/Sub subscription for GCS `OBJECT_FINALIZE` notifications and marks matching `media.gcs_key` rows as `uploaded`, keeping the media lifecycle in sync with bucket uploads.
 
+### Outbox Publisher
+
+`cmd/outbox-publisher` is the dedicated outbox publisher that polls `outbox_events` with `FOR UPDATE SKIP LOCKED`, publishes domain envelopes to `PACKFINDERZ_PUBSUB_DOMAIN_TOPIC`, and marks `published_at` or increments `attempt_count`/`last_error` before committing the transaction. Run it locally with `make run-outbox-publisher`, build it via `make build-outbox-publisher`, and run the `outbox-publisher` dyno in Heroku alongside `api`/`worker`. The operational guide in `docs/outbox.md` explains claiming, at-least-once semantics, retry expectations, and consumer idempotency requirements.
+
 ---
 
 ## Repository Conventions
@@ -421,6 +425,15 @@ PACKFINDERZ_EVENTING_IDEMPOTENCY_TTL=720h
 
 `PACKFINDERZ_EVENTING_IDEMPOTENCY_TTL` (default `720h`) controls how long the Redis key `pf:evt:processed:<consumer>:<event_id>` stays locked after a consumer first handles an Outbox event. Workers should wire `pkg/eventing/idempotency.Manager` with this TTL so retries do not re-run side effects.
 
+### Outbox Publisher Tuning
+
+These knobs control the publisher worker that reads `outbox_events` and pushes domain envelopes to Pub/Sub (see `docs/outbox.md`).
+
+* `PACKFINDERZ_OUTBOX_PUBLISH_BATCH_SIZE` (default `50`) – how many rows to claim in each fetch.
+* `PACKFINDERZ_OUTBOX_PUBLISH_POLL_MS` (default `500`) – base sleep when no rows are claimed; applies between healthy loops.
+* `PACKFINDERZ_OUTBOX_MAX_ATTEMPTS` (default `25`) – stop claiming rows once they hit this attempt count so failing rows can be audited.
+* `PACKFINDERZ_PUBSUB_DOMAIN_TOPIC` (default `pf-domain-events`) – the Pub/Sub topic that the worker publishes to; events flow through this topic plus the `event_type` attribute.
+
 ### Auth Rate Limiting
 
 Configurable Redis-backed throttles protect the login/register endpoints from brute-force attacks.
@@ -495,6 +508,7 @@ Additional docs live in `docs/`:
 * Security & ops
 * ADRs
 * Runbooks
+* Outbox publisher guidance (`docs/outbox.md`)
 
 **AGENTS.md** is authoritative for repo-aware edits.
 
@@ -508,6 +522,7 @@ Additional docs live in `docs/`:
 make dev        # Run API + worker
 make api        # Run API only
 make worker     # Run worker only
+make run-outbox-publisher  # Run new outbox publisher worker
 ```
 
 ### Behavior
@@ -523,4 +538,5 @@ make worker     # Run worker only
 ```bash
 make dev                # Run API + worker
 go test ./...           # Run tests
+make run-outbox-publisher  # Run outbox publisher
 ```

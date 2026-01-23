@@ -25,7 +25,7 @@ Central config via `envconfig`.
 * App, Service, DB, Redis, JWT, FeatureFlags
 * OpenAI, GoogleMaps
 * GCP, GCS, Media
-* Pub/Sub, Stripe, Sendgrid
+* Pub/Sub, Stripe, Sendgrid, Outbox
 
 **Helpers**
 
@@ -371,6 +371,8 @@ All enums implement:
 * Outbox payload envelope struct and actor ref definitions live under `pkg/outbox/envelope.go`.
 * Repository/service/registry infrastructure lives under `pkg/outbox` (see `repository.go`, `service.go`, `registry.go`).
 * Idempotency manager: `pkg/eventing/idempotency.Manager` wraps Redis `SETNX` with the `pf:evt:processed:<consumer>:<event_id>` key pattern and respects `PACKFINDERZ_EVENTING_IDEMPOTENCY_TTL` (default `720h`) so consumers skip duplicate deliveries before applying side effects.
+* Publisher worker: `cmd/outbox-publisher` fetches batches with `FOR UPDATE SKIP LOCKED`, publishes to `PACKFINDERZ_PUBSUB_DOMAIN_TOPIC`, and marks `published_at` or increments `attempt_count`/`last_error` (bounded length) before committing; see `docs/outbox.md` for operational expectations.
+* Config knobs: `PACKFINDERZ_OUTBOX_PUBLISH_BATCH_SIZE` (default `50`), `PACKFINDERZ_OUTBOX_PUBLISH_POLL_MS` (default `500`), `PACKFINDERZ_OUTBOX_MAX_ATTEMPTS` (default `25`), and the domain topic via `PACKFINDERZ_PUBSUB_DOMAIN_TOPIC`.
 
 ---
 

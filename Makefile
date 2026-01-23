@@ -6,10 +6,13 @@ GO := go
 
 API_PKG := ./cmd/api
 WORKER_PKG := ./cmd/worker
+OUTBOX_PKG := ./cmd/outbox-publisher
 
 # Migrations
 MIGRATE_CMD := ./cmd/migrate
 MIGRATE_DIR ?= pkg/migrate/migrations
+
+OUTBOX_BIN := ./bin/outbox-publisher
 
 .PHONY: help
 help: ## Show available targets
@@ -26,6 +29,7 @@ dev:
 	@trap 'kill 0' INT TERM; \
 	$(GO) run $(API_PKG) & \
 	$(GO) run $(WORKER_PKG) & \
+	PACKFINDERZ_SERVICE_KIND=outbox-publisher $(GO) run $(OUTBOX_PKG) & \
 	wait
 
 # =========================
@@ -40,6 +44,19 @@ api:
 .PHONY: worker
 worker:
 	$(GO) run $(WORKER_PKG)
+
+.PHONY: outbox-publisher
+outbox-publisher:
+	$(GO) run $(OUTBOX_PKG)
+
+.PHONY: run-outbox-publisher
+run-outbox-publisher:
+	PACKFINDERZ_SERVICE_KIND=outbox-publisher $(GO) run $(OUTBOX_PKG)
+
+.PHONY: build-outbox-publisher
+build-outbox-publisher:
+	@mkdir -p $(dir $(OUTBOX_BIN))
+	CGO_ENABLED=1 $(GO) build -o $(OUTBOX_BIN) $(OUTBOX_PKG)
 
 # =========================
 # Migrations (Goose)
@@ -90,7 +107,7 @@ ci-local:
 	}
 	golangci-lint run --timeout=3m ./...
 	go test ./...
-	go build ./cmd/api ./cmd/worker ./cmd/migrate
+	go build ./cmd/api ./cmd/worker ./cmd/migrate ./cmd/outbox-publisher
 	@command -v gitleaks >/dev/null 2>&1 || { \
 		echo "gitleaks not found. Install it (brew install gitleaks) or skip this check."; \
 		exit 1; \

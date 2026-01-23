@@ -6,9 +6,12 @@ import (
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 
 	"github.com/angelmondragon/packfinderz-backend/pkg/db/models"
 )
+
+const maxLastErrorLen = 1024
 
 type Repository struct {
 	db *gorm.DB
@@ -35,8 +38,38 @@ func (r *Repository) FetchUnpublished(limit int) ([]models.OutboxEvent, error) {
 	return rows, err
 }
 
+func (r *Repository) FetchUnpublishedForPublish(tx *gorm.DB, limit, maxAttempts int) ([]models.OutboxEvent, error) {
+	if tx == nil {
+		return nil, errors.New("transaction required")
+	}
+	if limit <= 0 {
+		limit = 1
+	}
+
+	query := tx.Clauses(clause.Locking{Strength: "UPDATE", Options: "SKIP LOCKED"}).
+		Where("published_at IS NULL")
+	if maxAttempts > 0 {
+		query = query.Where("attempt_count < ?", maxAttempts)
+	}
+
+	var rows []models.OutboxEvent
+	err := query.
+		Order("created_at ASC").
+		Order("id ASC").
+		Limit(limit).
+		Find(&rows).Error
+	return rows, err
+}
+
 func (r *Repository) MarkPublished(id uuid.UUID) error {
-	return r.db.Model(&models.OutboxEvent{}).
+	return r.MarkPublishedTx(r.db, id)
+}
+
+func (r *Repository) MarkPublishedTx(tx *gorm.DB, id uuid.UUID) error {
+	if tx == nil {
+		return errors.New("transaction required")
+	}
+	return tx.Model(&models.OutboxEvent{}).
 		Where("id = ?", id).
 		Updates(map[string]any{
 			"published_at": time.Now(),
@@ -44,10 +77,35 @@ func (r *Repository) MarkPublished(id uuid.UUID) error {
 }
 
 func (r *Repository) MarkFailed(id uuid.UUID, err error) error {
-	return r.db.Model(&models.OutboxEvent{}).
+	return r.MarkFailedTx(r.db, id, err)
+}
+
+func (r *Repository) MarkFailedTx(tx *gorm.DB, id uuid.UUID, err error) error {
+	if tx == nil {
+		return errors.New("transaction required")
+	}
+
+	lastErr := ""
+	if err != nil {
+		lastErr = truncateError(err.Error())
+	}
+	var lastErrPtr *string
+	if lastErr != "" {
+		lastErrPtr = new(string)
+		*lastErrPtr = lastErr
+	}
+
+	return tx.Model(&models.OutboxEvent{}).
 		Where("id = ?", id).
 		Updates(map[string]any{
-			"last_error":    err.Error(),
+			"last_error":    lastErrPtr,
 			"attempt_count": gorm.Expr("attempt_count + 1"),
 		}).Error
+}
+
+func truncateError(message string) string {
+	if len(message) <= maxLastErrorLen {
+		return message
+	}
+	return message[:maxLastErrorLen]
 }
