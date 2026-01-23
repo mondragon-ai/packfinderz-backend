@@ -384,6 +384,15 @@ All enums implement:
 * `order_alert`
 * `compliance`
 
+### `Product`
+
+* `category`: `flower`, `cart`, `pre_roll`, `edible`, `concentrate`, `beverage`, `vape`, `topical`, `tincture`, `seed`, `seedling`, `accessory`
+* `classification`: `sativa`, `hybrid`, `indica`, `cbd`, `hemp`, `balanced`
+* `unit`: `unit`, `gram`, `ounce`, `pound`, `eighth`, `sixteenth`
+* `flavors`: `earthy`, `citrus`, `fruity`, `floral`, `cheese`, `diesel`, `spicy`, `sweet`, `pine`, `herbal`
+* `feelings`: `relaxed`, `happy`, `euphoric`, `focused`, `hungry`, `talkative`, `creative`, `sleepy`, `uplifted`, `calm`
+* `usage`: `stress_relief`, `pain_relief`, `sleep`, `depression`, `muscle_relaxant`, `nausea`, `anxiety`, `appetite_stimulation`
+
 ---
 
 ### `internal/licenses`
