@@ -1928,6 +1928,14 @@ Headers:
 
 * `DELETE /api/v1/vendor/products/{productId}`
 
+  * Implementation: `controllers.VendorDeleteProduct` parses the path, enforces store/user context, and calls `internal/products.Service.DeleteProduct`, which confirms the owning vendor store and member role before deleting the product row so FK cascades (inventory, volume discounts, media) clean up automatically.
+  * Success: `204`
+  * Errors: `400, 401, 403, 404`
+
+**Vendor: delete product**
+
+* `DELETE /api/v1/vendor/products/{productId}`
+
   * Hard delete (as requested).
   * Success: `204`
   * Errors: `401, 403, 404, 409`

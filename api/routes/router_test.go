@@ -146,6 +146,11 @@ func (s stubProductService) UpdateProduct(ctx context.Context, userID uuid.UUID,
 	panic("unimplemented")
 }
 
+// DeleteProduct implements [product.Service].
+func (s stubProductService) DeleteProduct(ctx context.Context, userID uuid.UUID, storeID uuid.UUID, productID uuid.UUID) error {
+	panic("unimplemented")
+}
+
 func testConfig() *config.Config {
 	return &config.Config{
 		App: config.AppConfig{Env: "test", Port: "0"},
