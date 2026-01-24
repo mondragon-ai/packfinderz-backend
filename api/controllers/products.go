@@ -1,19 +1,19 @@
 package controllers
 
 import (
-    "net/http"
-    "strings"
+	"net/http"
+	"strings"
 
-    "github.com/go-chi/chi/v5"
-    "github.com/google/uuid"
+	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 
-    "github.com/angelmondragon/packfinderz-backend/api/middleware"
-    "github.com/angelmondragon/packfinderz-backend/api/responses"
-    "github.com/angelmondragon/packfinderz-backend/api/validators"
-    productsvc "github.com/angelmondragon/packfinderz-backend/internal/products"
-    "github.com/angelmondragon/packfinderz-backend/pkg/enums"
-    pkgerrors "github.com/angelmondragon/packfinderz-backend/pkg/errors"
-    "github.com/angelmondragon/packfinderz-backend/pkg/logger"
+	"github.com/angelmondragon/packfinderz-backend/api/middleware"
+	"github.com/angelmondragon/packfinderz-backend/api/responses"
+	"github.com/angelmondragon/packfinderz-backend/api/validators"
+	productsvc "github.com/angelmondragon/packfinderz-backend/internal/products"
+	"github.com/angelmondragon/packfinderz-backend/pkg/enums"
+	pkgerrors "github.com/angelmondragon/packfinderz-backend/pkg/errors"
+	"github.com/angelmondragon/packfinderz-backend/pkg/logger"
 )
 
 // VendorCreateProduct handles product creation for vendor stores.
@@ -133,6 +133,59 @@ func VendorUpdateProduct(svc productsvc.Service, logg *logger.Logger) http.Handl
 		}
 
 		responses.WriteSuccess(w, product)
+	}
+}
+
+// VendorDeleteProduct removes an existing product owned by the active vendor store.
+func VendorDeleteProduct(svc productsvc.Service, logg *logger.Logger) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if svc == nil {
+			responses.WriteError(r.Context(), logg, w, pkgerrors.New(pkgerrors.CodeInternal, "product service unavailable"))
+			return
+		}
+
+		storeID := middleware.StoreIDFromContext(r.Context())
+		if storeID == "" {
+			responses.WriteError(r.Context(), logg, w, pkgerrors.New(pkgerrors.CodeForbidden, "store context missing"))
+			return
+		}
+
+		userID := middleware.UserIDFromContext(r.Context())
+		if userID == "" {
+			responses.WriteError(r.Context(), logg, w, pkgerrors.New(pkgerrors.CodeUnauthorized, "user context missing"))
+			return
+		}
+
+		productIDParam := strings.TrimSpace(chi.URLParam(r, "productId"))
+		if productIDParam == "" {
+			responses.WriteError(r.Context(), logg, w, pkgerrors.New(pkgerrors.CodeValidation, "product id is required"))
+			return
+		}
+
+		productID, err := uuid.Parse(productIDParam)
+		if err != nil {
+			responses.WriteError(r.Context(), logg, w, pkgerrors.Wrap(pkgerrors.CodeValidation, err, "invalid product id"))
+			return
+		}
+
+		sid, err := uuid.Parse(storeID)
+		if err != nil {
+			responses.WriteError(r.Context(), logg, w, pkgerrors.Wrap(pkgerrors.CodeValidation, err, "invalid store id"))
+			return
+		}
+
+		uid, err := uuid.Parse(userID)
+		if err != nil {
+			responses.WriteError(r.Context(), logg, w, pkgerrors.Wrap(pkgerrors.CodeValidation, err, "invalid user id"))
+			return
+		}
+
+		if err := svc.DeleteProduct(r.Context(), uid, sid, productID); err != nil {
+			responses.WriteError(r.Context(), logg, w, err)
+			return
+		}
+
+		w.WriteHeader(http.StatusNoContent)
 	}
 }
 

@@ -63,6 +63,7 @@
 - `repo.Repository` (internal/products/repo/repository.go:60-208) bundles product, inventory, and discount persistence, exposing CRUD operations plus `GetProductDetail`/`ListProductsByStore` that preload `Inventory`, `VolumeDiscounts` (ordered by `min_qty DESC`), and `Media` (ordered by `position ASC`).
 - Vendor summary helper selects `stores` metadata plus the latest `media_attachments` logo row via the lateral query in `vendorSummaryQuery`, returning `VendorSummary{StoreID,CompanyName,LogoMediaID,LogoGCSKey}` for services to sign URLs (internal/products/repo/repository.go:12-208).
 - Inventory/discount repositories reuse the same DB: `UpsertInventory`, `GetInventoryByProductID`, `CreateVolumeDiscount`, `ListVolumeDiscounts`, and `DeleteVolumeDiscount` keep the 1:1 and unique `(product_id,min_qty)` semantics intact (internal/products/repo/repository.go:133-175).
+- `service.DeleteProduct` ensures the store is a vendor, the caller has an allowed membership role, the product belongs to the active store, and then deletes it so `inventory_items`, `product_volume_discounts`, and product media rows vanish via existing FK cascades (internal/products/service.go:317-338).
 
 ## internal/media
 - `Service` operations `PresignUpload`, `ListMedia`, `DeleteMedia`, and `GenerateReadURL` validate roles, enforce mime/kind rules, persist `Media` rows, and sign URLs via GCS (internal/media/service.go:39-332; internal/media/list.go:15-139).
