@@ -1896,7 +1896,7 @@ Headers:
 * `GET /api/v1/products`
 
   * Filters: `state` (required), `query`, `category`, `strain`, `priceMin/Max`, `vendorStoreId`, pagination.
-  * Enforces vendor visibility: license verified + subscription active.
+  * Enforces vendor visibility via `pkg/visibility.EnsureVendorVisible`: vendor stores must be `kyc_status=verified`, `subscription_active=true`, and their `address.state` must match the requested `state` (and the buyer's store state when provided); violations produce `422` (state mismatch) or `404` (hidden vendors).
   * Success: `200`
   * Errors: `401, 422`
 
@@ -1905,7 +1905,7 @@ Headers:
 * `GET /api/v1/products/{productId}`
 
   * Success: `200`
-  * Errors: `401, 404`
+  * Errors: `401, 404` (a hidden vendor returns `404` so buyers cannot probe vendors across states or before KYC/subscription approval)
 
 **Vendor: create product**
 
@@ -3561,6 +3561,7 @@ FKs
 
   * `stores.kyc_status='verified'`
   * `stores.subscription_active=true`
+  * `stores.address.state` matches the requested buyer `state` (and the buyer store, if present) so that cross-state browsing is blocked; this logic is implemented by `pkg/visibility.EnsureVendorVisible`, which also drives 404/422 responses when violated.
 
 **Geo query (buyer origin = active buyer store location):**
 

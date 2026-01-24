@@ -24,6 +24,7 @@
 
 ### stores
 - `id`, `type store_type`, `company_name`, optional `dba_name/description/phone/email`, `kyc_status` default `pending_verification`, `subscription_active` bool, `delivery_radius_meters`, `address address_t`, `geom geography(Point,4326)`, optional `social social_t`, `banner_url`, `logo_url`, `ratings jsonb`, `categories text[]`, `owner` FK to `users`, `last_active_at`, timestamps, GIST index on `geom`, indexes on `(type,kyc_status)` and `subscription_active` (pkg/migrate/migrations/20260120003412_create_stores_table.sql:1-42; pkg/migrate/migrations/20260120003414_add_store_profile_fields.sql:1-8; pkg/db/models/store.go:13-35).
+- `kyc_status`, `subscription_active`, and `address.state` serve as the canonical visibility flags: buyer product/list/detail queries call `pkg/visibility.EnsureVendorVisible` which requires `kyc_status=verified`, `subscription_active=true`, and matching `state` before returning any vendor data, yielding `422` or `404` when violated (pkg/visibility/visibility.go:11-46).
 
 ### store_memberships
 - FK to `stores`/`users`, `role member_role`, `status membership_status`, optional `invited_by_user_id`, `UNIQUE (store_id,user_id)`, indexes on `user_id`, `(store_id,role)`, `(store_id,status)` (pkg/migrate/migrations/20260120003413_create_store_memberships.sql:1-33; pkg/db/models/store_membership.go:11-21).

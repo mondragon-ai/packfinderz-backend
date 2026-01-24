@@ -226,6 +226,7 @@ Re-running the migration is safe because the statements use `CREATE EXTENSION IF
 * Partial success allowed **across vendors**
 * Inventory reserved atomically per line item
 * Checkout enforces every product's MOQ (Catalog `products.moq`) and now returns `422` plus a `violations` detail array when a line item falls short so clients can display the same failure reason.
+* Buyer product listings/details only surface licensed, subscribed vendors whose state matches the buyer's `state` filter (see `pkg/visibility.EnsureVendorVisible` for the gating rules and 404/422 contract).
 
 ### Payments & Ledger
 
