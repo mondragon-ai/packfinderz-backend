@@ -1989,6 +1989,8 @@ Headers:
   * Success: `204`
   * Errors: `401, 403`
 
+* Implementation note: `cart_records`/`cart_items` (see sections 2.9 & 2.10) serve as the authoritative snapshot for each buyer store, and the `internal/cart` repository enforces `buyer_store_id` ownership plus the `CartStatus` (`active|converted`) before handing the data to the checkout flow.
+
 ---
 
 ### 5.9 Checkout
@@ -2875,11 +2877,13 @@ Fields
 * `id uuid pk`
 * `buyer_store_id uuid not null`
 * `session_id text null` (**ASSUMPTION:** supports guest-ish continuity; still login-gated for catalog)
-* `status text not null` (**ASSUMPTION:** `active|converted`; keep simple)
-* `coupon_code text null` (**ASSUMPTION:** future)
-* `shipping_address address_t null` (**ASSUMPTION:** in B2B usually store address; can be null)
+* `status ENUM not null` (**ASSUMPTION:** `active|converted`; keep simple)
+* `shipping_address address_t null` (**ASSUMPTION:** in B2B usually store address; can be null -> added/confirmed on next step)
+* `total_discount int not null`
+* `fees int not null`
 * `subtotal_cents int not null`
 * `total_cents int not null`
+* `cart_level_discount cart_level_discount[] null`
 * `created_at timestamptz not null default now()`
 * `updated_at timestamptz not null default now()`
 
@@ -2892,6 +2896,17 @@ FKs
 
 * `buyer_store_id -> stores(id) on delete cascade`
 
+```
+  cart_level_discount {
+    "type": "text null",
+    "title": "WELCOME10 not null",
+    "id": "DISCOUNT_UUID" not null,
+    "value": "10.00 not null",
+    "value_type": "percentage" | "fixed",
+    "vendor_id": UUID not null
+  }
+```
+
 ---
 
 ### 2.10 `cart_items`
@@ -2901,13 +2916,18 @@ FKs
 Fields
 
 * `id uuid pk`
-* `cart_id uuid not null`
 * `product_id uuid not null`
 * `vendor_store_id uuid not null`
 * `qty int not null`
-* `unit text not null`
+* `product_sku text not null`
+* `unit Unit Enum not null`
 * `unit_price_cents int not null`
 * `compare_at_unit_price_cents int null`
+* `applied_volume_tier_min_qty int null`
+* `applied_volume_tier_unit_price_cents int null`
+* `discounted_price int null`
+* `sub_total_price int null`
+* `featured_image text null`
 * `moq int null`
   * (Assumption) Persisting the product's MOQ snapshot so the checkout validation helper can enforce the same rule that the client sees; any violation returns `422` with `violations` details.
 * `thc_percent numeric(5,2) null`
