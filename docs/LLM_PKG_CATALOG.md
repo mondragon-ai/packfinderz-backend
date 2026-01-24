@@ -62,6 +62,10 @@
 - `Service` (`GetByID`, `Update`, `ListUsers`, `InviteUser`, `RemoveUser`) ties `stores.Repository`, `memberships.Repository`, and `users.Repository` to enforce role checks, update fields, invite users, and protect the last owner (internal/stores/service.go:42-373).
 - `StoreDTO`, `CreateStoreDTO`, and model mappers shape the safe tenant payload returned to clients (internal/stores/dto.go:13-140).
 
+## internal/cart
+- `Repository` (internal/cart/repo.go:22-118) orchestrates `CartRecord`/`CartItem` persistence for checkout staging: `Create`/`ReplaceItems` seed snapshots, `FindActiveByBuyerStore`/`FindByIDAndBuyerStore` preload items and scope by `buyer_store_id`, `UpdateStatus` flips the `cart_status` enum (`active|converted`), and `DeleteByBuyerStore` cleans up all records for a buyer when needed.
+- `models.CartRecord` captures `buyer_store_id`, optional `session_id`, shipping address, totals (subtotal/total/fees/discount), `cart_level_discount[]`, and timestamps (`pkg/db/models/cart_record.go:12-41`), while `models.CartItem` stores product/vendor snapshots (SKU, unit, price tiers, MOQ, THC/CBD, featured image) plus `cart_id` FK cascading on delete (`pkg/db/models/cart_item.go:11-37`); both tables match `pkg/migrate/migrations/20260124000003_create_cart_records.sql`.
+
 ## internal/users
 - `Repository` provides `Create`, `FindByEmail`, `FindByID`, `UpdateLastLogin`, `UpdateStoreIDs`, and `UpdatePasswordHash`, while `UserDTO` hides credentials (internal/users/repo.go:12-70; internal/users/dto.go:11-78).
 

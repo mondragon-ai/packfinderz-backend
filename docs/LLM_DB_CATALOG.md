@@ -48,6 +48,14 @@
 - `id uuid`, `product_id uuid REFERENCES products(id)`, `min_qty`, `unit_price_cents`, `created_at` plus `unique(product_id,min_qty)` and `order by (product_id,min_qty desc)` for tiered pricing lookups (DESIGN_DOC.md:2780-2804; pkg/db/models/product_volume_discount.go:9-24).
 - The discount repo keeps the `(product_id,min_qty)` uniqueness and orders results descending by `min_qty` for efficient greatest-eligible-tier retrieval.
 
+### cart_records
+- `id`, `buyer_store_id uuid REFERENCES stores(id) ON DELETE CASCADE`, optional `session_id`, `status cart_status NOT NULL DEFAULT 'active'`, optional `shipping_address address_t`, `total_discount`, `fees`, `subtotal_cents`, `total_cents`, optional `cart_level_discount cart_level_discount[]`, `created_at`, `updated_at`, plus indexes on `(buyer_store_id,status)` and `session_id` (pkg/migrate/migrations/20260124000003_create_cart_records.sql:1-41; pkg/db/models/cart_record.go:12-41; pkg/enums/cart_status.go:1-26).
+- `cart_status` enum (`active|converted`) governs the buyer-scoped lifecycle and is enforced by `internal/cart.Repository.UpdateStatus` before the record is consumed by checkout.
+
+### cart_items
+- `id`, `cart_id uuid REFERENCES cart_records(id) ON DELETE CASCADE`, `product_id uuid REFERENCES products(id) ON DELETE RESTRICT`, `vendor_store_id uuid REFERENCES stores(id) ON DELETE RESTRICT`, `qty`, `product_sku`, `unit unit`, `unit_price_cents`, optional compare-at/tier/discount/subtotal fields, optional `featured_image`, `moq`, `thc_percent numeric(5,2)`, `cbd_percent numeric(5,2)`, timestamps, and indexes on `cart_id` plus `vendor_store_id` for buyer/vendor lookups (pkg/migrate/migrations/20260124000003_create_cart_records.sql:42-79; pkg/db/models/cart_item.go:11-37).
+- These rows persist the product/vendor snapshot that checkout uses when the buyer converts the cart, preventing recomputation of pricing/MOQ data at execution time.
+
 ### product_media
 - `id uuid`, `product_id uuid REFERENCES products(id)`, optional `url`, `gcs_key`, `position`, and timestamps; `unique(product_id, position)` plus ordered `position ASC` is required for canonical media presentation to buyers (DESIGN_DOC.md:2831-2852; pkg/db/models/product_media.go:11-29).
 - Repository preloads `Media` ordered by `position` so services can expose `media[0]` as the primary thumbnail and iteratively display the rest.

@@ -261,6 +261,7 @@ Re-running the migration is safe because the statements use `CREATE EXTENSION IF
 * Products + `product_media` attachments (category/classification/unit/flavors/feelings/usage enums govern vendor listings)
 * Volume discounts (`product_volume_discounts`) for deterministic tiered pricing per product
 * Inventory (`inventory_items` tracks available/reserved counts per product), orders
+* Cart staging tables (`cart_records`, `cart_items`) persist buyer snapshots at checkout confirmation (status `active|converted`) before creating checkout groups
 * Payments, ledger events
 * Ads, subscriptions
 * Outbox events

@@ -113,6 +113,13 @@ Cursor-based limit/cursor helpers reused across list endpoints.
 * `AccessSessionKey(accessID string)`
 * `Del(ctx, keys...)`
 
+### `cart`
+
+* `internal/cart.Repository` orchestrates `CartRecord` + `CartItem` persistence during checkout staging.
+* Methods such as `FindActiveByBuyerStore`, `ReplaceItems`, `UpdateStatus`, and `DeleteByBuyerStore` enforce `buyer_store_id` ownership.
+* Stored cart-level discounts map to the `cart_level_discount[]` column via `pkg/types.CartLevelDiscounts`.
+* `cart_records` rows mirror `models.CartRecord` (`buyer_store_id`, optional `session_id`, `status cart_status`, `shipping_address`, subtotal/total/fees/total_discount, `cart_level_discount[]`, timestamps) while `cart_items` captures every product snapshot (product/vendor IDs, sku, unit, unit price, optional compare/unit tier data, discounted/subtotal, featured image, moq, thc/cbd) so checkout can replay pricing without recomputing (pkg/db/models/cart_record.go:12-41; pkg/db/models/cart_item.go:11-37; pkg/migrate/migrations/20260124000003_create_cart_records.sql).
+
 ---
 
 ### `logger`
@@ -324,6 +331,12 @@ type Ratings map[string]int
 
 ---
 
+### `CartLevelDiscounts` (`cart_level_discount[]`)
+
+* Represents the Postgres composite array attached to `cart_records.cart_level_discount`.
+* `pkg/types.CartLevelDiscounts` implements `driver.Valuer`/`sql.Scanner` and validates required fields (`title`, `id`, `value`, `value_type`, `vendor_id`).
+* The cart repository writes/reads this element when persisting buyer snapshots via `internal/cart.Repository`.
+
 ## Security
 
 ---
@@ -417,6 +430,11 @@ All enums implement:
 * `order_alert`
 * `compliance`
 
+### `CartStatus`
+
+* `active`
+* `converted`
+
 ### `Product`
 
 * `category`: `flower`, `cart`, `pre_roll`, `edible`, `concentrate`, `beverage`, `vape`, `topical`, `tincture`, `seed`, `seedling`, `accessory`
@@ -439,6 +457,11 @@ All enums implement:
 ### `internal/notifications`
 * `Repository.Create` inserts compliance notifications so the worker can persist alerts after consuming events (internal/notifications/repo.go:1-23).
 * `Consumer` subscribes to `license_status_changed` events, honors `pkg/outbox/idempotency.Manager` TTLs, and writes `NotificationTypeCompliance` rows with the right admin/store link plus rejection details when present, keeping the event tied to the originating store (internal/notifications/consumer.go:18-186; cmd/worker/main.go:83-116).
+
+### `internal/cart`
+* `Repository` secures `CartRecord` + `CartItem` persistence by scoping every operation to the owning `buyer_store_id`.
+* `ReplaceItems` wipes the previous `cart_items` rows before inserting the new snapshot, while `UpdateStatus` flips the record from `active` to `converted`.
+* Cart-level discounts map through `pkg/types.CartLevelDiscounts` when the repository writes/reads `cart_level_discount[]`.
 
 ### `internal/products`
 * `Repository` exposes product CRUD plus detail/list reads that preload `Inventory`, `VolumeDiscounts` (descending `min_qty`), and `Media` (ascending `position`) so services get a single `Product` model with the related SKU, pricing, inventory, discounts, and ordered media (internal/products/repo/repository.go:60-208).

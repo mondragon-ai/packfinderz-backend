@@ -124,21 +124,21 @@
 
 ---
 
-## **Phase 5 — Products, Inventory, Pricing** ❌ NOT STARTED
+## **Phase 5 — Products, Inventory, Pricing** ⚠️ MOSTLY COMPLETE
 
 **Goal:** Vendor listings with inventory correctness
 
 **Planned tickets:**
 
-* [ ] Product model + migrations (media_id required)
-* [ ] Inventory model + migrations
-* [ ] Volume discount model + migrations
-* [ ] Vendor create product endpoint
-* [ ] Vendor update product endpoint (media immutable)
-* [ ] Vendor delete product endpoint
+* [x] Product model + migrations (media_id required)
+* [x] Inventory model + migrations
+* [x] Volume discount model + migrations
+* [x] Vendor create product endpoint
+* [x] Vendor update product endpoint (media immutable)
+* [x] Vendor delete product endpoint
 * [ ] Inventory set endpoint (idempotent)
-* [ ] MOQ validation (client + server)
-* [ ] Vendor visibility gating (license + subscription)
+* [x] MOQ validation (client + server)
+* [x] Vendor visibility gating (license + subscription)
 * [ ] Product audit logging
 
 ---
