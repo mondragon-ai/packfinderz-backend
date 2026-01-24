@@ -189,6 +189,22 @@ Canonical helpers for cart/checkout validation.
 
 Reusable, canonical MOQ enforcement for cart and checkout flows; servers and clients can both refer to this helper and the documented error contract when evaluating quantities.
 
+### `visibility`
+
+Shared vendor visibility helpers for buyer product and store queries.
+
+**Helpers**
+
+* `EnsureVendorVisible(VendorVisibilityInput)` enforces `stores.kyc_status=verified`, `subscription_active=true`, and matching `store.address.state` vs. the buyer `state` filter (plus the buyer’s own state when provided) before exposing any vendor data. Violations map to `pkgerrors.CodeNotFound` (hidden vendors) or `pkgerrors.CodeValidation` (state mismatch).
+
+**Types**
+
+* `VendorVisibilityInput` ships the vendor `Store`, the requested `state`, and the buyer store’s state (optional).
+
+**Guarantee**
+
+Applying this helper everywhere keeps buyer-facing product and directory endpoints consistent: hidden vendors always return `404` and state mismatches keep returning `422`, preventing cross-state leaks.
+
 ## Shared Types (`pkg/types`)
 
 ---

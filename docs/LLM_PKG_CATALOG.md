@@ -40,6 +40,9 @@
 ## pkg/checkout
 - `ValidateMOQ([]MOQValidationInput)` ensures every line item meets its `MOQ` before checkout commits reservations/orders; violations collect `MOQViolationDetail` entries with `product_id`, optional `product_name`, `required_qty`, and `requested_qty`, and the helper returns `pkg/errors.CodeStateConflict` so the API reports HTTP `422` with a canonical `violations` array (pkg/checkout/validation.go:11-43).
 
+## pkg/visibility
+- `VendorVisibilityInput` plus `EnsureVendorVisible` drive canonical rules for buyer-facing product and store queries: vendors must be `kyc_status=verified`, `subscription_active=true`, and share the requested state (plus the buyer store’s state when provided); violations map to `pkg/errors.CodeNotFound` (hidden vendors) or `pkg/errors.CodeValidation` (state mismatch) so client listings/details consistently return `404`/`422` (pkg/visibility/visibility.go:11-46).
+
 ## pkg/security
 - `HashPassword`, `VerifyPassword`, and `GenerateTempPassword` wrap Argon2id hashing and random-password generation tuned by `PasswordConfig`, and validate hash formats (pkg/security/password.go:15-166).
 
