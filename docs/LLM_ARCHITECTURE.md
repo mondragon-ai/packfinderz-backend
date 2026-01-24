@@ -1,6 +1,7 @@
 ## API service
 - `cmd/api/main` loads config, runs dev migrations (`MaybeRunDev`), boots Postgres/Redis/GCS, session manager, domain/internal services, and exposes `routes.NewRouter` on `http.Server.ListenAndServe` (cmd/api/main.go:1-134; pkg/migrate/autorun.go:12-34).
 - `routes.NewRouter` wires `Recoverer`, `RequestID`, `Logging`, `Auth`, `StoreContext`, `Idempotency`, and `RateLimit` middleware, then mounts health, public, `/api` (store/media/licenses), `/api/admin`, and `/api/agent` groups (api/routes/router.go:17-106).
+- `POST /api/v1/checkout` uses the `pkg/checkout.ValidateMOQ` helper before reserving inventory/orders; failure to meet a product's `MOQ` results in `pkg/errors.CodeStateConflict` (mapped to HTTP `422`) plus a `violations` array (`product_id`, optional `product_name`, `required_qty`, `requested_qty`) so clients can highlight the offending line items (pkg/checkout/validation.go:11-43).
 - `middleware.Auth` validates bearer JWTs via `pkg/auth.ParseAccessToken`, ensures refresh session exists, and injects `user_id`, `store_id`, and `role` into context for the `/api` group (api/middleware/auth.go:23-80).
 
 ## Worker loop

@@ -37,6 +37,9 @@
 ## pkg/pagination
 - `Params`, `Cursor`, `NormalizeLimit`, `LimitWithBuffer`, `EncodeCursor`, and `ParseCursor` encapsulate the cursor pagination contract used by licenses/media listings (pkg/pagination/pagination.go:12-80).
 
+## pkg/checkout
+- `ValidateMOQ([]MOQValidationInput)` ensures every line item meets its `MOQ` before checkout commits reservations/orders; violations collect `MOQViolationDetail` entries with `product_id`, optional `product_name`, `required_qty`, and `requested_qty`, and the helper returns `pkg/errors.CodeStateConflict` so the API reports HTTP `422` with a canonical `violations` array (pkg/checkout/validation.go:11-43).
+
 ## pkg/security
 - `HashPassword`, `VerifyPassword`, and `GenerateTempPassword` wrap Argon2id hashing and random-password generation tuned by `PasswordConfig`, and validate hash formats (pkg/security/password.go:15-166).
 

@@ -2000,6 +2000,7 @@ Headers:
   * Converts CartRecord into CheckoutGroup + VendorOrders (including vendor “rejected” orders if vendor fails).
   * **Idempotent:** YES (required)
   * Success: `201`
+  * Validation: enforces each line item's quantity against the product's stored `moq` and returns `422` (via `pkg/errors.CodeStateConflict`) with a `violations` detail array (`product_id`, optional `product_name`, `required_qty`, `requested_qty`) when any MOQ is unmet.
   * Errors: `400, 401, 403, 409, 422`
 
 ---
@@ -2908,6 +2909,7 @@ Fields
 * `unit_price_cents int not null`
 * `compare_at_unit_price_cents int null`
 * `moq int null`
+  * (Assumption) Persisting the product's MOQ snapshot so the checkout validation helper can enforce the same rule that the client sees; any violation returns `422` with `violations` details.
 * `thc_percent numeric(5,2) null`
 * `cbd_percent numeric(5,2) null`
 * `created_at timestamptz not null default now()`

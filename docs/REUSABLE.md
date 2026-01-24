@@ -172,6 +172,23 @@ Canonical typed error system.
 
 ---
 
+### `checkout`
+
+Canonical helpers for cart/checkout validation.
+
+**Helpers**
+
+* `ValidateMOQ([]MOQValidationInput)` returns `nil` when every line item meets its product's MOQ and otherwise builds a `pkgerrors.CodeStateConflict` error so the API can reply with HTTP `422`.
+
+**Types**
+
+* `MOQValidationInput` captures `product_id`, optional `product_name`, the stored `moq`, and the requested `quantity`.
+* `MOQViolationDetail` surfaces via the envelope's `violations` array (`product_id`, optional `product_name`, `required_qty`, `requested_qty`) so clients can highlight offending products.
+
+**Guarantee**
+
+Reusable, canonical MOQ enforcement for cart and checkout flows; servers and clients can both refer to this helper and the documented error contract when evaluating quantities.
+
 ## Shared Types (`pkg/types`)
 
 ---
