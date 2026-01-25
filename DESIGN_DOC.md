@@ -2007,6 +2007,11 @@ Headers:
   * Validation: enforces each line item's quantity against the product's stored `moq` and returns `422` (via `pkg/errors.CodeStateConflict`) with a `violations` detail array (`product_id`, optional `product_name`, `required_qty`, `requested_qty`) when any MOQ is unmet.
   * Errors: `400, 401, 403, 409, 422`
 
+**Order Data Models (PF-077)**
+
+* `checkout_groups`, `vendor_orders`, `order_line_items`, and `payment_intents` map the `CartRecord` snapshot into durable checkout entities before inventory/reservations execute; their columns/status enums should match the master definitions in Doc 4, and cash remains the default payment method.
+* The accompanying repositories provide CRUD helpers per table so subsequent tickets can build checkout flows without embedding migrations or business logic in this layer.
+
 ---
 
 ### 5.10 Orders
@@ -2901,6 +2906,10 @@ Indexes
 FKs
 
 * `buyer_store_id -> stores(id) on delete cascade`
+
+**Repositories**
+
+* `internal/orders.Repository` exposes persistence for `checkout_groups`, `vendor_orders`, `order_line_items`, and `payment_intents` so the checkout flow can materialize the per-vendor order snapshot with line items and payment state.
 
 ```
   cart_level_discount {
