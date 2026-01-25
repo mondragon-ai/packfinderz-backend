@@ -226,6 +226,7 @@ If a **vendor subscription is inactive/canceled**:
 
   * order becomes `expired` and effectively canceled
   * inventory reservation released
+  * PF-079 introduces the atomic reservation helper that conditionally updates `inventory_items` (ensuring `available_qty >= qty`, incrementing `reserved_qty`, returning per-line success/failure) so checkout can avoid overdrafts while allowing partial success.
   * buyer can “retry order” from expired order (creates a new checkout attempt)
 * Future ACH note: if buyer was charged, refund flow applies; for cash MVP no refund needed.
 
@@ -2007,6 +2008,7 @@ Headers:
   * Validation: enforces each line item's quantity against the product's stored `moq` and returns `422` (via `pkg/errors.CodeStateConflict`) with a `violations` detail array (`product_id`, optional `product_name`, `required_qty`, `requested_qty`) when any MOQ is unmet.
   * Errors: `400, 401, 403, 409, 422`
   * Domain helpers in `internal/checkout/helpers` group cart items by vendor, recompute per-vendor totals, and validate buyer/vendor eligibility without hitting the database before the orchestration layer materializes checkout entities.
+  * `internal/checkout/reservation` uses the `inventory_items` conditional update pattern to atomically reserve stock per line item, marks insufficient rows with `insufficient_inventory`, and keeps per-line results for the partial success semantics mandated by PF-079.
 
 **Order Data Models (PF-077)**
 
