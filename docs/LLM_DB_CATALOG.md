@@ -56,6 +56,18 @@
 - `id`, `cart_id uuid REFERENCES cart_records(id) ON DELETE CASCADE`, `product_id uuid REFERENCES products(id) ON DELETE RESTRICT`, `vendor_store_id uuid REFERENCES stores(id) ON DELETE RESTRICT`, `qty`, `product_sku`, `unit unit`, `unit_price_cents`, optional compare-at/tier/discount/subtotal fields, optional `featured_image`, `moq`, `thc_percent numeric(5,2)`, `cbd_percent numeric(5,2)`, timestamps, and indexes on `cart_id` plus `vendor_store_id` for buyer/vendor lookups (pkg/migrate/migrations/20260124000003_create_cart_records.sql:42-79; pkg/db/models/cart_item.go:11-37).
 - These rows persist the product/vendor snapshot that checkout uses when the buyer converts the cart, preventing recomputation of pricing/MOQ data at execution time.
 
+### checkout_groups
+- Placeholder for the `checkout_groups` table introduced in PF-077; it will reference `cart_records`, mirror buyer context, store aggregated totals, and own linkages to `vendor_orders` once the migrations are in place (implementation pending, see PF-077).
+
+### vendor_orders
+- Placeholder for the `vendor_orders` table introduced in PF-077; it will reference `checkout_groups`, `stores` (buyers + vendors), and include status/totals so vendor-specific fulfillment snapshots persist (implementation pending, see PF-077).
+
+### order_line_items
+- Placeholder for the `order_line_items` table introduced in PF-077; it will reference `vendor_orders`, capture product snapshots, quantities, pricing tiers, and inventory references, mirroring the `cart_items` payload (implementation pending, see PF-077).
+
+### payment_intents
+- Placeholder for the `payment_intents` table introduced in PF-077; it will track payment status (`cash` default), totals, and vendor split info when checkout executes, aligning with Doc 4’s master enums (implementation pending, see PF-077).
+
 ### product_media
 - `id uuid`, `product_id uuid REFERENCES products(id)`, optional `url`, `gcs_key`, `position`, and timestamps; `unique(product_id, position)` plus ordered `position ASC` is required for canonical media presentation to buyers (DESIGN_DOC.md:2831-2852; pkg/db/models/product_media.go:11-29).
 - Repository preloads `Media` ordered by `position` so services can expose `media[0]` as the primary thumbnail and iteratively display the rest.

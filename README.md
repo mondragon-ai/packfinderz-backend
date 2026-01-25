@@ -219,13 +219,14 @@ Re-running the migration is safe because the statements use `CREATE EXTENSION IF
 ### Checkout & Orders
 
 * Client cart → server `CartRecord`
-* Checkout creates:
+ * Checkout creates:
 
   * `CheckoutGroup`
   * N `VendorOrder`s
-* Partial success allowed **across vendors**
-* Inventory reserved atomically per line item
-* Checkout enforces every product's MOQ (Catalog `products.moq`) and now returns `422` plus a `violations` detail array when a line item falls short so clients can display the same failure reason.
+ * Partial success allowed **across vendors**
+ * Inventory reserved atomically per line item
+ * Checkout enforces every product's MOQ (Catalog `products.moq`) and now returns `422` plus a `violations` detail array when a line item falls short so clients can display the same failure reason.
+ * Order data models (`checkout_groups`, `vendor_orders`, `order_line_items`, `payment_intents`) persist the CartRecord snapshot before inventory/reservations run; these tables (PF-077) back the checkout group/vendor order abstractions.
 * Buyer product listings/details only surface licensed, subscribed vendors whose state matches the buyer's `state` filter (see `pkg/visibility.EnsureVendorVisible` for the gating rules and 404/422 contract).
 
 ### Payments & Ledger
@@ -262,6 +263,7 @@ Re-running the migration is safe because the statements use `CREATE EXTENSION IF
 * Volume discounts (`product_volume_discounts`) for deterministic tiered pricing per product
 * Inventory (`inventory_items` tracks available/reserved counts per product), orders
 * Cart staging tables (`cart_records`, `cart_items`) persist buyer snapshots at checkout confirmation (status `active|converted`) before creating checkout groups
+* Checkout tables (`checkout_groups`, `vendor_orders`, `order_line_items`, `payment_intents`) capture the per-vendor order state, line items, and payment intent before checkout execution hands off to fulfillment
 * Payments, ledger events
 * Ads, subscriptions
 * Outbox events
