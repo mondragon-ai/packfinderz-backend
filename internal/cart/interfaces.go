@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/angelmondragon/packfinderz-backend/pkg/db/models"
+	"github.com/angelmondragon/packfinderz-backend/pkg/enums"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
@@ -16,4 +17,5 @@ type CartRepository interface {
 	Create(ctx context.Context, record *models.CartRecord) (*models.CartRecord, error)
 	Update(ctx context.Context, record *models.CartRecord) (*models.CartRecord, error)
 	ReplaceItems(ctx context.Context, cartID uuid.UUID, items []models.CartItem) error
+	UpdateStatus(ctx context.Context, id, buyerStoreID uuid.UUID, status enums.CartStatus) error
 }

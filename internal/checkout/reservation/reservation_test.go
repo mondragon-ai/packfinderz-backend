@@ -29,9 +29,9 @@ func TestReserveInventory(t *testing.T) {
 	}
 
 	requests := []InventoryReservationRequest{
-		{ProductID: productA, Qty: 3},
-		{ProductID: productA, Qty: 4},
-		{ProductID: productB, Qty: 1},
+		{CartItemID: uuid.New(), ProductID: productA, Qty: 3},
+		{CartItemID: uuid.New(), ProductID: productA, Qty: 4},
+		{CartItemID: uuid.New(), ProductID: productB, Qty: 1},
 	}
 
 	err := db.Transaction(func(tx *gorm.DB) error {

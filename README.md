@@ -227,9 +227,11 @@ Re-running the migration is safe because the statements use `CREATE EXTENSION IF
 * Inventory reserved atomically per line item
 * Atomic inventory reservation helper (PF-079) conditionally updates `inventory_items.available_qty`/`reserved_qty` and returns per-line results so checkout can continue with other vendors even when a line item cannot be reserved.
 * Checkout enforces every product's MOQ (Catalog `products.moq`) and now returns `422` plus a `violations` detail array when a line item falls short so clients can display the same failure reason.
- * Order data models (`checkout_groups`, `vendor_orders`, `order_line_items`, `payment_intents`) persist the CartRecord snapshot before inventory/reservations run; these tables (PF-077) back the checkout group/vendor order abstractions.
- * The checkout helpers (`internal/checkout/helpers`) provide deterministic grouping, totals recomputation, and buyer/vendor validation logic that the orchestration layer reuses without hitting the database.
- * `internal/checkout/reservation` runs the `inventory_items` conditional update (`available_qty >= qty`), increments `reserved_qty`, and returns per-line reservation results so checkout can report partial success.
+* PF-080 describes the `internal/checkout/service` orchestrator that runs the transaction converting a `CartRecord` → `CheckoutGroup` + `VendorOrders` + `OrderLineItems` while handling reservation-driven partial success semantics.
+* Order data models (`checkout_groups`, `vendor_orders`, `order_line_items`, `payment_intents`) persist the CartRecord snapshot before inventory/reservations run; these tables (PF-077) back the checkout group/vendor order abstractions.
+* The checkout helpers (`internal/checkout/helpers`) provide deterministic grouping, totals recomputation, and buyer/vendor validation logic that the orchestration layer reuses without hitting the database.
+* `internal/checkout/reservation` runs the `inventory_items` conditional update (`available_qty >= qty`), increments `reserved_qty`, and returns per-line reservation results so checkout can report partial success.
+* `internal/checkout/service.go` orchestrates the checkout transaction, creates the `CheckoutGroup` + `VendorOrder`s, converts `CartRecord` to orders, and marks the cart `converted` while reusing the helpers/reservation logic.
 * Buyer product listings/details only surface licensed, subscribed vendors whose state matches the buyer's `state` filter (see `pkg/visibility.EnsureVendorVisible` for the gating rules and 404/422 contract).
 
 ### Payments & Ledger

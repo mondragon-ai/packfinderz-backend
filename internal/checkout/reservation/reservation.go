@@ -10,16 +10,18 @@ import (
 
 // InventoryReservationRequest describes the data required to reserve inventory for a product.
 type InventoryReservationRequest struct {
-	ProductID uuid.UUID
-	Qty       int
+	CartItemID uuid.UUID
+	ProductID  uuid.UUID
+	Qty        int
 }
 
 // InventoryReservationResult reports whether a reservation succeeded per line item.
 type InventoryReservationResult struct {
-	ProductID uuid.UUID
-	Qty       int
-	Reserved  bool
-	Reason    string
+	CartItemID uuid.UUID
+	ProductID  uuid.UUID
+	Qty        int
+	Reserved   bool
+	Reason     string
 }
 
 // ReserveInventory atomically decrements available inventory and increments reserved qty per request.
@@ -48,8 +50,9 @@ func ReserveInventory(ctx context.Context, db *gorm.DB, requests []InventoryRese
 		}
 
 		result := InventoryReservationResult{
-			ProductID: req.ProductID,
-			Qty:       req.Qty,
+			CartItemID: req.CartItemID,
+			ProductID:  req.ProductID,
+			Qty:        req.Qty,
 		}
 		if res.RowsAffected == 0 {
 			result.Reserved = false
