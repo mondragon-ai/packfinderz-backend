@@ -119,6 +119,7 @@ Cursor-based limit/cursor helpers reused across list endpoints.
 * Methods such as `FindActiveByBuyerStore`, `ReplaceItems`, `UpdateStatus`, and `DeleteByBuyerStore` enforce `buyer_store_id` ownership.
 * Stored cart-level discounts map to the `cart_level_discount[]` column via `pkg/types.CartLevelDiscounts`.
 * `cart_records` rows mirror `models.CartRecord` (`buyer_store_id`, optional `session_id`, `status cart_status`, `shipping_address`, subtotal/total/fees/total_discount, `cart_level_discount[]`, timestamps) while `cart_items` captures every product snapshot (product/vendor IDs, sku, unit, unit price, optional compare/unit tier data, discounted/subtotal, featured image, moq, thc/cbd) so checkout can replay pricing without recomputing (pkg/db/models/cart_record.go:12-41; pkg/db/models/cart_item.go:11-37; pkg/migrate/migrations/20260124000003_create_cart_records.sql).
+* `GET /api/v1/cart` fetches the active `cart_record` (plus line items) for the buyer store so the UI can recover an in-progress checkout without mutating state.
 
 ---
 
@@ -463,6 +464,7 @@ All enums implement:
 * `ReplaceItems` wipes the previous `cart_items` rows before inserting the new snapshot, while `UpdateStatus` flips the record from `active` to `converted`.
 * Cart-level discounts map through `pkg/types.CartLevelDiscounts` when the repository writes/reads `cart_level_discount[]`.
 * `Service.UpsertCart` enforces buyer KYC/role, vendor visibility (verified/subscribed/in-state), inventory availability, MOQ, volume-tier pricing, subtotal/total math, and cart-level discount metadata before the cart is created or updated so the returned record is the canonical checkout snapshot (`internal/cart/service.go:39-209`).
+* `Service.GetActiveCart` validates the requesting buyer store, enforces buyer ownership, and returns the latest `cart_record` with joined `cart_items`, otherwise returning `pkgerrors.CodeNotFound` when no active cart exists (`internal/cart/service.go:259-284`).
 
 ### `internal/products`
 * `Repository` exposes product CRUD plus detail/list reads that preload `Inventory`, `VolumeDiscounts` (descending `min_qty`), and `Media` (ascending `position`) so services get a single `Product` model with the related SKU, pricing, inventory, discounts, and ordered media (internal/products/repo/repository.go:60-208).

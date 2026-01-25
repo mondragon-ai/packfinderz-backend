@@ -37,6 +37,7 @@ type productLoader interface {
 // Service exposes cart persistence operations.
 type Service interface {
 	UpsertCart(ctx context.Context, buyerStoreID uuid.UUID, input UpsertCartInput) (*models.CartRecord, error)
+	GetActiveCart(ctx context.Context, buyerStoreID uuid.UUID) (*models.CartRecord, error)
 }
 
 type service struct {
@@ -110,17 +111,9 @@ func (s *service) UpsertCart(ctx context.Context, buyerStoreID uuid.UUID, input 
 		return nil, pkgerrors.New(pkgerrors.CodeValidation, "cart totals must be non-negative")
 	}
 
-	buyerStore, err := s.store.GetByID(ctx, buyerStoreID)
+	_, buyerState, err := s.validateBuyerStore(ctx, buyerStoreID)
 	if err != nil {
 		return nil, err
-	}
-	if buyerStore.KYCStatus != enums.KYCStatusVerified {
-		return nil, pkgerrors.New(pkgerrors.CodeForbidden, "buyer store must be verified")
-	}
-
-	buyerState := normalizeState(buyerStore.Address.State)
-	if buyerState == "" {
-		return nil, pkgerrors.New(pkgerrors.CodeValidation, "buyer store state is required")
 	}
 
 	vendorCache := map[uuid.UUID]*stores.StoreDTO{}
@@ -261,6 +254,44 @@ func (s *service) UpsertCart(ctx context.Context, buyerStoreID uuid.UUID, input 
 	}
 
 	return saved, nil
+}
+
+// GetActiveCart returns the active cart for the buyer, or not-found.
+func (s *service) GetActiveCart(ctx context.Context, buyerStoreID uuid.UUID) (*models.CartRecord, error) {
+	if buyerStoreID == uuid.Nil {
+		return nil, pkgerrors.New(pkgerrors.CodeValidation, "buyer store id is required")
+	}
+
+	if _, _, err := s.validateBuyerStore(ctx, buyerStoreID); err != nil {
+		return nil, err
+	}
+
+	record, err := s.repo.FindActiveByBuyerStore(ctx, buyerStoreID)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, pkgerrors.New(pkgerrors.CodeNotFound, "active cart not found")
+		}
+		return nil, err
+	}
+	return record, nil
+}
+
+func (s *service) validateBuyerStore(ctx context.Context, buyerStoreID uuid.UUID) (*stores.StoreDTO, string, error) {
+	store, err := s.store.GetByID(ctx, buyerStoreID)
+	if err != nil {
+		return nil, "", err
+	}
+	if store.Type != enums.StoreTypeBuyer {
+		return nil, "", pkgerrors.New(pkgerrors.CodeForbidden, "active store must be a buyer")
+	}
+	if store.KYCStatus != enums.KYCStatusVerified {
+		return nil, "", pkgerrors.New(pkgerrors.CodeForbidden, "buyer store must be verified")
+	}
+	state := normalizeState(store.Address.State)
+	if state == "" {
+		return nil, "", pkgerrors.New(pkgerrors.CodeValidation, "buyer store state is required")
+	}
+	return store, state, nil
 }
 
 func (s *service) ensureVendor(ctx context.Context, vendorID uuid.UUID, buyerState string, cache map[uuid.UUID]*stores.StoreDTO) (*stores.StoreDTO, error) {

@@ -2894,6 +2894,10 @@ Indexes
 * `(buyer_store_id, status)`
 * `(session_id)` (nullable)
 
+**Routes**
+
+* `GET /api/v1/cart` returns the buyer store's active `cart_record` plus its `cart_items` for UI recovery or retry, or `404` if no active cart exists.
+
 FKs
 
 * `buyer_store_id -> stores(id) on delete cascade`

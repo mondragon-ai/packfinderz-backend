@@ -25,15 +25,9 @@ func CartUpsert(svc cartsvc.Service, logg *logger.Logger) http.HandlerFunc {
 			return
 		}
 
-		storeID := middleware.StoreIDFromContext(r.Context())
-		if storeID == "" {
-			responses.WriteError(r.Context(), logg, w, pkgerrors.New(pkgerrors.CodeForbidden, "store context missing"))
-			return
-		}
-
-		buyerStoreID, err := uuid.Parse(storeID)
+		buyerStoreID, err := buyerStoreIDFromContext(r)
 		if err != nil {
-			responses.WriteError(r.Context(), logg, w, pkgerrors.Wrap(pkgerrors.CodeValidation, err, "invalid buyer store id"))
+			responses.WriteError(r.Context(), logg, w, err)
 			return
 		}
 
@@ -50,6 +44,30 @@ func CartUpsert(svc cartsvc.Service, logg *logger.Logger) http.HandlerFunc {
 		}
 
 		record, err := svc.UpsertCart(r.Context(), buyerStoreID, input)
+		if err != nil {
+			responses.WriteError(r.Context(), logg, w, err)
+			return
+		}
+
+		responses.WriteSuccess(w, newCartRecordResponse(record))
+	}
+}
+
+// CartFetch exposes the active cart record for the buyer store.
+func CartFetch(svc cartsvc.Service, logg *logger.Logger) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if svc == nil {
+			responses.WriteError(r.Context(), logg, w, pkgerrors.New(pkgerrors.CodeInternal, "cart service unavailable"))
+			return
+		}
+
+		buyerStoreID, err := buyerStoreIDFromContext(r)
+		if err != nil {
+			responses.WriteError(r.Context(), logg, w, err)
+			return
+		}
+
+		record, err := svc.GetActiveCart(r.Context(), buyerStoreID)
 		if err != nil {
 			responses.WriteError(r.Context(), logg, w, err)
 			return
@@ -201,4 +219,19 @@ func newCartRecordResponse(record *models.CartRecord) cartRecordResponse {
 		CreatedAt:          record.CreatedAt,
 		UpdatedAt:          record.UpdatedAt,
 	}
+}
+
+func buyerStoreIDFromContext(r *http.Request) (uuid.UUID, error) {
+	if r == nil {
+		return uuid.Nil, pkgerrors.New(pkgerrors.CodeForbidden, "store context missing")
+	}
+	storeID := middleware.StoreIDFromContext(r.Context())
+	if storeID == "" {
+		return uuid.Nil, pkgerrors.New(pkgerrors.CodeForbidden, "store context missing")
+	}
+	buyerStoreID, err := uuid.Parse(storeID)
+	if err != nil {
+		return uuid.Nil, pkgerrors.Wrap(pkgerrors.CodeValidation, err, "invalid buyer store id")
+	}
+	return buyerStoreID, nil
 }
