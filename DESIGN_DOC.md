@@ -1986,10 +1986,12 @@ Headers:
 
 * `DELETE /api/v1/cart`
 
-  * Success: `204`
-  * Errors: `401, 403`
+ * Success: `204`
+ * Errors: `401, 403`
 
 * Implementation note: `cart_records`/`cart_items` (see sections 2.9 & 2.10) serve as the authoritative snapshot for each buyer store, and the `internal/cart` repository enforces `buyer_store_id` ownership plus the `CartStatus` (`active|converted`) before handing the data to the checkout flow.
+
+* The `PUT /api/v1/cart` endpoint now relies on `internal/cart.Service.UpsertCart` to gate the request: the buyer store must be type `buyer` and `kyc_status=verified`, each vendor store must be verified, subscribed, and share the buyer’s state, every product SKU/unit ties back to the active vendor listing, MOQ/inventory limits and volume tiers are rechecked, and the submitted `subtotal`/`total`/`total_discount` values must match the line-item snapshots before the cart record and its items are persisted. Idempotent requests reuse the same Redis key for 24h while the stored record (with `cart_level_discount[]`) is returned as the canonical summary.
 
 ---
 

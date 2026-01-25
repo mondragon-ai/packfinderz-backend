@@ -20,7 +20,7 @@ func NewRepository(db *gorm.DB) *Repository {
 }
 
 // WithTx binds the repository to a transaction.
-func (r *Repository) WithTx(tx *gorm.DB) *Repository {
+func (r *Repository) WithTx(tx *gorm.DB) CartRepository {
 	if tx == nil {
 		return r
 	}
@@ -33,6 +33,14 @@ func (r *Repository) Create(ctx context.Context, record *models.CartRecord) (*mo
 		record.Status = enums.CartStatusActive
 	}
 	if err := r.db.WithContext(ctx).Create(record).Error; err != nil {
+		return nil, err
+	}
+	return record, nil
+}
+
+// Update saves the provided cart record.
+func (r *Repository) Update(ctx context.Context, record *models.CartRecord) (*models.CartRecord, error) {
+	if err := r.db.WithContext(ctx).Save(record).Error; err != nil {
 		return nil, err
 	}
 	return record, nil

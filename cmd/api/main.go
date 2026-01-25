@@ -9,6 +9,7 @@ import (
 
 	"github.com/angelmondragon/packfinderz-backend/api/routes"
 	"github.com/angelmondragon/packfinderz-backend/internal/auth"
+	"github.com/angelmondragon/packfinderz-backend/internal/cart"
 	"github.com/angelmondragon/packfinderz-backend/internal/licenses"
 	"github.com/angelmondragon/packfinderz-backend/internal/media"
 	"github.com/angelmondragon/packfinderz-backend/internal/memberships"
@@ -148,6 +149,17 @@ func main() {
 		os.Exit(1)
 	}
 
+	cartService, err := cart.NewService(
+		cart.NewRepository(dbClient.DB()),
+		dbClient,
+		storeService,
+		productRepo,
+	)
+	if err != nil {
+		logg.Error(context.Background(), "failed to create cart service", err)
+		os.Exit(1)
+	}
+
 	outboxRepo := outbox.NewRepository(dbClient.DB())
 	outboxPublisher := outbox.NewService(outboxRepo, logg)
 
@@ -199,6 +211,7 @@ func main() {
 			mediaService,
 			licenseService,
 			productService,
+			cartService,
 		),
 	}
 

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/angelmondragon/packfinderz-backend/internal/auth"
+	"github.com/angelmondragon/packfinderz-backend/internal/cart"
 	"github.com/angelmondragon/packfinderz-backend/internal/licenses"
 	"github.com/angelmondragon/packfinderz-backend/internal/media"
 	"github.com/angelmondragon/packfinderz-backend/internal/memberships"
@@ -151,6 +152,13 @@ func (s stubProductService) DeleteProduct(ctx context.Context, userID uuid.UUID,
 	panic("unimplemented")
 }
 
+type stubCartService struct{}
+
+// UpsertCart implements [cart.Service].
+func (s stubCartService) UpsertCart(ctx context.Context, buyerStoreID uuid.UUID, input cart.UpsertCartInput) (*models.CartRecord, error) {
+	panic("unimplemented")
+}
+
 func testConfig() *config.Config {
 	return &config.Config{
 		App: config.AppConfig{Env: "test", Port: "0"},
@@ -179,6 +187,7 @@ func newTestRouter(cfg *config.Config) http.Handler {
 		stubMediaService{},
 		stubLicensesService{},
 		stubProductService{},
+		stubCartService{},
 	)
 }
 
