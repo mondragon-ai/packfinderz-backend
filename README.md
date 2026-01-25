@@ -81,7 +81,7 @@ The worker also consumes the `gcp-meda-sub` Pub/Sub subscription for GCS `OBJECT
 
 ### Outbox Publisher
 
-`cmd/outbox-publisher` is the dedicated outbox publisher that polls `outbox_events` with `FOR UPDATE SKIP LOCKED`, publishes domain envelopes to `PACKFINDERZ_PUBSUB_DOMAIN_TOPIC`, and marks `published_at` or increments `attempt_count`/`last_error` before committing the transaction. Run it locally with `make run-outbox-publisher`, build it via `make build-outbox-publisher`, and run the `outbox-publisher` dyno in Heroku alongside `api`/`worker`. The operational guide in `docs/outbox.md` explains claiming, at-least-once semantics, retry expectations, and consumer idempotency requirements.
+`cmd/outbox-publisher` is the dedicated outbox publisher that polls `outbox_events` with `FOR UPDATE SKIP LOCKED`, publishes domain envelopes to `PACKFINDERZ_PUBSUB_DOMAIN_TOPIC`, and marks `published_at` or increments `attempt_count`/`last_error` before committing the transaction. Run it locally with `make run-outbox-publisher`, build it via `make build-outbox-publisher`, and run the `outbox-publisher` dyno in Heroku alongside `api`/`worker`. The operational guide in `docs/outbox.md` explains claiming, at-least-once semantics, retry expectations, and consumer idempotency requirements. When the API completes checkout it writes an `order_created` outbox row (payload includes `checkout_group_id` plus the `vendor_order_ids`) so analytics and notification consumers can react to the same transactional split recorded in Postgres.
 
 ---
 
@@ -325,6 +325,14 @@ The GitHub Actions workflow (`.github/workflows/ci.yml`) runs gofmt, `golangci-l
 * Money-adjacent `POST` endpoints require an `Idempotency-Key` header; missing the header now yields a `400`.
 * `api/middleware.Idempotency` stores the first response (status, body, and `Content-Type`) in Redis per scope+key and replays it on matching keys; mismatched request bodies trigger `409 IDEMPOTENCY_KEY_REUSED`.
 * TTLs are 24h by default and 7 days for checkout/payment flows (see `DESIGN_DOC.md` section 6 for the complete endpoint list).
+* `POST /api/v1/checkout` uses the idempotency middleware so the first successful response (checkout group + vendor orders) is cached for 7 days; duplicate calls with the same key/body replay that response, while a different payload triggers `409 IDEMPOTENCY_KEY_REUSED`, preventing double reservations.
+
+### Checkout Submission
+
+* `POST /api/v1/checkout` finalizes the buyer store's active cart within a single transaction, splitting it into `CheckoutGroup` + per-vendor `VendorOrders`.
+* Requires a `Idempotency-Key` header (7-day TTL) and a buyer store context; the request body must include `cart_id` and may include `attributed_ad_click_id`.
+* Success returns `201` and the canonical `vendor_orders` payload grouped by vendor plus `rejected_vendors`, explicitly listing any vendors/line items that were rejected (each line item surfaces `status`/`notes` so clients can show the failure reason).
+* Errors: `400` (validation), `403` (vendor store or missing store context), `409` (`Idempotency-Key` reused with a different body), `422` (state conflict such as MOQ or reservation failures).
 
 ### Cart Upsert
 

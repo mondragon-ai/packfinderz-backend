@@ -12,6 +12,7 @@ import (
 	"github.com/angelmondragon/packfinderz-backend/pkg/db/models"
 	"github.com/angelmondragon/packfinderz-backend/pkg/enums"
 	pkgerrors "github.com/angelmondragon/packfinderz-backend/pkg/errors"
+	"github.com/angelmondragon/packfinderz-backend/pkg/outbox"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
@@ -26,6 +27,10 @@ type productLoader interface {
 
 type reservationRunner interface {
 	Reserve(ctx context.Context, tx *gorm.DB, requests []reservation.InventoryReservationRequest) ([]reservation.InventoryReservationResult, error)
+}
+
+type outboxPublisher interface {
+	Emit(ctx context.Context, tx *gorm.DB, event outbox.DomainEvent) error
 }
 
 type reservationEngine struct{}
@@ -51,6 +56,7 @@ type service struct {
 	storeSvc    stores.Service
 	productRepo productLoader
 	reservation reservationRunner
+	outbox      outboxPublisher
 }
 
 // NewService builds the checkout service.
@@ -61,6 +67,7 @@ func NewService(
 	storeSvc stores.Service,
 	productRepo productLoader,
 	reservation reservationRunner,
+	publisher outboxPublisher,
 ) (Service, error) {
 	if tx == nil {
 		return nil, fmt.Errorf("tx runner required")
@@ -80,6 +87,9 @@ func NewService(
 	if reservation == nil {
 		reservation = reservationEngine{}
 	}
+	if publisher == nil {
+		return nil, fmt.Errorf("outbox publisher required")
+	}
 	return &service{
 		tx:          tx,
 		cartRepo:    cartRepo,
@@ -87,6 +97,7 @@ func NewService(
 		storeSvc:    storeSvc,
 		productRepo: productRepo,
 		reservation: reservation,
+		outbox:      publisher,
 	}, nil
 }
 
@@ -145,6 +156,7 @@ func (s *service) Execute(ctx context.Context, buyerStoreID, cartID uuid.UUID, i
 		vendorCache := map[uuid.UUID]*stores.StoreDTO{}
 		totalsByVendor := helpers.ComputeTotalsByVendor(record.Items)
 		grouped := helpers.GroupCartItemsByVendor(record.Items)
+		vendorOrderIDs := make([]uuid.UUID, 0, len(grouped))
 
 		checkoutGroup := &models.CheckoutGroup{
 			BuyerStoreID:        buyerStoreID,
@@ -198,9 +210,14 @@ func (s *service) Execute(ctx context.Context, buyerStoreID, cartID uuid.UUID, i
 			if _, err := ordersRepo.CreatePaymentIntent(ctx, intent); err != nil {
 				return err
 			}
+			vendorOrderIDs = append(vendorOrderIDs, createdOrder.ID)
 		}
 
 		if err := cartRepo.UpdateStatus(ctx, record.ID, buyerStoreID, enums.CartStatusConverted); err != nil {
+			return err
+		}
+
+		if err := s.emitOrderCreatedEvent(ctx, tx, createdGroup.ID, vendorOrderIDs); err != nil {
 			return err
 		}
 
@@ -238,6 +255,25 @@ func (s *service) loadProduct(ctx context.Context, productID uuid.UUID, cache ma
 	}
 	cache[productID] = product
 	return product, nil
+}
+
+func (s *service) emitOrderCreatedEvent(ctx context.Context, tx *gorm.DB, checkoutGroupID uuid.UUID, vendorOrderIDs []uuid.UUID) error {
+	event := outbox.DomainEvent{
+		EventType:     enums.EventOrderCreated,
+		AggregateType: enums.AggregateCheckoutGroup,
+		AggregateID:   checkoutGroupID,
+		Data: OrderCreatedEvent{
+			CheckoutGroupID: checkoutGroupID,
+			VendorOrderIDs:  append([]uuid.UUID{}, vendorOrderIDs...),
+		},
+		Version: 1,
+	}
+	return s.outbox.Emit(ctx, tx, event)
+}
+
+type OrderCreatedEvent struct {
+	CheckoutGroupID uuid.UUID   `json:"checkout_group_id"`
+	VendorOrderIDs  []uuid.UUID `json:"vendor_order_ids"`
 }
 
 func buildLineItem(orderID uuid.UUID, cartItem models.CartItem, product *models.Product, reservation reservation.InventoryReservationResult) models.OrderLineItem {

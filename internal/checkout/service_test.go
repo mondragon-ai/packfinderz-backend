@@ -12,6 +12,7 @@ import (
 	"github.com/angelmondragon/packfinderz-backend/pkg/db/models"
 	"github.com/angelmondragon/packfinderz-backend/pkg/enums"
 	pkgerrors "github.com/angelmondragon/packfinderz-backend/pkg/errors"
+	"github.com/angelmondragon/packfinderz-backend/pkg/outbox"
 	"github.com/angelmondragon/packfinderz-backend/pkg/types"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
@@ -64,6 +65,7 @@ func TestServiceExecuteSuccess(t *testing.T) {
 		productRepo.products[item.ProductID] = &models.Product{ID: item.ProductID, Title: "Sample", Category: enums.ProductCategoryCart}
 	}
 
+	outboxPublisher := &stubOutboxPublisher{}
 	ordersRepo := &stubOrdersRepo{}
 	reservationRunner := &stubReservationRunner{
 		results: []reservation.InventoryReservationResult{
@@ -79,6 +81,7 @@ func TestServiceExecuteSuccess(t *testing.T) {
 		storeSvc,
 		productRepo,
 		reservationRunner,
+		outboxPublisher,
 	)
 	if err != nil {
 		t.Fatalf("new service: %v", err)
@@ -112,6 +115,35 @@ func TestServiceExecuteSuccess(t *testing.T) {
 	}
 	if order.PaymentIntent == nil {
 		t.Fatal("expected payment intent")
+	}
+
+	if len(outboxPublisher.events) != 1 {
+		t.Fatalf("expected 1 outbox event, got %d", len(outboxPublisher.events))
+	}
+	event := outboxPublisher.events[0]
+	if event.EventType != enums.EventOrderCreated {
+		t.Fatalf("unexpected event type: %s", event.EventType)
+	}
+	if event.AggregateType != enums.AggregateCheckoutGroup {
+		t.Fatalf("unexpected aggregate type: %s", event.AggregateType)
+	}
+	if event.AggregateID != group.ID {
+		t.Fatalf("unexpected aggregate id: %s", event.AggregateID)
+	}
+	payload, ok := event.Data.(OrderCreatedEvent)
+	if !ok {
+		t.Fatalf("event payload type mismatch")
+	}
+	if payload.CheckoutGroupID != group.ID {
+		t.Fatalf("unexpected payload checkout group: %s", payload.CheckoutGroupID)
+	}
+	if len(payload.VendorOrderIDs) != len(ordersRepo.orderSequence) {
+		t.Fatalf("expected %d vendor orders in payload, got %d", len(ordersRepo.orderSequence), len(payload.VendorOrderIDs))
+	}
+	for i, id := range ordersRepo.orderSequence {
+		if payload.VendorOrderIDs[i] != id {
+			t.Fatalf("unexpected vendor order id at idx %d: want %s got %s", i, id, payload.VendorOrderIDs[i])
+		}
 	}
 }
 
@@ -267,4 +299,13 @@ type stubReservationRunner struct {
 
 func (s stubReservationRunner) Reserve(ctx context.Context, tx *gorm.DB, requests []reservation.InventoryReservationRequest) ([]reservation.InventoryReservationResult, error) {
 	return s.results, nil
+}
+
+type stubOutboxPublisher struct {
+	events []outbox.DomainEvent
+}
+
+func (s *stubOutboxPublisher) Emit(ctx context.Context, tx *gorm.DB, event outbox.DomainEvent) error {
+	s.events = append(s.events, event)
+	return nil
 }
