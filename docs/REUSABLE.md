@@ -126,6 +126,11 @@ Cursor-based limit/cursor helpers reused across list endpoints.
 * `internal/orders.Repository` writes and reads `checkout_groups`, `vendor_orders`, `order_line_items`, and `payment_intents` so checkout execution can persist and rehydrate the per-vendor order snapshot and payment state.
 * Methods preload `VendorOrders.Items` + `PaymentIntent` to keep the in-memory checkout snapshot consistent while fetching by checkout group or order.
 
+### `checkout`
+
+* `internal/checkout/helpers` contains deterministic, database-free logic that groups `CartItem`s by `vendor_store_id`, recomputes vendor totals, and validates buyer/vendor eligibility (store type, subscription, state) plus MOQ compliance before executing checkout.
+* `GroupCartItemsByVendor` produces the per-vendor slices consumed by `ComputeVendorTotals`/`ComputeTotalsByVendor` so the checkout group and per-vendor order totals are deterministic, while `ValidateBuyerStore`, `ValidateVendorStore`, and `ValidateMOQ` centralize the store-state/subscription/MOQ checks shared between cart upserts and checkout orchestration (`internal/checkout/helpers/grouping.go`; `internal/checkout/helpers/validation.go`).
+
 ---
 
 ### `logger`

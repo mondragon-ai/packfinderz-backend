@@ -227,6 +227,7 @@ Re-running the migration is safe because the statements use `CREATE EXTENSION IF
  * Inventory reserved atomically per line item
  * Checkout enforces every product's MOQ (Catalog `products.moq`) and now returns `422` plus a `violations` detail array when a line item falls short so clients can display the same failure reason.
  * Order data models (`checkout_groups`, `vendor_orders`, `order_line_items`, `payment_intents`) persist the CartRecord snapshot before inventory/reservations run; these tables (PF-077) back the checkout group/vendor order abstractions.
+ * The checkout helpers (`internal/checkout/helpers`) provide deterministic grouping, totals recomputation, and buyer/vendor validation logic that the orchestration layer reuses without hitting the database.
 * Buyer product listings/details only surface licensed, subscribed vendors whose state matches the buyer's `state` filter (see `pkg/visibility.EnsureVendorVisible` for the gating rules and 404/422 contract).
 
 ### Payments & Ledger

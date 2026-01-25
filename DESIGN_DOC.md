@@ -2006,6 +2006,7 @@ Headers:
   * Success: `201`
   * Validation: enforces each line item's quantity against the product's stored `moq` and returns `422` (via `pkg/errors.CodeStateConflict`) with a `violations` detail array (`product_id`, optional `product_name`, `required_qty`, `requested_qty`) when any MOQ is unmet.
   * Errors: `400, 401, 403, 409, 422`
+  * Domain helpers in `internal/checkout/helpers` group cart items by vendor, recompute per-vendor totals, and validate buyer/vendor eligibility without hitting the database before the orchestration layer materializes checkout entities.
 
 **Order Data Models (PF-077)**
 
