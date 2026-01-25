@@ -325,6 +325,11 @@ The GitHub Actions workflow (`.github/workflows/ci.yml`) runs gofmt, `golangci-l
 * Server-side validations re-check buyer/vendor KYC, subscriptions, inventory, MOQ, volume tiers, and computed totals before creating/updating the `cart_record` + `cart_items` rows so the checkout runner always consumes a trusted snapshot.
 * Requires `Idempotency-Key`; returns the stored record with its line items so the UI can recover or retry.
 
+### Cart Fetch
+
+* `GET /api/v1/cart` – returns the buyer store's currently active `cart_record` along with its `cart_items` so the UI can recover or refresh the pending checkout.
+* Enforces the active store context, verifies the buyer store's ownership, and returns `404` when no active cart exists.
+
 ### Health
 
 ```bash

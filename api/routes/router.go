@@ -115,6 +115,7 @@ func NewRouter(
 		})
 
 		r.Route("/v1/cart", func(r chi.Router) {
+			r.Get("/", controllers.CartFetch(cartService, logg))
 			r.Put("/", controllers.CartUpsert(cartService, logg))
 		})
 

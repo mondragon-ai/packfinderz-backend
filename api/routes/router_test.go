@@ -159,6 +159,11 @@ func (s stubCartService) UpsertCart(ctx context.Context, buyerStoreID uuid.UUID,
 	panic("unimplemented")
 }
 
+// GetActiveCart implements [cart.Service].
+func (s stubCartService) GetActiveCart(ctx context.Context, buyerStoreID uuid.UUID) (*models.CartRecord, error) {
+	panic("unimplemented")
+}
+
 func testConfig() *config.Config {
 	return &config.Config{
 		App: config.AppConfig{Env: "test", Port: "0"},
