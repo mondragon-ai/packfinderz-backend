@@ -23,6 +23,9 @@
 ## Private (store-scoped)
 - `GET /api/ping` – auth + store context, echoes scope/store_id for health (api/controllers/ping.go:16-24).
 
+## Cart
+- `PUT /api/v1/cart` – buyer stores persist their checkout snapshots via this idempotent (24h TTL) route. `middleware.Idempotency` guards the route and injects the idempotency key, while `controllers.CartUpsert` validates the buyer store is a verified buyer and delegates to `internal/cart.Service.UpsertCart`. The service revalidates vendor subscriptions/KYC, state alignment, inventory + MOQ, volume tier pricing, subtotal/total math, and cart-level discounts before upserting `cart_record`/`cart_items` rows and returning the canonical record with items (`api/middleware/idempotency.go:45-208`; `internal/cart/service.go:1-213`).
+
 ## Checkout
 - `POST /api/v1/checkout` – requires auth, store context, and idempotency (`middleware.Idempotency` enforces `Idempotency-Key` for this critical path). The checkout service calls `pkg/checkout.ValidateMOQ` before reserving inventory to ensure every line item's `quantity ≥ products.moq`; violations trigger `pkg/errors.CodeStateConflict` (mapped to HTTP `422`) with a `violations` array (`product_id`, optional `product_name`, `required_qty`, `requested_qty`) so clients can highlight the offending products (`pkg/checkout/validation.go:11-43`).
 

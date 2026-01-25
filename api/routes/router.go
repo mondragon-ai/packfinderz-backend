@@ -10,6 +10,7 @@ import (
 	"github.com/angelmondragon/packfinderz-backend/api/controllers"
 	"github.com/angelmondragon/packfinderz-backend/api/middleware"
 	"github.com/angelmondragon/packfinderz-backend/internal/auth"
+	"github.com/angelmondragon/packfinderz-backend/internal/cart"
 	"github.com/angelmondragon/packfinderz-backend/internal/licenses"
 	"github.com/angelmondragon/packfinderz-backend/internal/media"
 	products "github.com/angelmondragon/packfinderz-backend/internal/products"
@@ -42,6 +43,7 @@ func NewRouter(
 	mediaService media.Service,
 	licenseService licenses.Service,
 	productService products.Service,
+	cartService cart.Service,
 ) http.Handler {
 	r := chi.NewRouter()
 	r.Use(
@@ -111,6 +113,11 @@ func NewRouter(
 			r.Post("/", controllers.LicenseCreate(licenseService, logg))
 			r.Delete("/{licenseId}", controllers.LicenseDelete(licenseService, logg))
 		})
+
+		r.Route("/v1/cart", func(r chi.Router) {
+			r.Put("/", controllers.CartUpsert(cartService, logg))
+		})
+
 	})
 
 	r.Route("/api/admin", func(r chi.Router) {

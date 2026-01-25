@@ -319,6 +319,12 @@ The GitHub Actions workflow (`.github/workflows/ci.yml`) runs gofmt, `golangci-l
 * `api/middleware.Idempotency` stores the first response (status, body, and `Content-Type`) in Redis per scope+key and replays it on matching keys; mismatched request bodies trigger `409 IDEMPOTENCY_KEY_REUSED`.
 * TTLs are 24h by default and 7 days for checkout/payment flows (see `DESIGN_DOC.md` section 6 for the complete endpoint list).
 
+### Cart Upsert
+
+* `PUT /api/v1/cart` – buyer stores use this idempotent endpoint (24h TTL) to persist their cart snapshot once checkout confirmation occurs.
+* Server-side validations re-check buyer/vendor KYC, subscriptions, inventory, MOQ, volume tiers, and computed totals before creating/updating the `cart_record` + `cart_items` rows so the checkout runner always consumes a trusted snapshot.
+* Requires `Idempotency-Key`; returns the stored record with its line items so the UI can recover or retry.
+
 ### Health
 
 ```bash
