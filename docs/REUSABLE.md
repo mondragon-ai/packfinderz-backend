@@ -130,6 +130,8 @@ Cursor-based limit/cursor helpers reused across list endpoints.
 
 * `internal/checkout/helpers` contains deterministic, database-free logic that groups `CartItem`s by `vendor_store_id`, recomputes vendor totals, and validates buyer/vendor eligibility (store type, subscription, state) plus MOQ compliance before executing checkout.
 * `GroupCartItemsByVendor` produces the per-vendor slices consumed by `ComputeVendorTotals`/`ComputeTotalsByVendor` so the checkout group and per-vendor order totals are deterministic, while `ValidateBuyerStore`, `ValidateVendorStore`, and `ValidateMOQ` centralize the store-state/subscription/MOQ checks shared between cart upserts and checkout orchestration (`internal/checkout/helpers/grouping.go`; `internal/checkout/helpers/validation.go`).
+* PF-079 introduces `ReserveInventory` (same helper package) so checkout can issue conditional updates on `inventory_items` (e.g., `available_qty >= qty` to decrement `available_qty` and increment `reserved_qty`) and surface per-line reservation results for partial success without DB locks.
+* `internal/checkout/reservation` exposes `ReserveInventory`, which atomically updates `inventory_items` only when `available_qty >= qty`, increments `reserved_qty`, and reports per-line reservation success/failure reasons so the checkout flow can return partial success results (`internal/checkout/reservation/reservation.go`).
 
 ---
 
