@@ -10,9 +10,11 @@ import (
 	"github.com/angelmondragon/packfinderz-backend/api/routes"
 	"github.com/angelmondragon/packfinderz-backend/internal/auth"
 	"github.com/angelmondragon/packfinderz-backend/internal/cart"
+	checkoutsvc "github.com/angelmondragon/packfinderz-backend/internal/checkout"
 	"github.com/angelmondragon/packfinderz-backend/internal/licenses"
 	"github.com/angelmondragon/packfinderz-backend/internal/media"
 	"github.com/angelmondragon/packfinderz-backend/internal/memberships"
+	"github.com/angelmondragon/packfinderz-backend/internal/orders"
 	products "github.com/angelmondragon/packfinderz-backend/internal/products"
 	"github.com/angelmondragon/packfinderz-backend/internal/stores"
 	"github.com/angelmondragon/packfinderz-backend/internal/users"
@@ -149,8 +151,9 @@ func main() {
 		os.Exit(1)
 	}
 
+	cartRepo := cart.NewRepository(dbClient.DB())
 	cartService, err := cart.NewService(
-		cart.NewRepository(dbClient.DB()),
+		cartRepo,
 		dbClient,
 		storeService,
 		productRepo,
@@ -162,6 +165,21 @@ func main() {
 
 	outboxRepo := outbox.NewRepository(dbClient.DB())
 	outboxPublisher := outbox.NewService(outboxRepo, logg)
+
+	ordersRepo := orders.NewRepository(dbClient.DB())
+	checkoutService, err := checkoutsvc.NewService(
+		dbClient,
+		cartRepo,
+		ordersRepo,
+		storeService,
+		productRepo,
+		nil,
+		outboxPublisher,
+	)
+	if err != nil {
+		logg.Error(context.Background(), "failed to create checkout service", err)
+		os.Exit(1)
+	}
 
 	licenseService, err := licenses.NewService(
 		licenses.NewRepository(dbClient.DB()),
@@ -211,6 +229,7 @@ func main() {
 			mediaService,
 			licenseService,
 			productService,
+			checkoutService,
 			cartService,
 		),
 	}

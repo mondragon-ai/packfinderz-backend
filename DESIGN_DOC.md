@@ -1278,6 +1278,8 @@ sequenceDiagram
   W-->>W: Notify vendors + analytics
 ```
 
+* `order_created` outbox payload includes the `checkout_group_id` plus every `vendor_order_id` created during the checkout so downstream analytics and notification pipelines can react to the same domain-recorded split.
+
 **LOCKED**
 
 * Inventory reservation is synchronous.
@@ -2004,10 +2006,14 @@ Headers:
 
   * Converts CartRecord into CheckoutGroup + VendorOrders (including vendor “rejected” orders if vendor fails).
   * **Idempotent:** YES (required)
+  * **Headers:** `Idempotency-Key` required (7-day TTL applied by `middleware.Idempotency` so duplicate submissions replay the cached response and mismatched bodies return `409 IDEMPOTENCY_KEY_REUSED`).
   * Success: `201`
   * Validation: enforces each line item's quantity against the product's stored `moq` and returns `422` (via `pkg/errors.CodeStateConflict`) with a `violations` detail array (`product_id`, optional `product_name`, `required_qty`, `requested_qty`) when any MOQ is unmet.
   * Errors: `400, 401, 403, 409, 422`
+  * Requires the active store to be a buyer (buyer stores only can checkout) and expects `cart_id` plus optional `attributed_ad_click_id` in the request body.
+  * Response payload includes `vendor_orders` grouped by `vendor_store_id` (each order lists `subtotal`, `discount`, `total`, and every line item with its `status`/`notes`) plus `rejected_vendors`, which explicitly lists vendor store IDs and the rejected line items so clients can surface failed vendors/items.
   * PF-080 implements the internal checkout service (`internal/checkout/service.go`): single-transaction conversion of a `CartRecord` into `CheckoutGroup`, `VendorOrders`, and `OrderLineItems`, invoking reservations and partial success logic before marking the cart `converted`.
+  * Idempotency is enforced by `middleware.Idempotency` (scope = user/store/method/path) so the first success (checkout group + vendor orders) is cached for 7 days; repeating the same key/body replays that checkout summary while any body change returns `409 IDEMPOTENCY_KEY_REUSED`, preventing double reservations.
   * Domain helpers in `internal/checkout/helpers` group cart items by vendor, recompute per-vendor totals, and validate buyer/vendor eligibility without hitting the database before the orchestration layer materializes checkout entities.
   * `internal/checkout/reservation` uses the `inventory_items` conditional update pattern to atomically reserve stock per line item, marks insufficient rows with `insufficient_inventory`, and keeps per-line results for the partial success semantics mandated by PF-079.
   * `internal/checkout/service` drives the single transaction that takes the bundled helpers/reservation results, writes the `CheckoutGroup` + per-vendor orders/line items/payment intents, and marks the secure cart as `converted`.
