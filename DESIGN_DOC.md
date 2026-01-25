@@ -2007,8 +2007,10 @@ Headers:
   * Success: `201`
   * Validation: enforces each line item's quantity against the product's stored `moq` and returns `422` (via `pkg/errors.CodeStateConflict`) with a `violations` detail array (`product_id`, optional `product_name`, `required_qty`, `requested_qty`) when any MOQ is unmet.
   * Errors: `400, 401, 403, 409, 422`
+  * PF-080 implements the internal checkout service (`internal/checkout/service.go`): single-transaction conversion of a `CartRecord` into `CheckoutGroup`, `VendorOrders`, and `OrderLineItems`, invoking reservations and partial success logic before marking the cart `converted`.
   * Domain helpers in `internal/checkout/helpers` group cart items by vendor, recompute per-vendor totals, and validate buyer/vendor eligibility without hitting the database before the orchestration layer materializes checkout entities.
   * `internal/checkout/reservation` uses the `inventory_items` conditional update pattern to atomically reserve stock per line item, marks insufficient rows with `insufficient_inventory`, and keeps per-line results for the partial success semantics mandated by PF-079.
+  * `internal/checkout/service` drives the single transaction that takes the bundled helpers/reservation results, writes the `CheckoutGroup` + per-vendor orders/line items/payment intents, and marks the secure cart as `converted`.
 
 **Order Data Models (PF-077)**
 

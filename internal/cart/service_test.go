@@ -35,6 +35,9 @@ func TestSelectVolumeDiscount(t *testing.T) {
 		t.Fatalf("expected highest tier for qty 25, got %+v", res)
 	}
 }
+func (s *stubCartRepo) UpdateStatus(ctx context.Context, id, buyerStoreID uuid.UUID, status enums.CartStatus) error {
+	return nil
+}
 
 func TestServiceGetActiveCartNotFound(t *testing.T) {
 	t.Parallel()
