@@ -94,5 +94,7 @@
 - Constraint: `CHECK (buyer_store_id <> vendor_store_id)` to enforce opposing roles on the same order.
 
 ### order_assignments
-- Purpose: keep agent assignment history per vendor order; the planned schema is recorded in `DESIGN_DOC.md:3135-3154`, but there is no Goose migration that creates `order_assignments` in `pkg/migrate/migrations`, so the implementation details and indexes below remain `UNKNOWN`.
-- Expected indexes per the design doc are `(agent_user_id, active)`, `(order_id)`, and `unique(order_id) WHERE active = true`, but without a migration to inspect these cannot be confirmed.
+- Tracks agent assignments per vendor order so there is always at most one `active = true` row that `internal/orders.Repository.FindOrderDetail` can read for dashboards (pkg/migrate/migrations/20260126000002_create_order_assignments_table.sql:1-24; internal/orders/repo.go:322-347).
+- Fields: `id uuid pk`; `order_id uuid not null`; `agent_user_id uuid not null`; `assigned_by_user_id uuid null`; `assigned_at timestamptz not null default now()`; `unassigned_at timestamptz null`; `active boolean not null default true`.
+- Indexes: `(agent_user_id, active)` (idx_order_assignments_agent_active), `(order_id)` (idx_order_assignments_order), `unique(order_id) WHERE active = true` (ux_order_assignments_order_active) (pkg/migrate/migrations/20260126000002_create_order_assignments_table.sql:7-20).
+- Foreign keys: `order_id -> vendor_orders(id) ON DELETE CASCADE`; `agent_user_id -> users(id) ON DELETE RESTRICT`; `assigned_by_user_id -> users(id) ON DELETE SET NULL`.

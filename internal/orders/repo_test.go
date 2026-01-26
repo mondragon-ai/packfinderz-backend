@@ -103,10 +103,21 @@ CREATE TABLE IF NOT EXISTS payment_intents (
   created_at DATETIME,
   updated_at DATETIME
 );`
+	orderAssignments := `
+CREATE TABLE IF NOT EXISTS order_assignments (
+  id TEXT PRIMARY KEY,
+  order_id TEXT NOT NULL,
+  agent_user_id TEXT NOT NULL,
+  assigned_by_user_id TEXT,
+  assigned_at DATETIME NOT NULL,
+  unassigned_at DATETIME,
+  active INTEGER NOT NULL DEFAULT 1
+);`
 	require.NoError(t, db.Exec(stores).Error)
 	require.NoError(t, db.Exec(vendorOrders).Error)
 	require.NoError(t, db.Exec(orderLineItems).Error)
 	require.NoError(t, db.Exec(paymentIntents).Error)
+	require.NoError(t, db.Exec(orderAssignments).Error)
 	return db
 }
 
@@ -188,6 +199,16 @@ func createLineItem(t *testing.T, db *gorm.DB, order *models.VendorOrder, qty in
 	}
 	item.ID = uuid.New()
 	require.NoError(t, db.Create(item).Error)
+}
+
+func assignOrder(t *testing.T, db *gorm.DB, orderID, agentID, assignedBy uuid.UUID) {
+	t.Helper()
+
+	now := time.Now().UTC()
+	require.NoError(t, db.Exec(`
+		INSERT INTO order_assignments (id, order_id, agent_user_id, assigned_by_user_id, assigned_at, active)
+		VALUES (?, ?, ?, ?, ?, ?)
+	`, uuid.New(), orderID, agentID, assignedBy, now, 1).Error)
 }
 
 func TestRepositoryListBuyerOrders_pagination(t *testing.T) {
@@ -293,6 +314,29 @@ func TestRepositoryListVendorOrders_filtersAndSearch(t *testing.T) {
 	assert.Equal(t, "Search Buyer", list.Orders[0].Buyer.CompanyName)
 	assert.Equal(t, enums.PaymentStatusUnpaid, list.Orders[0].PaymentStatus)
 	assert.Empty(t, list.NextCursor)
+}
+
+func TestRepositoryFindOrderDetail(t *testing.T) {
+	db := setupOrdersTestDB(t)
+	repo := NewRepository(db)
+
+	buyer := newStore(t, db, "Detail Buyer", enums.StoreTypeBuyer)
+	vendor := newStore(t, db, "Detail Vendor", enums.StoreTypeVendor)
+
+	now := time.Now().UTC()
+	order := createOrder(t, db, buyer, vendor, 10, now, 2, enums.PaymentStatusPending, enums.VendorOrderStatusAccepted, enums.VendorOrderFulfillmentStatusPartial, enums.VendorOrderShippingStatusInTransit)
+	assignOrder(t, db, order.ID, uuid.New(), uuid.New())
+
+	detail, err := repo.FindOrderDetail(context.Background(), order.ID)
+	require.NoError(t, err)
+	require.NotNil(t, detail)
+	require.NotNil(t, detail.Order)
+	assert.Equal(t, int64(10), detail.Order.OrderNumber)
+	assert.Equal(t, "Detail Buyer", detail.BuyerStore.CompanyName)
+	assert.Equal(t, "Detail Vendor", detail.VendorStore.CompanyName)
+	require.Len(t, detail.LineItems, 1)
+	require.NotNil(t, detail.PaymentIntent)
+	require.NotNil(t, detail.ActiveAssignment)
 }
 
 func ptr[T any](v T) *T {
