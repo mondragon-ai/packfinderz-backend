@@ -173,7 +173,7 @@ func (s *service) Execute(ctx context.Context, buyerStoreID, cartID uuid.UUID, i
 				return err
 			}
 
-			totals, _ := totalsByVendor[vendorID]
+			totals := totalsByVendor[vendorID]
 			order := &models.VendorOrder{
 				CheckoutGroupID:   createdGroup.ID,
 				BuyerStoreID:      buyerStoreID,

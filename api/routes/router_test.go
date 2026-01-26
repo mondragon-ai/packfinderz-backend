@@ -12,6 +12,7 @@ import (
 
 	"github.com/angelmondragon/packfinderz-backend/internal/auth"
 	"github.com/angelmondragon/packfinderz-backend/internal/cart"
+	"github.com/angelmondragon/packfinderz-backend/internal/checkout"
 	"github.com/angelmondragon/packfinderz-backend/internal/licenses"
 	"github.com/angelmondragon/packfinderz-backend/internal/media"
 	"github.com/angelmondragon/packfinderz-backend/internal/memberships"
@@ -164,6 +165,13 @@ func (s stubCartService) GetActiveCart(ctx context.Context, buyerStoreID uuid.UU
 	panic("unimplemented")
 }
 
+type stubCheckoutService struct{}
+
+// Execute implements [checkout.Service].
+func (s stubCheckoutService) Execute(ctx context.Context, buyerStoreID uuid.UUID, cartID uuid.UUID, input checkout.CheckoutInput) (*models.CheckoutGroup, error) {
+	panic("unimplemented")
+}
+
 func testConfig() *config.Config {
 	return &config.Config{
 		App: config.AppConfig{Env: "test", Port: "0"},
@@ -192,6 +200,7 @@ func newTestRouter(cfg *config.Config) http.Handler {
 		stubMediaService{},
 		stubLicensesService{},
 		stubProductService{},
+		stubCheckoutService{},
 		stubCartService{},
 	)
 }
