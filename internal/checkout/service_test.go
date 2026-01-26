@@ -260,6 +260,14 @@ func (s *stubOrdersRepo) FindPaymentIntentByOrder(ctx context.Context, orderID u
 	return nil, pkgerrors.New(pkgerrors.CodeNotFound, "not used")
 }
 
+func (s *stubOrdersRepo) FindVendorOrder(ctx context.Context, orderID uuid.UUID) (*models.VendorOrder, error) {
+	return nil, pkgerrors.New(pkgerrors.CodeNotFound, "not used")
+}
+
+func (s *stubOrdersRepo) UpdateVendorOrderStatus(ctx context.Context, orderID uuid.UUID, status enums.VendorOrderStatus) error {
+	return nil
+}
+
 func (s *stubOrdersRepo) ListBuyerOrders(ctx context.Context, buyerStoreID uuid.UUID, params pagination.Params, filters orders.BuyerOrderFilters) (*orders.BuyerOrderList, error) {
 	return &orders.BuyerOrderList{}, nil
 }

@@ -231,6 +231,25 @@ func (s *stubOrdersRepo) FindOrderDetail(ctx context.Context, orderID uuid.UUID)
 	return nil, nil
 }
 
+func (s *stubOrdersRepo) FindVendorOrder(ctx context.Context, orderID uuid.UUID) (*models.VendorOrder, error) {
+	return nil, gorm.ErrRecordNotFound
+}
+
+func (s *stubOrdersRepo) UpdateVendorOrderStatus(ctx context.Context, orderID uuid.UUID, status enums.VendorOrderStatus) error {
+	return nil
+}
+
+type stubOrdersService struct {
+	decision func(ctx context.Context, input ordersrepo.VendorDecisionInput) error
+}
+
+func (s stubOrdersService) VendorDecision(ctx context.Context, input ordersrepo.VendorDecisionInput) error {
+	if s.decision != nil {
+		return s.decision(ctx, input)
+	}
+	return nil
+}
+
 type stubCheckoutService struct{}
 
 // Execute implements [checkout.Service].
@@ -269,6 +288,7 @@ func newTestRouter(cfg *config.Config) http.Handler {
 		stubCheckoutService{},
 		stubCartService{},
 		&stubOrdersRepo{},
+		stubOrdersService{},
 	)
 }
 

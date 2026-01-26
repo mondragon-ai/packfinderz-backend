@@ -2048,6 +2048,15 @@ Headers:
   * Controller enforces perspective-based ownership before returning `internal/orders.Repository.FindOrderDetail`.
   * Errors: `401, 403, 404`
 
+**Vendor decision**
+
+* `POST /api/v1/vendor/orders/{orderId}/decision`
+
+  * Vendors accept (`accepted`) or reject (`rejected`) `vendor_orders` that are currently `created_pending`.
+  * `internal/orders.Service.VendorDecision` validates the state, updates the status inside a transaction, and emits the `order_decided` outbox event so the buyer can react.
+  * The controller requires a vendor store context, enforces `Idempotency-Key`, and maps validation/state checks to `403`/`422` responses.
+  * Errors: `401, 403, 404, 422`
+
 **Buyer cancel**
 
 * `POST /api/v1/orders/{orderId}/cancel`

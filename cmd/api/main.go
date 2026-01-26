@@ -167,6 +167,11 @@ func main() {
 	outboxPublisher := outbox.NewService(outboxRepo, logg)
 
 	ordersRepo := orders.NewRepository(dbClient.DB())
+	ordersService, err := orders.NewService(ordersRepo, dbClient, outboxPublisher)
+	if err != nil {
+		logg.Error(context.Background(), "failed to create orders service", err)
+		os.Exit(1)
+	}
 	checkoutService, err := checkoutsvc.NewService(
 		dbClient,
 		cartRepo,
@@ -232,6 +237,7 @@ func main() {
 			checkoutService,
 			cartService,
 			ordersRepo,
+			ordersService,
 		),
 	}
 
