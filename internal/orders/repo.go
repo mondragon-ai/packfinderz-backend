@@ -2,8 +2,12 @@ package orders
 
 import (
 	"context"
+	"strings"
+	"time"
 
 	"github.com/angelmondragon/packfinderz-backend/pkg/db/models"
+	"github.com/angelmondragon/packfinderz-backend/pkg/enums"
+	"github.com/angelmondragon/packfinderz-backend/pkg/pagination"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
@@ -100,4 +104,125 @@ func (r *repository) FindPaymentIntentByOrder(ctx context.Context, orderID uuid.
 		return nil, err
 	}
 	return &intent, nil
+}
+
+func (r *repository) ListBuyerOrders(ctx context.Context, buyerStoreID uuid.UUID, params pagination.Params, filters BuyerOrderFilters) (*BuyerOrderList, error) {
+	pageSize := pagination.NormalizeLimit(params.Limit)
+	limitWithBuffer := pagination.LimitWithBuffer(params.Limit)
+	if limitWithBuffer <= pageSize {
+		limitWithBuffer = pageSize + 1
+	}
+
+	cursor, err := pagination.ParseCursor(params.Cursor)
+	if err != nil {
+		return nil, err
+	}
+
+	qb := r.db.WithContext(ctx).Table("vendor_orders AS vo").
+		Select(`vo.id,
+			vo.created_at,
+			vo.order_number,
+			vo.total_cents,
+			vo.discount_cents,
+			vo.fulfillment_status,
+			vo.shipping_status,
+			pi.status AS payment_status,
+			vs.id AS vendor_store_id,
+			vs.company_name AS vendor_company_name,
+			vs.dba_name AS vendor_dba_name,
+			vs.logo_url AS vendor_logo_url,
+			(SELECT COALESCE(SUM(qty), 0) FROM order_line_items WHERE order_id = vo.id) AS total_items`).
+		Joins("JOIN payment_intents pi ON pi.order_id = vo.id").
+		Joins("JOIN stores vs ON vs.id = vo.vendor_store_id").
+		Joins("JOIN stores bs ON bs.id = vo.buyer_store_id").
+		Where("vo.buyer_store_id = ?", buyerStoreID)
+
+	if filters.OrderStatus != nil {
+		qb = qb.Where("vo.status = ?", *filters.OrderStatus)
+	}
+	if filters.FulfillmentStatus != nil {
+		qb = qb.Where("vo.fulfillment_status = ?", *filters.FulfillmentStatus)
+	}
+	if filters.ShippingStatus != nil {
+		qb = qb.Where("vo.shipping_status = ?", *filters.ShippingStatus)
+	}
+	if filters.PaymentStatus != nil {
+		qb = qb.Where("pi.status = ?", *filters.PaymentStatus)
+	}
+	if filters.DateFrom != nil {
+		qb = qb.Where("vo.created_at >= ?", filters.DateFrom)
+	}
+	if filters.DateTo != nil {
+		qb = qb.Where("vo.created_at <= ?", filters.DateTo)
+	}
+
+	if q := strings.TrimSpace(filters.Query); q != "" {
+		pattern := "%" + strings.ToLower(q) + "%"
+		qb = qb.Where(`(
+			LOWER(vs.company_name) LIKE ? OR
+			LOWER(COALESCE(vs.dba_name, '')) LIKE ? OR
+			LOWER(bs.company_name) LIKE ? OR
+			LOWER(COALESCE(bs.dba_name, '')) LIKE ?
+		)`, pattern, pattern, pattern, pattern)
+	}
+
+	if cursor != nil {
+		qb = qb.Where("(vo.created_at < ?) OR (vo.created_at = ? AND vo.id < ?)", cursor.CreatedAt, cursor.CreatedAt, cursor.ID)
+	}
+
+	qb = qb.Order("vo.created_at DESC").Order("vo.id DESC").Limit(limitWithBuffer)
+
+	var records []buyerOrderRecord
+	if err := qb.Scan(&records).Error; err != nil {
+		return nil, err
+	}
+
+	resultRows := records
+	nextCursor := ""
+	if len(records) > pageSize {
+		resultRows = records[:pageSize]
+		last := resultRows[len(resultRows)-1]
+		nextCursor = pagination.EncodeCursor(pagination.Cursor{CreatedAt: last.CreatedAt, ID: last.ID})
+	}
+
+	orders := make([]BuyerOrderSummary, 0, len(resultRows))
+	for _, record := range resultRows {
+		orders = append(orders, BuyerOrderSummary{
+			CreatedAt:         record.CreatedAt,
+			OrderNumber:       record.OrderNumber,
+			TotalCents:        record.TotalCents,
+			DiscountCents:     record.DiscountCents,
+			TotalItems:        record.TotalItems,
+			PaymentStatus:     record.PaymentStatus,
+			FulfillmentStatus: record.FulfillmentStatus,
+			ShippingStatus:    record.ShippingStatus,
+			Vendor: OrderStoreSummary{
+				ID:          record.VendorStoreID,
+				CompanyName: record.VendorCompanyName,
+				DBAName:     record.VendorDBAName,
+				LogoURL:     record.VendorLogoURL,
+			},
+		})
+	}
+
+	return &BuyerOrderList{
+		Orders:     orders,
+		NextCursor: nextCursor,
+	}, nil
+}
+
+type buyerOrderRecord struct {
+	ID                uuid.UUID
+	CreatedAt         time.Time
+	OrderNumber       int64
+	TotalCents        int
+	DiscountCents     int
+	FulfillmentStatus enums.VendorOrderFulfillmentStatus
+	ShippingStatus    enums.VendorOrderShippingStatus
+	PaymentStatus     enums.PaymentStatus
+	VendorStoreID     uuid.UUID
+	VendorCompanyName string
+	VendorDBAName     *string
+	VendorLogoURL     *string
+	TotalItems        int
 }

@@ -125,6 +125,8 @@ Cursor-based limit/cursor helpers reused across list endpoints.
 
 * `internal/orders.Repository` writes and reads `checkout_groups`, `vendor_orders`, `order_line_items`, and `payment_intents` so checkout execution can persist and rehydrate the per-vendor order snapshot and payment state.
 * Methods preload `VendorOrders.Items` + `PaymentIntent` to keep the in-memory checkout snapshot consistent while fetching by checkout group or order.
+* `ListBuyerOrders` exposes cursor pagination via `pkg/pagination`, returning `BuyerOrderList` with `order_number`, totals, `total_items`, payment/fulfillment/shipping statuses, vendor summary, and `next_cursor`.
+* `BuyerOrderFilters` govern the list: `order_status`, `fulfillment_status`, `shipping_status`, `payment_status`, `date_from/date_to`, and a normalized `q` search across buyer/vendor names. `vendor_orders` now store `fulfillment_status`, `shipping_status`, and a sequential `order_number` backed by matching enums/indexes.
 
 ### `checkout`
 
@@ -482,7 +484,10 @@ All enums implement:
 * `Service.GetActiveCart` validates the requesting buyer store, enforces buyer ownership, and returns the latest `cart_record` with joined `cart_items`, otherwise returning `pkgerrors.CodeNotFound` when no active cart exists (`internal/cart/service.go:259-284`).
 
 ### `internal/orders`
-* `CheckoutGroup`, `VendorOrder`, `OrderLineItem`, and `PaymentIntent` repositories (PF-077) will wrap their respective tables so future checkout execution flows can load/directly manipulate the snapshot without embedding workflow logic in these data layers (implementation pending).
+* `Repository` (internal/orders/interfaces.go:1-29) persists `checkout_groups`, `vendor_orders`, `order_line_items`, and `payment_intents` plus `ListBuyerOrders`, keeping each call scoped to the requesting `buyer_store_id`.
+* `ListBuyerOrders` (internal/orders/repo.go:109-211) queries `vendor_orders AS vo`, joins `payment_intents` for payment status and `stores` for buyer/vendor metadata, selects `order_number`, totals, `payment_status`, `fulfillment_status`, `shipping_status`, vendor summary, and `total_items`, filters on `order_status`, fulfillment/shipping/payment statuses, `created_at` range, and a case-insensitive `Query` over both buyer/vendor names, orders by `created_at DESC`, `id DESC`, and paginates via `pkg/pagination.NormalizeLimit`, `LimitWithBuffer`, and the cursor helpers (`pkg/pagination/pagination.go:12-80`).
+* `BuyerOrderFilters`, `BuyerOrderSummary`, `BuyerOrderList`, and `OrderStoreSummary` (internal/orders/dto.go:10-46) define the inputs/outputs: optional status/date filters plus `Query`, and the response contains sequential `order_number`, totals, status enums, `total_items`, and the vendor summary with company/dba/logo metadata.
+* The `VendorOrder` model (pkg/db/models/vendor_order.go:12-37) records `fulfillment_status`, `shipping_status`, and `order_number`; `pkg/migrate/migrations/20260126000001_add_vendor_order_fields.sql:4-51` introduces the enum types, `vendor_order_number_seq`, the `order_number` column, and `ux_vendor_orders_order_number` which backs the buyer-facing incremental identifier.
 
 ### `internal/products`
 * `Repository` exposes product CRUD plus detail/list reads that preload `Inventory`, `VolumeDiscounts` (descending `min_qty`), and `Media` (ascending `position`) so services get a single `Product` model with the related SKU, pricing, inventory, discounts, and ordered media (internal/products/repo/repository.go:60-208).
