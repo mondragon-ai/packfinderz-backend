@@ -211,6 +211,114 @@ func (r *repository) ListBuyerOrders(ctx context.Context, buyerStoreID uuid.UUID
 	}, nil
 }
 
+func (r *repository) ListVendorOrders(ctx context.Context, vendorStoreID uuid.UUID, params pagination.Params, filters VendorOrderFilters) (*VendorOrderList, error) {
+	pageSize := pagination.NormalizeLimit(params.Limit)
+	limitWithBuffer := pagination.LimitWithBuffer(params.Limit)
+	if limitWithBuffer <= pageSize {
+		limitWithBuffer = pageSize + 1
+	}
+
+	cursor, err := pagination.ParseCursor(params.Cursor)
+	if err != nil {
+		return nil, err
+	}
+
+	qb := r.db.WithContext(ctx).Table("vendor_orders AS vo").
+		Select(`vo.id,
+			vo.created_at,
+			vo.order_number,
+			vo.total_cents,
+			vo.discount_cents,
+			vo.fulfillment_status,
+			vo.shipping_status,
+			pi.status AS payment_status,
+			bs.id AS buyer_store_id,
+			bs.company_name AS buyer_company_name,
+			bs.dba_name AS buyer_dba_name,
+			bs.logo_url AS buyer_logo_url,
+			(SELECT COALESCE(SUM(qty), 0) FROM order_line_items WHERE order_id = vo.id) AS total_items`).
+		Joins("JOIN payment_intents pi ON pi.order_id = vo.id").
+		Joins("JOIN stores bs ON bs.id = vo.buyer_store_id").
+		Joins("JOIN stores vs ON vs.id = vo.vendor_store_id").
+		Where("vo.vendor_store_id = ?", vendorStoreID)
+
+	if filters.OrderStatus != nil {
+		qb = qb.Where("vo.status = ?", *filters.OrderStatus)
+	}
+	if filters.FulfillmentStatus != nil {
+		qb = qb.Where("vo.fulfillment_status = ?", *filters.FulfillmentStatus)
+	}
+	if filters.ShippingStatus != nil {
+		qb = qb.Where("vo.shipping_status = ?", *filters.ShippingStatus)
+	}
+	if filters.PaymentStatus != nil {
+		qb = qb.Where("pi.status = ?", *filters.PaymentStatus)
+	}
+	if len(filters.ActionableStatuses) > 0 {
+		qb = qb.Where("vo.status IN ?", filters.ActionableStatuses)
+	}
+	if filters.DateFrom != nil {
+		qb = qb.Where("vo.created_at >= ?", filters.DateFrom)
+	}
+	if filters.DateTo != nil {
+		qb = qb.Where("vo.created_at <= ?", filters.DateTo)
+	}
+
+	if q := strings.TrimSpace(filters.Query); q != "" {
+		pattern := "%" + strings.ToLower(q) + "%"
+		qb = qb.Where(`(
+			LOWER(vs.company_name) LIKE ? OR
+			LOWER(COALESCE(vs.dba_name, '')) LIKE ? OR
+			LOWER(bs.company_name) LIKE ? OR
+			LOWER(COALESCE(bs.dba_name, '')) LIKE ?
+		)`, pattern, pattern, pattern, pattern)
+	}
+
+	if cursor != nil {
+		qb = qb.Where("(vo.created_at < ?) OR (vo.created_at = ? AND vo.id < ?)", cursor.CreatedAt, cursor.CreatedAt, cursor.ID)
+	}
+
+	qb = qb.Order("vo.created_at DESC").Order("vo.id DESC").Limit(limitWithBuffer)
+
+	var records []vendorOrderRecord
+	if err := qb.Scan(&records).Error; err != nil {
+		return nil, err
+	}
+
+	resultRows := records
+	nextCursor := ""
+	if len(records) > pageSize {
+		resultRows = records[:pageSize]
+		last := resultRows[len(resultRows)-1]
+		nextCursor = pagination.EncodeCursor(pagination.Cursor{CreatedAt: last.CreatedAt, ID: last.ID})
+	}
+
+	orders := make([]VendorOrderSummary, 0, len(resultRows))
+	for _, record := range resultRows {
+		orders = append(orders, VendorOrderSummary{
+			CreatedAt:         record.CreatedAt,
+			OrderNumber:       record.OrderNumber,
+			TotalCents:        record.TotalCents,
+			DiscountCents:     record.DiscountCents,
+			TotalItems:        record.TotalItems,
+			PaymentStatus:     record.PaymentStatus,
+			FulfillmentStatus: record.FulfillmentStatus,
+			ShippingStatus:    record.ShippingStatus,
+			Buyer: OrderStoreSummary{
+				ID:          record.BuyerStoreID,
+				CompanyName: record.BuyerCompanyName,
+				DBAName:     record.BuyerDBAName,
+				LogoURL:     record.BuyerLogoURL,
+			},
+		})
+	}
+
+	return &VendorOrderList{
+		Orders:     orders,
+		NextCursor: nextCursor,
+	}, nil
+}
+
 type buyerOrderRecord struct {
 	ID                uuid.UUID
 	CreatedAt         time.Time
@@ -224,5 +332,21 @@ type buyerOrderRecord struct {
 	VendorCompanyName string
 	VendorDBAName     *string
 	VendorLogoURL     *string
+	TotalItems        int
+}
+
+type vendorOrderRecord struct {
+	ID                uuid.UUID
+	CreatedAt         time.Time
+	OrderNumber       int64
+	TotalCents        int
+	DiscountCents     int
+	FulfillmentStatus enums.VendorOrderFulfillmentStatus
+	ShippingStatus    enums.VendorOrderShippingStatus
+	PaymentStatus     enums.PaymentStatus
+	BuyerStoreID      uuid.UUID
+	BuyerCompanyName  string
+	BuyerDBAName      *string
+	BuyerLogoURL      *string
 	TotalItems        int
 }
