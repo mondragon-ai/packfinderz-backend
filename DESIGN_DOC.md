@@ -2034,6 +2034,7 @@ Headers:
   * Buyer: orders where `buyerStoreId == activeStoreId`
   * Vendor: orders where `vendorStoreId == activeStoreId`
   * Filters: `status`, `dateFrom/dateTo`, `fulfillmentStatus`, pagination.
+  * Vendor dashboards (PF-086) also expose cursor pagination + global `q` search, actionable-state filters, and totals/discounts/total_items/payment_status/fulfillment_status/shipping_status/buyer summary metadata surfaced via `internal/orders.Repository.ListVendorOrders`.
   * Success: `200`
   * Errors: `401, 403`
 

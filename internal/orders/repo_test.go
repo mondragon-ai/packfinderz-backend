@@ -242,6 +242,59 @@ func TestRepositoryListBuyerOrders_filtersAndSearch(t *testing.T) {
 	assert.Empty(t, list.NextCursor)
 }
 
+func TestRepositoryListVendorOrders_pagination(t *testing.T) {
+	db := setupOrdersTestDB(t)
+	repo := NewRepository(db)
+
+	buyerA := newStore(t, db, "Buyer A", enums.StoreTypeBuyer)
+	buyerB := newStore(t, db, "Buyer B", enums.StoreTypeBuyer)
+	vendor := newStore(t, db, "Vendor Portal", enums.StoreTypeVendor)
+
+	now := time.Now().UTC()
+	createOrder(t, db, buyerA, vendor, 3, now.Add(-time.Hour), 1, enums.PaymentStatusPaid, enums.VendorOrderStatusFulfilled, enums.VendorOrderFulfillmentStatusFulfilled, enums.VendorOrderShippingStatusDelivered)
+	createOrder(t, db, buyerB, vendor, 4, now, 2, enums.PaymentStatusUnpaid, enums.VendorOrderStatusCreatedPending, enums.VendorOrderFulfillmentStatusPending, enums.VendorOrderShippingStatusPending)
+
+	list, err := repo.ListVendorOrders(context.Background(), vendor.ID, pagination.Params{Limit: 1}, VendorOrderFilters{})
+	require.NoError(t, err)
+	require.Len(t, list.Orders, 1)
+	assert.Equal(t, int64(4), list.Orders[0].OrderNumber)
+	assert.Equal(t, "Buyer B", list.Orders[0].Buyer.CompanyName)
+	assert.NotEmpty(t, list.NextCursor)
+
+	second, err := repo.ListVendorOrders(context.Background(), vendor.ID, pagination.Params{Limit: 1, Cursor: list.NextCursor}, VendorOrderFilters{})
+	require.NoError(t, err)
+	require.Len(t, second.Orders, 1)
+	assert.Equal(t, int64(3), second.Orders[0].OrderNumber)
+	assert.Equal(t, "Buyer A", second.Orders[0].Buyer.CompanyName)
+	assert.Empty(t, second.NextCursor)
+}
+
+func TestRepositoryListVendorOrders_filtersAndSearch(t *testing.T) {
+	db := setupOrdersTestDB(t)
+	repo := NewRepository(db)
+
+	buyer := newStore(t, db, "Search Buyer", enums.StoreTypeBuyer)
+	vendor := newStore(t, db, "Portal Vendor", enums.StoreTypeVendor)
+
+	now := time.Now().UTC()
+	createOrder(t, db, buyer, vendor, 6, now, 3, enums.PaymentStatusUnpaid, enums.VendorOrderStatusCreatedPending, enums.VendorOrderFulfillmentStatusPending, enums.VendorOrderShippingStatusPending)
+
+	filters := VendorOrderFilters{
+		ActionableStatuses: []enums.VendorOrderStatus{enums.VendorOrderStatusCreatedPending},
+		PaymentStatus:      ptr(enums.PaymentStatusUnpaid),
+		FulfillmentStatus:  ptr(enums.VendorOrderFulfillmentStatusPending),
+		ShippingStatus:     ptr(enums.VendorOrderShippingStatusPending),
+		Query:              "search buyer",
+	}
+
+	list, err := repo.ListVendorOrders(context.Background(), vendor.ID, pagination.Params{Limit: 10}, filters)
+	require.NoError(t, err)
+	require.Len(t, list.Orders, 1)
+	assert.Equal(t, "Search Buyer", list.Orders[0].Buyer.CompanyName)
+	assert.Equal(t, enums.PaymentStatusUnpaid, list.Orders[0].PaymentStatus)
+	assert.Empty(t, list.NextCursor)
+}
+
 func ptr[T any](v T) *T {
 	return &v
 }

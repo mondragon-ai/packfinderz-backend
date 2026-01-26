@@ -264,6 +264,10 @@ func (s *stubOrdersRepo) ListBuyerOrders(ctx context.Context, buyerStoreID uuid.
 	return &orders.BuyerOrderList{}, nil
 }
 
+func (s *stubOrdersRepo) ListVendorOrders(ctx context.Context, vendorStoreID uuid.UUID, params pagination.Params, filters orders.VendorOrderFilters) (*orders.VendorOrderList, error) {
+	return &orders.VendorOrderList{}, nil
+}
+
 type stubStoresService struct {
 	lookup map[uuid.UUID]*stores.StoreDTO
 }
