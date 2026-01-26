@@ -355,6 +355,9 @@ The GitHub Actions workflow (`.github/workflows/ci.yml`) runs gofmt, `golangci-l
 * `GET /api/v1/orders/{orderId}` – returns the full `OrderDetail` (order summary, buyer/vendor store metadata, line items, payment intent info, and the active agent assignment if present).
 * Buyer stores only see orders where they are the buyer; vendor stores only see their vendor orders.
 * `403` when the order doesn't belong to the active store, `404` when the `orderId` cannot be found.
+* `POST /api/v1/orders/{orderId}/cancel` – buyer cancel (pre-transit) releases unreleased inventory, zeros the balance due, and emits the `order_canceled` event for downstream notifications.
+* `POST /api/v1/orders/{orderId}/nudge` – buyer nudges the vendor (idempotent) and emits a `notification_requested` event so email/alert systems can react.
+* `POST /api/v1/orders/{orderId}/retry` – only expired orders can be retried; the service reuses the order snapshot for that vendor, re-creates the vendor order/line items, reserves inventory, and emits `order_retried` with the new order ID while returning `201`.
 
 ### Vendor Decisions
 

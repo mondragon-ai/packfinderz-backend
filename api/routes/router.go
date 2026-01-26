@@ -129,6 +129,9 @@ func NewRouter(
 		r.Route("/v1/orders", func(r chi.Router) {
 			r.Get("/", ordercontrollers.List(ordersRepo, logg))
 			r.Get("/{orderId}", ordercontrollers.Detail(ordersRepo, logg))
+			r.Post("/{orderId}/cancel", ordercontrollers.CancelOrder(ordersSvc, logg))
+			r.Post("/{orderId}/nudge", ordercontrollers.NudgeVendor(ordersSvc, logg))
+			r.Post("/{orderId}/retry", ordercontrollers.RetryOrder(ordersSvc, logg))
 		})
 		r.Post("/v1/checkout", controllers.Checkout(checkoutService, storeService, logg))
 

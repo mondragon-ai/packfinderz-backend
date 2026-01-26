@@ -3,7 +3,10 @@ package orders
 import (
 	"context"
 	"fmt"
+	"time"
 
+	"github.com/angelmondragon/packfinderz-backend/internal/checkout/reservation"
+	"github.com/angelmondragon/packfinderz-backend/pkg/db/models"
 	"github.com/angelmondragon/packfinderz-backend/pkg/enums"
 	pkgerrors "github.com/angelmondragon/packfinderz-backend/pkg/errors"
 	"github.com/angelmondragon/packfinderz-backend/pkg/outbox"
@@ -24,10 +27,17 @@ type InventoryReleaser interface {
 	Release(ctx context.Context, tx *gorm.DB, productID uuid.UUID, qty int) error
 }
 
+type inventoryReserver interface {
+	Reserve(ctx context.Context, tx *gorm.DB, requests []reservation.InventoryReservationRequest) ([]reservation.InventoryReservationResult, error)
+}
+
 // Service defines order-level operations beyond repository reads.
 type Service interface {
 	VendorDecision(ctx context.Context, input VendorDecisionInput) error
 	LineItemDecision(ctx context.Context, input LineItemDecisionInput) error
+	CancelOrder(ctx context.Context, input BuyerCancelInput) error
+	NudgeVendor(ctx context.Context, input BuyerNudgeInput) error
+	RetryOrder(ctx context.Context, input BuyerRetryInput) (*BuyerRetryResult, error)
 }
 
 type service struct {
@@ -35,6 +45,7 @@ type service struct {
 	tx        txRunner
 	outbox    outboxPublisher
 	inventory InventoryReleaser
+	reserver  inventoryReserver
 }
 
 // VendorOrderDecision represents the high-level decision a vendor can take.
@@ -73,6 +84,35 @@ type LineItemDecisionInput struct {
 	ActorRole    string
 }
 
+// BuyerCancelInput carries metadata for buyer-initiated cancels.
+type BuyerCancelInput struct {
+	OrderID      uuid.UUID
+	ActorUserID  uuid.UUID
+	ActorStoreID uuid.UUID
+	ActorRole    string
+}
+
+// BuyerNudgeInput captures the buyer request used to prod the vendor.
+type BuyerNudgeInput struct {
+	OrderID      uuid.UUID
+	ActorUserID  uuid.UUID
+	ActorStoreID uuid.UUID
+	ActorRole    string
+}
+
+// BuyerRetryInput reuses an expired order snapshot so the buyer can try again.
+type BuyerRetryInput struct {
+	OrderID      uuid.UUID
+	ActorUserID  uuid.UUID
+	ActorStoreID uuid.UUID
+	ActorRole    string
+}
+
+// BuyerRetryResult surfaces the new order created during a retry.
+type BuyerRetryResult struct {
+	OrderID uuid.UUID `json:"order_id"`
+}
+
 // OrderDecisionEvent is emitted when a vendor decides an order.
 type OrderDecisionEvent struct {
 	OrderID         uuid.UUID               `json:"order_id"`
@@ -95,8 +135,34 @@ type OrderFulfilledEvent struct {
 	ResolvedLineItemID uuid.UUID                          `json:"resolved_line_item_id"`
 }
 
+// OrderCanceledEvent is emitted whenever a buyer cancels a pre-transit order.
+type OrderCanceledEvent struct {
+	OrderID         uuid.UUID `json:"order_id"`
+	CheckoutGroupID uuid.UUID `json:"checkout_group_id"`
+	BuyerStoreID    uuid.UUID `json:"buyer_store_id"`
+	VendorStoreID   uuid.UUID `json:"vendor_store_id"`
+}
+
+// NotificationRequestedEvent tells downstream systems to alert a vendor.
+type NotificationRequestedEvent struct {
+	OrderID         uuid.UUID `json:"order_id"`
+	CheckoutGroupID uuid.UUID `json:"checkout_group_id"`
+	BuyerStoreID    uuid.UUID `json:"buyer_store_id"`
+	VendorStoreID   uuid.UUID `json:"vendor_store_id"`
+	Type            string    `json:"type"`
+}
+
+// OrderRetriedEvent reports that an expired order was replayed.
+type OrderRetriedEvent struct {
+	OriginalOrderID uuid.UUID `json:"original_order_id"`
+	OrderID         uuid.UUID `json:"order_id"`
+	CheckoutGroupID uuid.UUID `json:"checkout_group_id"`
+	BuyerStoreID    uuid.UUID `json:"buyer_store_id"`
+	VendorStoreID   uuid.UUID `json:"vendor_store_id"`
+}
+
 // NewService builds a vendor order service with the required dependencies.
-func NewService(repo Repository, tx txRunner, outbox outboxPublisher, inventory InventoryReleaser) (Service, error) {
+func NewService(repo Repository, tx txRunner, outbox outboxPublisher, inventory InventoryReleaser, reserver inventoryReserver) (Service, error) {
 	if repo == nil {
 		return nil, fmt.Errorf("orders repository required")
 	}
@@ -109,11 +175,15 @@ func NewService(repo Repository, tx txRunner, outbox outboxPublisher, inventory 
 	if inventory == nil {
 		return nil, fmt.Errorf("inventory releaser required")
 	}
+	if reserver == nil {
+		return nil, fmt.Errorf("inventory reserver required")
+	}
 	return &service{
 		repo:      repo,
 		tx:        tx,
 		outbox:    outbox,
 		inventory: inventory,
+		reserver:  reserver,
 	}, nil
 }
 
@@ -320,6 +390,266 @@ func (s *service) LineItemDecision(ctx context.Context, input LineItemDecisionIn
 	})
 }
 
+func (s *service) CancelOrder(ctx context.Context, input BuyerCancelInput) error {
+	if input.OrderID == uuid.Nil {
+		return pkgerrors.New(pkgerrors.CodeValidation, "order id required")
+	}
+	if input.ActorUserID == uuid.Nil {
+		return pkgerrors.New(pkgerrors.CodeUnauthorized, "user identity missing")
+	}
+	if input.ActorStoreID == uuid.Nil {
+		return pkgerrors.New(pkgerrors.CodeForbidden, "store context missing")
+	}
+
+	return s.tx.WithTx(ctx, func(tx *gorm.DB) error {
+		repo := s.repo.WithTx(tx)
+		order, err := repo.FindVendorOrder(ctx, input.OrderID)
+		if err != nil {
+			if err == gorm.ErrRecordNotFound {
+				return pkgerrors.New(pkgerrors.CodeNotFound, "order not found")
+			}
+			return pkgerrors.Wrap(pkgerrors.CodeDependency, err, "load vendor order")
+		}
+		if order.BuyerStoreID != input.ActorStoreID {
+			return pkgerrors.New(pkgerrors.CodeForbidden, "order does not belong to store")
+		}
+		if !isCancelableStatus(order.Status) {
+			return pkgerrors.New(pkgerrors.CodeStateConflict, "order cannot be canceled in current state")
+		}
+
+		items, err := repo.FindOrderLineItemsByOrder(ctx, order.ID)
+		if err != nil {
+			return pkgerrors.Wrap(pkgerrors.CodeDependency, err, "load order line items")
+		}
+
+		for _, item := range items {
+			if item.Status == enums.LineItemStatusFulfilled {
+				continue
+			}
+			if err := releaseLineItem(item, s.inventory, ctx, tx); err != nil {
+				return err
+			}
+			if item.Status != enums.LineItemStatusRejected {
+				if err := repo.UpdateOrderLineItemStatus(ctx, item.ID, enums.LineItemStatusRejected, nil); err != nil {
+					return pkgerrors.Wrap(pkgerrors.CodeDependency, err, "update line item status")
+				}
+			}
+		}
+
+		updates := map[string]any{
+			"status":            enums.VendorOrderStatusCanceled,
+			"balance_due_cents": 0,
+			"canceled_at":       time.Now().UTC(),
+		}
+		if err := repo.UpdateVendorOrder(ctx, order.ID, updates); err != nil {
+			return pkgerrors.Wrap(pkgerrors.CodeDependency, err, "update vendor order")
+		}
+
+		event := outbox.DomainEvent{
+			EventType:     enums.EventOrderCanceled,
+			AggregateType: enums.AggregateVendorOrder,
+			AggregateID:   order.ID,
+			Version:       1,
+			Actor:         buildActor(input.ActorUserID, input.ActorStoreID, input.ActorRole),
+			Data: OrderCanceledEvent{
+				OrderID:         order.ID,
+				CheckoutGroupID: order.CheckoutGroupID,
+				BuyerStoreID:    order.BuyerStoreID,
+				VendorStoreID:   order.VendorStoreID,
+			},
+		}
+		return s.outbox.Emit(ctx, tx, event)
+	})
+}
+
+func (s *service) NudgeVendor(ctx context.Context, input BuyerNudgeInput) error {
+	if input.OrderID == uuid.Nil {
+		return pkgerrors.New(pkgerrors.CodeValidation, "order id required")
+	}
+	if input.ActorUserID == uuid.Nil {
+		return pkgerrors.New(pkgerrors.CodeUnauthorized, "user identity missing")
+	}
+	if input.ActorStoreID == uuid.Nil {
+		return pkgerrors.New(pkgerrors.CodeForbidden, "store context missing")
+	}
+
+	return s.tx.WithTx(ctx, func(tx *gorm.DB) error {
+		repo := s.repo.WithTx(tx)
+		order, err := repo.FindVendorOrder(ctx, input.OrderID)
+		if err != nil {
+			if err == gorm.ErrRecordNotFound {
+				return pkgerrors.New(pkgerrors.CodeNotFound, "order not found")
+			}
+			return pkgerrors.Wrap(pkgerrors.CodeDependency, err, "load vendor order")
+		}
+		if order.BuyerStoreID != input.ActorStoreID {
+			return pkgerrors.New(pkgerrors.CodeForbidden, "order does not belong to store")
+		}
+		if isFinalOrderStatus(order.Status) {
+			return pkgerrors.New(pkgerrors.CodeStateConflict, "order cannot be nudged in current state")
+		}
+
+		event := outbox.DomainEvent{
+			EventType:     enums.EventNotificationRequested,
+			AggregateType: enums.AggregateVendorOrder,
+			AggregateID:   order.ID,
+			Version:       1,
+			Actor:         buildActor(input.ActorUserID, input.ActorStoreID, input.ActorRole),
+			Data: NotificationRequestedEvent{
+				OrderID:         order.ID,
+				CheckoutGroupID: order.CheckoutGroupID,
+				BuyerStoreID:    order.BuyerStoreID,
+				VendorStoreID:   order.VendorStoreID,
+				Type:            "order_nudge",
+			},
+		}
+		return s.outbox.Emit(ctx, tx, event)
+	})
+}
+
+func (s *service) RetryOrder(ctx context.Context, input BuyerRetryInput) (*BuyerRetryResult, error) {
+	if input.OrderID == uuid.Nil {
+		return nil, pkgerrors.New(pkgerrors.CodeValidation, "order id required")
+	}
+	if input.ActorUserID == uuid.Nil {
+		return nil, pkgerrors.New(pkgerrors.CodeUnauthorized, "user identity missing")
+	}
+	if input.ActorStoreID == uuid.Nil {
+		return nil, pkgerrors.New(pkgerrors.CodeForbidden, "store context missing")
+	}
+
+	var result *BuyerRetryResult
+	err := s.tx.WithTx(ctx, func(tx *gorm.DB) error {
+		repo := s.repo.WithTx(tx)
+		order, err := repo.FindVendorOrder(ctx, input.OrderID)
+		if err != nil {
+			if err == gorm.ErrRecordNotFound {
+				return pkgerrors.New(pkgerrors.CodeNotFound, "order not found")
+			}
+			return pkgerrors.Wrap(pkgerrors.CodeDependency, err, "load vendor order")
+		}
+		if order.BuyerStoreID != input.ActorStoreID {
+			return pkgerrors.New(pkgerrors.CodeForbidden, "order does not belong to store")
+		}
+		if order.Status != enums.VendorOrderStatusExpired {
+			return pkgerrors.New(pkgerrors.CodeStateConflict, "order retry only allowed for expired orders")
+		}
+
+		items, err := repo.FindOrderLineItemsByOrder(ctx, order.ID)
+		if err != nil {
+			return pkgerrors.Wrap(pkgerrors.CodeDependency, err, "load order line items")
+		}
+		requests := make([]reservation.InventoryReservationRequest, 0, len(items))
+		for _, item := range items {
+			if item.ProductID != nil && item.Qty > 0 {
+				requests = append(requests, reservation.InventoryReservationRequest{
+					CartItemID: item.ID,
+					ProductID:  *item.ProductID,
+					Qty:        item.Qty,
+				})
+			}
+		}
+
+		group, err := repo.CreateCheckoutGroup(ctx, &models.CheckoutGroup{
+			BuyerStoreID: order.BuyerStoreID,
+		})
+		if err != nil {
+			return pkgerrors.Wrap(pkgerrors.CodeDependency, err, "create checkout group")
+		}
+
+		newOrder := &models.VendorOrder{
+			CheckoutGroupID:   group.ID,
+			BuyerStoreID:      order.BuyerStoreID,
+			VendorStoreID:     order.VendorStoreID,
+			SubtotalCents:     order.SubtotalCents,
+			DiscountCents:     order.DiscountCents,
+			TaxCents:          order.TaxCents,
+			TransportFeeCents: order.TransportFeeCents,
+			TotalCents:        order.TotalCents,
+			BalanceDueCents:   order.TotalCents,
+			Status:            enums.VendorOrderStatusCreatedPending,
+			FulfillmentStatus: enums.VendorOrderFulfillmentStatusPending,
+			ShippingStatus:    enums.VendorOrderShippingStatusPending,
+			RefundStatus:      enums.RefundStatusNone,
+		}
+		createdOrder, err := repo.CreateVendorOrder(ctx, newOrder)
+		if err != nil {
+			return pkgerrors.Wrap(pkgerrors.CodeDependency, err, "create vendor order")
+		}
+
+		newItems := make([]models.OrderLineItem, 0, len(items))
+		for _, item := range items {
+			newItems = append(newItems, models.OrderLineItem{
+				OrderID:        createdOrder.ID,
+				ProductID:      item.ProductID,
+				Name:           item.Name,
+				Category:       item.Category,
+				Strain:         item.Strain,
+				Classification: item.Classification,
+				Unit:           item.Unit,
+				UnitPriceCents: item.UnitPriceCents,
+				Qty:            item.Qty,
+				DiscountCents:  item.DiscountCents,
+				TotalCents:     item.TotalCents,
+				Status:         enums.LineItemStatusPending,
+			})
+		}
+		if err := repo.CreateOrderLineItems(ctx, newItems); err != nil {
+			return pkgerrors.Wrap(pkgerrors.CodeDependency, err, "create order line items")
+		}
+
+		if len(requests) > 0 {
+			reserved, err := s.reserver.Reserve(ctx, tx, requests)
+			if err != nil {
+				return err
+			}
+			for _, res := range reserved {
+				if !res.Reserved {
+					return pkgerrors.New(pkgerrors.CodeConflict, "insufficient inventory for retry")
+				}
+			}
+		}
+
+		method := enums.PaymentMethodCash
+		if origIntent, err := repo.FindPaymentIntentByOrder(ctx, order.ID); err == nil && origIntent != nil {
+			method = origIntent.Method
+		}
+		if _, err := repo.CreatePaymentIntent(ctx, &models.PaymentIntent{
+			OrderID:     createdOrder.ID,
+			Method:      method,
+			Status:      enums.PaymentStatusUnpaid,
+			AmountCents: createdOrder.TotalCents,
+		}); err != nil {
+			return pkgerrors.Wrap(pkgerrors.CodeDependency, err, "create payment intent")
+		}
+
+		event := outbox.DomainEvent{
+			EventType:     enums.EventOrderRetried,
+			AggregateType: enums.AggregateVendorOrder,
+			AggregateID:   createdOrder.ID,
+			Version:       1,
+			Actor:         buildActor(input.ActorUserID, input.ActorStoreID, input.ActorRole),
+			Data: OrderRetriedEvent{
+				OriginalOrderID: order.ID,
+				OrderID:         createdOrder.ID,
+				CheckoutGroupID: createdOrder.CheckoutGroupID,
+				BuyerStoreID:    createdOrder.BuyerStoreID,
+				VendorStoreID:   createdOrder.VendorStoreID,
+			},
+		}
+		if err := s.outbox.Emit(ctx, tx, event); err != nil {
+			return err
+		}
+
+		result = &BuyerRetryResult{OrderID: createdOrder.ID}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
 func mapDecisionToStatus(decision VendorOrderDecision) (enums.VendorOrderStatus, error) {
 	switch decision {
 	case VendorOrderDecisionAccept:
@@ -360,6 +690,29 @@ func buildActor(userID, storeID uuid.UUID, role string) *outbox.ActorRef {
 	}
 }
 
+func releaseLineItem(item models.OrderLineItem, releaser InventoryReleaser, ctx context.Context, tx *gorm.DB) error {
+	if item.ProductID == nil || item.Qty <= 0 {
+		return nil
+	}
+	if err := releaser.Release(ctx, tx, *item.ProductID, item.Qty); err != nil {
+		return pkgerrors.Wrap(pkgerrors.CodeDependency, err, "release inventory")
+	}
+	return nil
+}
+
+func isCancelableStatus(status enums.VendorOrderStatus) bool {
+	return !isFinalOrderStatus(status)
+}
+
+func isFinalOrderStatus(status enums.VendorOrderStatus) bool {
+	switch status {
+	case enums.VendorOrderStatusInTransit, enums.VendorOrderStatusDelivered, enums.VendorOrderStatusClosed, enums.VendorOrderStatusCanceled, enums.VendorOrderStatusExpired:
+		return true
+	default:
+		return false
+	}
+}
+
 type inventoryReleaserImpl struct{}
 
 // NewInventoryReleaser exposes the default inventory release implementation.
@@ -386,4 +739,18 @@ func (inventoryReleaserImpl) Release(ctx context.Context, tx *gorm.DB, productID
 		return pkgerrors.Wrap(pkgerrors.CodeDependency, res.Error, "release inventory")
 	}
 	return nil
+}
+
+type inventoryReserverImpl struct{}
+
+// NewInventoryReserver exposes the default inventory reservation helper.
+func NewInventoryReserver() inventoryReserver {
+	return inventoryReserverImpl{}
+}
+
+func (inventoryReserverImpl) Reserve(ctx context.Context, tx *gorm.DB, requests []reservation.InventoryReservationRequest) ([]reservation.InventoryReservationResult, error) {
+	if len(requests) == 0 {
+		return nil, nil
+	}
+	return reservation.ReserveInventory(ctx, tx, requests)
 }

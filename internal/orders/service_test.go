@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/angelmondragon/packfinderz-backend/internal/checkout/reservation"
 	"github.com/angelmondragon/packfinderz-backend/pkg/db/models"
 	"github.com/angelmondragon/packfinderz-backend/pkg/enums"
 	pkgerrors "github.com/angelmondragon/packfinderz-backend/pkg/errors"
@@ -14,10 +15,15 @@ import (
 )
 
 type stubOrdersRepo struct {
-	order         *models.VendorOrder
-	updatedStatus enums.VendorOrderStatus
-	lineItems     map[uuid.UUID]*models.OrderLineItem
-	orderUpdates  map[string]any
+	order                *models.VendorOrder
+	updatedStatus        enums.VendorOrderStatus
+	lineItems            map[uuid.UUID]*models.OrderLineItem
+	orderUpdates         map[string]any
+	createCheckoutGroup  func(ctx context.Context, group *models.CheckoutGroup) (*models.CheckoutGroup, error)
+	createVendorOrder    func(ctx context.Context, order *models.VendorOrder) (*models.VendorOrder, error)
+	createOrderLineItems func(ctx context.Context, items []models.OrderLineItem) error
+	createPaymentIntent  func(ctx context.Context, intent *models.PaymentIntent) (*models.PaymentIntent, error)
+	findPaymentIntent    func(ctx context.Context, orderID uuid.UUID) (*models.PaymentIntent, error)
 }
 
 func (s *stubOrdersRepo) WithTx(tx *gorm.DB) Repository {
@@ -25,19 +31,50 @@ func (s *stubOrdersRepo) WithTx(tx *gorm.DB) Repository {
 }
 
 func (s *stubOrdersRepo) CreateCheckoutGroup(ctx context.Context, group *models.CheckoutGroup) (*models.CheckoutGroup, error) {
-	panic("not implemented")
+	if s.createCheckoutGroup != nil {
+		return s.createCheckoutGroup(ctx, group)
+	}
+	if group.ID == uuid.Nil {
+		group.ID = uuid.New()
+	}
+	return group, nil
 }
 
 func (s *stubOrdersRepo) CreateVendorOrder(ctx context.Context, order *models.VendorOrder) (*models.VendorOrder, error) {
-	panic("not implemented")
+	if s.createVendorOrder != nil {
+		return s.createVendorOrder(ctx, order)
+	}
+	if order.ID == uuid.Nil {
+		order.ID = uuid.New()
+	}
+	return order, nil
 }
 
 func (s *stubOrdersRepo) CreateOrderLineItems(ctx context.Context, items []models.OrderLineItem) error {
-	panic("not implemented")
+	if s.createOrderLineItems != nil {
+		return s.createOrderLineItems(ctx, items)
+	}
+	if s.lineItems == nil {
+		s.lineItems = make(map[uuid.UUID]*models.OrderLineItem)
+	}
+	for i := range items {
+		item := items[i]
+		if item.ID == uuid.Nil {
+			item.ID = uuid.New()
+		}
+		s.lineItems[item.ID] = &item
+	}
+	return nil
 }
 
 func (s *stubOrdersRepo) CreatePaymentIntent(ctx context.Context, intent *models.PaymentIntent) (*models.PaymentIntent, error) {
-	panic("not implemented")
+	if s.createPaymentIntent != nil {
+		return s.createPaymentIntent(ctx, intent)
+	}
+	if intent.ID == uuid.Nil {
+		intent.ID = uuid.New()
+	}
+	return intent, nil
 }
 
 func (s *stubOrdersRepo) FindCheckoutGroupByID(ctx context.Context, id uuid.UUID) (*models.CheckoutGroup, error) {
@@ -59,7 +96,10 @@ func (s *stubOrdersRepo) FindOrderLineItemsByOrder(ctx context.Context, orderID 
 }
 
 func (s *stubOrdersRepo) FindPaymentIntentByOrder(ctx context.Context, orderID uuid.UUID) (*models.PaymentIntent, error) {
-	panic("not implemented")
+	if s.findPaymentIntent != nil {
+		return s.findPaymentIntent(ctx, orderID)
+	}
+	return nil, gorm.ErrRecordNotFound
 }
 
 func (s *stubOrdersRepo) ListBuyerOrders(ctx context.Context, buyerStoreID uuid.UUID, params pagination.Params, filters BuyerOrderFilters) (*BuyerOrderList, error) {
@@ -175,6 +215,28 @@ func (s *stubInventoryReleaser) Release(ctx context.Context, tx *gorm.DB, produc
 	return nil
 }
 
+type stubInventoryReserver struct {
+	calls []reservation.InventoryReservationRequest
+	err   error
+}
+
+func (s *stubInventoryReserver) Reserve(ctx context.Context, tx *gorm.DB, requests []reservation.InventoryReservationRequest) ([]reservation.InventoryReservationResult, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+	s.calls = append(s.calls, requests...)
+	results := make([]reservation.InventoryReservationResult, len(requests))
+	for i, req := range requests {
+		results[i] = reservation.InventoryReservationResult{
+			CartItemID: req.CartItemID,
+			ProductID:  req.ProductID,
+			Qty:        req.Qty,
+			Reserved:   true,
+		}
+	}
+	return results, nil
+}
+
 type stubTxRunner struct{}
 
 func (stubTxRunner) WithTx(ctx context.Context, fn func(tx *gorm.DB) error) error {
@@ -195,7 +257,9 @@ func TestVendorDecision(t *testing.T) {
 		},
 	}
 	outbox := &stubOutboxPublisher{}
-	svc, err := NewService(repo, stubTxRunner{}, outbox, &stubInventoryReleaser{})
+	inventory := &stubInventoryReleaser{}
+	reserver := &stubInventoryReserver{}
+	svc, err := NewService(repo, stubTxRunner{}, outbox, inventory, reserver)
 	if err != nil {
 		t.Fatalf("service constructor failed: %v", err)
 	}
@@ -231,7 +295,8 @@ func TestVendorDecisionIdempotent(t *testing.T) {
 	}
 	repo := &stubOrdersRepo{order: order}
 	outbox := &stubOutboxPublisher{}
-	svc, _ := NewService(repo, stubTxRunner{}, outbox, &stubInventoryReleaser{})
+	reserver := &stubInventoryReserver{}
+	svc, _ := NewService(repo, stubTxRunner{}, outbox, &stubInventoryReleaser{}, reserver)
 	err := svc.VendorDecision(context.Background(), VendorDecisionInput{
 		OrderID:      orderID,
 		Decision:     VendorOrderDecisionAccept,
@@ -257,7 +322,8 @@ func TestVendorDecisionInvalidState(t *testing.T) {
 		},
 	}
 	outbox := &stubOutboxPublisher{}
-	svc, _ := NewService(repo, stubTxRunner{}, outbox, &stubInventoryReleaser{})
+	reserver := &stubInventoryReserver{}
+	svc, _ := NewService(repo, stubTxRunner{}, outbox, &stubInventoryReleaser{}, reserver)
 	err := svc.VendorDecision(context.Background(), VendorDecisionInput{
 		OrderID:      orderID,
 		Decision:     VendorOrderDecisionReject,
@@ -273,6 +339,185 @@ func TestVendorDecisionInvalidState(t *testing.T) {
 	}
 	if outbox.called {
 		t.Fatalf("unexpected outbox call")
+	}
+}
+
+func TestCancelOrderReleasesInventory(t *testing.T) {
+	orderID := uuid.New()
+	buyerStore := uuid.New()
+	vendorStore := uuid.New()
+	productID := uuid.New()
+	lineItemID := uuid.New()
+	repo := &stubOrdersRepo{
+		order: &models.VendorOrder{
+			ID:              orderID,
+			BuyerStoreID:    buyerStore,
+			VendorStoreID:   vendorStore,
+			CheckoutGroupID: uuid.New(),
+			Status:          enums.VendorOrderStatusAccepted,
+		},
+		lineItems: map[uuid.UUID]*models.OrderLineItem{
+			lineItemID: {
+				ID:        lineItemID,
+				OrderID:   orderID,
+				ProductID: &productID,
+				Qty:       3,
+				Status:    enums.LineItemStatusPending,
+			},
+		},
+	}
+	outbox := &stubOutboxPublisher{}
+	inventory := &stubInventoryReleaser{}
+	reserver := &stubInventoryReserver{}
+	svc, err := NewService(repo, stubTxRunner{}, outbox, inventory, reserver)
+	if err != nil {
+		t.Fatalf("construct service: %v", err)
+	}
+
+	err = svc.CancelOrder(context.Background(), BuyerCancelInput{
+		OrderID:      orderID,
+		ActorUserID:  uuid.New(),
+		ActorStoreID: buyerStore,
+		ActorRole:    "owner",
+	})
+	if err != nil {
+		t.Fatalf("expected success got %v", err)
+	}
+	if len(inventory.calls) != 1 {
+		t.Fatalf("expected inventory release called got %d", len(inventory.calls))
+	}
+	if repo.lineItems[lineItemID].Status != enums.LineItemStatusRejected {
+		t.Fatalf("expected line item rejected got %s", repo.lineItems[lineItemID].Status)
+	}
+	if repo.orderUpdates == nil || repo.orderUpdates["status"] != enums.VendorOrderStatusCanceled {
+		t.Fatalf("unexpected order status updates %+v", repo.orderUpdates)
+	}
+	if !outbox.called || outbox.event.EventType != enums.EventOrderCanceled {
+		t.Fatalf("expected canceled event got %v", outbox.event.EventType)
+	}
+}
+
+func TestNudgeVendorEmitsNotificationEvent(t *testing.T) {
+	orderID := uuid.New()
+	vendorStore := uuid.New()
+	repo := &stubOrdersRepo{
+		order: &models.VendorOrder{
+			ID:              orderID,
+			BuyerStoreID:    vendorStore,
+			VendorStoreID:   uuid.New(),
+			CheckoutGroupID: uuid.New(),
+			Status:          enums.VendorOrderStatusAccepted,
+		},
+	}
+	outbox := &stubOutboxPublisher{}
+	inventory := &stubInventoryReleaser{}
+	reserver := &stubInventoryReserver{}
+	svc, err := NewService(repo, stubTxRunner{}, outbox, inventory, reserver)
+	if err != nil {
+		t.Fatalf("construct service: %v", err)
+	}
+
+	err = svc.NudgeVendor(context.Background(), BuyerNudgeInput{
+		OrderID:      orderID,
+		ActorUserID:  uuid.New(),
+		ActorStoreID: vendorStore,
+		ActorRole:    "owner",
+	})
+	if err != nil {
+		t.Fatalf("expected success got %v", err)
+	}
+	if !outbox.called || outbox.event.EventType != enums.EventNotificationRequested {
+		t.Fatalf("expected notification event got %v", outbox.event.EventType)
+	}
+}
+
+func TestRetryOrderCreatesNewOrder(t *testing.T) {
+	orderID := uuid.New()
+	buyerStore := uuid.New()
+	vendorStore := uuid.New()
+	lineItemID := uuid.New()
+	productID := uuid.New()
+	repo := &stubOrdersRepo{
+		order: &models.VendorOrder{
+			ID:                orderID,
+			BuyerStoreID:      buyerStore,
+			VendorStoreID:     vendorStore,
+			SubtotalCents:     2000,
+			DiscountCents:     0,
+			TaxCents:          0,
+			TransportFeeCents: 0,
+			TotalCents:        2000,
+			BalanceDueCents:   2000,
+			Status:            enums.VendorOrderStatusExpired,
+			CheckoutGroupID:   uuid.New(),
+			FulfillmentStatus: enums.VendorOrderFulfillmentStatusPending,
+			ShippingStatus:    enums.VendorOrderShippingStatusPending,
+		},
+		lineItems: map[uuid.UUID]*models.OrderLineItem{
+			lineItemID: {
+				ID:         lineItemID,
+				OrderID:    orderID,
+				ProductID:  &productID,
+				Qty:        2,
+				TotalCents: 2000,
+				Status:     enums.LineItemStatusPending,
+			},
+		},
+		findPaymentIntent: func(ctx context.Context, orderID uuid.UUID) (*models.PaymentIntent, error) {
+			return &models.PaymentIntent{
+				Method: enums.PaymentMethodCash,
+				Status: enums.PaymentStatusSettled,
+			}, nil
+		},
+	}
+	var createdOrder *models.VendorOrder
+	repo.createVendorOrder = func(ctx context.Context, order *models.VendorOrder) (*models.VendorOrder, error) {
+		order.ID = uuid.New()
+		createdOrder = order
+		return order, nil
+	}
+	groupID := uuid.New()
+	repo.createCheckoutGroup = func(ctx context.Context, group *models.CheckoutGroup) (*models.CheckoutGroup, error) {
+		group.ID = groupID
+		return group, nil
+	}
+	capturedItems := make([]models.OrderLineItem, 0)
+	repo.createOrderLineItems = func(ctx context.Context, items []models.OrderLineItem) error {
+		capturedItems = append(capturedItems, items...)
+		return nil
+	}
+
+	outbox := &stubOutboxPublisher{}
+	inventory := &stubInventoryReleaser{}
+	reserver := &stubInventoryReserver{}
+	svc, err := NewService(repo, stubTxRunner{}, outbox, inventory, reserver)
+	if err != nil {
+		t.Fatalf("construct service: %v", err)
+	}
+
+	result, err := svc.RetryOrder(context.Background(), BuyerRetryInput{
+		OrderID:      orderID,
+		ActorUserID:  uuid.New(),
+		ActorStoreID: buyerStore,
+		ActorRole:    "owner",
+	})
+	if err != nil {
+		t.Fatalf("expected success got %v", err)
+	}
+	if result == nil || result.OrderID != createdOrder.ID {
+		t.Fatalf("unexpected retry result %v", result)
+	}
+	if len(capturedItems) != 1 {
+		t.Fatalf("expected line items created")
+	}
+	if capturedItems[0].OrderID != createdOrder.ID {
+		t.Fatalf("line item not linked to new order")
+	}
+	if len(reserver.calls) == 0 {
+		t.Fatalf("expected inventory reservation")
+	}
+	if !outbox.called || outbox.event.EventType != enums.EventOrderRetried {
+		t.Fatalf("expected retry event got %v", outbox.event.EventType)
 	}
 }
 
@@ -308,7 +553,8 @@ func TestLineItemDecisionFulfillEmitsEvent(t *testing.T) {
 	}
 	outbox := &stubOutboxPublisher{}
 	inventory := &stubInventoryReleaser{}
-	svc, err := NewService(repo, stubTxRunner{}, outbox, inventory)
+	reserver := &stubInventoryReserver{}
+	svc, err := NewService(repo, stubTxRunner{}, outbox, inventory, reserver)
 	if err != nil {
 		t.Fatalf("constructor failed: %v", err)
 	}
@@ -387,7 +633,8 @@ func TestLineItemDecisionRejectReleasesInventory(t *testing.T) {
 	}
 	outbox := &stubOutboxPublisher{}
 	inventory := &stubInventoryReleaser{}
-	svc, _ := NewService(repo, stubTxRunner{}, outbox, inventory)
+	reserver := &stubInventoryReserver{}
+	svc, _ := NewService(repo, stubTxRunner{}, outbox, inventory, reserver)
 	notes := "damaged"
 	err := svc.LineItemDecision(context.Background(), LineItemDecisionInput{
 		OrderID:      orderID,

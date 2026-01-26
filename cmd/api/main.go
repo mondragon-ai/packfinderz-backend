@@ -167,7 +167,7 @@ func main() {
 	outboxPublisher := outbox.NewService(outboxRepo, logg)
 
 	ordersRepo := orders.NewRepository(dbClient.DB())
-	ordersService, err := orders.NewService(ordersRepo, dbClient, outboxPublisher, orders.NewInventoryReleaser())
+	ordersService, err := orders.NewService(ordersRepo, dbClient, outboxPublisher, orders.NewInventoryReleaser(), orders.NewInventoryReserver())
 	if err != nil {
 		logg.Error(context.Background(), "failed to create orders service", err)
 		os.Exit(1)

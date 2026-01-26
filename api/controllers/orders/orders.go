@@ -219,6 +219,181 @@ func VendorOrderDecision(svc internalorders.Service, logg *logger.Logger) http.H
 	}
 }
 
+func CancelOrder(svc internalorders.Service, logg *logger.Logger) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if svc == nil {
+			responses.WriteError(r.Context(), logg, w, pkgerrors.New(pkgerrors.CodeInternal, "orders service unavailable"))
+			return
+		}
+
+		storeType, ok := middleware.StoreTypeFromContext(r.Context())
+		if !ok || storeType != enums.StoreTypeBuyer {
+			responses.WriteError(r.Context(), logg, w, pkgerrors.New(pkgerrors.CodeForbidden, "buyer store context required"))
+			return
+		}
+
+		storeID, err := parseStoreID(r)
+		if err != nil {
+			responses.WriteError(r.Context(), logg, w, err)
+			return
+		}
+
+		userID := middleware.UserIDFromContext(r.Context())
+		if userID == "" {
+			responses.WriteError(r.Context(), logg, w, pkgerrors.New(pkgerrors.CodeUnauthorized, "user context missing"))
+			return
+		}
+		actorID, err := uuid.Parse(userID)
+		if err != nil {
+			responses.WriteError(r.Context(), logg, w, pkgerrors.Wrap(pkgerrors.CodeValidation, err, "invalid user id"))
+			return
+		}
+
+		role := middleware.RoleFromContext(r.Context())
+
+		rawOrderID := strings.TrimSpace(chi.URLParam(r, "orderId"))
+		if rawOrderID == "" {
+			responses.WriteError(r.Context(), logg, w, pkgerrors.New(pkgerrors.CodeValidation, "order id is required"))
+			return
+		}
+		orderID, err := uuid.Parse(rawOrderID)
+		if err != nil {
+			responses.WriteError(r.Context(), logg, w, pkgerrors.Wrap(pkgerrors.CodeValidation, err, "invalid order id"))
+			return
+		}
+
+		input := internalorders.BuyerCancelInput{
+			OrderID:      orderID,
+			ActorUserID:  actorID,
+			ActorStoreID: storeID,
+			ActorRole:    role,
+		}
+
+		if err := svc.CancelOrder(r.Context(), input); err != nil {
+			responses.WriteError(r.Context(), logg, w, err)
+			return
+		}
+		responses.WriteSuccess(w, nil)
+	}
+}
+
+func NudgeVendor(svc internalorders.Service, logg *logger.Logger) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if svc == nil {
+			responses.WriteError(r.Context(), logg, w, pkgerrors.New(pkgerrors.CodeInternal, "orders service unavailable"))
+			return
+		}
+
+		storeType, ok := middleware.StoreTypeFromContext(r.Context())
+		if !ok || storeType != enums.StoreTypeBuyer {
+			responses.WriteError(r.Context(), logg, w, pkgerrors.New(pkgerrors.CodeForbidden, "buyer store context required"))
+			return
+		}
+
+		storeID, err := parseStoreID(r)
+		if err != nil {
+			responses.WriteError(r.Context(), logg, w, err)
+			return
+		}
+
+		userID := middleware.UserIDFromContext(r.Context())
+		if userID == "" {
+			responses.WriteError(r.Context(), logg, w, pkgerrors.New(pkgerrors.CodeUnauthorized, "user context missing"))
+			return
+		}
+		actorID, err := uuid.Parse(userID)
+		if err != nil {
+			responses.WriteError(r.Context(), logg, w, pkgerrors.Wrap(pkgerrors.CodeValidation, err, "invalid user id"))
+			return
+		}
+
+		role := middleware.RoleFromContext(r.Context())
+
+		rawOrderID := strings.TrimSpace(chi.URLParam(r, "orderId"))
+		if rawOrderID == "" {
+			responses.WriteError(r.Context(), logg, w, pkgerrors.New(pkgerrors.CodeValidation, "order id is required"))
+			return
+		}
+		orderID, err := uuid.Parse(rawOrderID)
+		if err != nil {
+			responses.WriteError(r.Context(), logg, w, pkgerrors.Wrap(pkgerrors.CodeValidation, err, "invalid order id"))
+			return
+		}
+
+		input := internalorders.BuyerNudgeInput{
+			OrderID:      orderID,
+			ActorUserID:  actorID,
+			ActorStoreID: storeID,
+			ActorRole:    role,
+		}
+
+		if err := svc.NudgeVendor(r.Context(), input); err != nil {
+			responses.WriteError(r.Context(), logg, w, err)
+			return
+		}
+		responses.WriteSuccessStatus(w, http.StatusAccepted, nil)
+	}
+}
+
+func RetryOrder(svc internalorders.Service, logg *logger.Logger) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if svc == nil {
+			responses.WriteError(r.Context(), logg, w, pkgerrors.New(pkgerrors.CodeInternal, "orders service unavailable"))
+			return
+		}
+
+		storeType, ok := middleware.StoreTypeFromContext(r.Context())
+		if !ok || storeType != enums.StoreTypeBuyer {
+			responses.WriteError(r.Context(), logg, w, pkgerrors.New(pkgerrors.CodeForbidden, "buyer store context required"))
+			return
+		}
+
+		storeID, err := parseStoreID(r)
+		if err != nil {
+			responses.WriteError(r.Context(), logg, w, err)
+			return
+		}
+
+		userID := middleware.UserIDFromContext(r.Context())
+		if userID == "" {
+			responses.WriteError(r.Context(), logg, w, pkgerrors.New(pkgerrors.CodeUnauthorized, "user context missing"))
+			return
+		}
+		actorID, err := uuid.Parse(userID)
+		if err != nil {
+			responses.WriteError(r.Context(), logg, w, pkgerrors.Wrap(pkgerrors.CodeValidation, err, "invalid user id"))
+			return
+		}
+
+		role := middleware.RoleFromContext(r.Context())
+
+		rawOrderID := strings.TrimSpace(chi.URLParam(r, "orderId"))
+		if rawOrderID == "" {
+			responses.WriteError(r.Context(), logg, w, pkgerrors.New(pkgerrors.CodeValidation, "order id is required"))
+			return
+		}
+		orderID, err := uuid.Parse(rawOrderID)
+		if err != nil {
+			responses.WriteError(r.Context(), logg, w, pkgerrors.Wrap(pkgerrors.CodeValidation, err, "invalid order id"))
+			return
+		}
+
+		input := internalorders.BuyerRetryInput{
+			OrderID:      orderID,
+			ActorUserID:  actorID,
+			ActorStoreID: storeID,
+			ActorRole:    role,
+		}
+
+		output, err := svc.RetryOrder(r.Context(), input)
+		if err != nil {
+			responses.WriteError(r.Context(), logg, w, err)
+			return
+		}
+		responses.WriteSuccessStatus(w, http.StatusCreated, output)
+	}
+}
+
 func VendorLineItemDecision(svc internalorders.Service, logg *logger.Logger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if svc == nil {
