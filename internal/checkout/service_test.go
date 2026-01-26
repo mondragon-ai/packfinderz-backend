@@ -193,6 +193,21 @@ type stubOrdersRepo struct {
 	paymentIntents map[uuid.UUID]*models.PaymentIntent
 }
 
+// FindOrderLineItem implements [orders.Repository].
+func (s *stubOrdersRepo) FindOrderLineItem(ctx context.Context, lineItemID uuid.UUID) (*models.OrderLineItem, error) {
+	panic("unimplemented")
+}
+
+// UpdateOrderLineItemStatus implements [orders.Repository].
+func (s *stubOrdersRepo) UpdateOrderLineItemStatus(ctx context.Context, lineItemID uuid.UUID, status enums.LineItemStatus, notes *string) error {
+	panic("unimplemented")
+}
+
+// UpdateVendorOrder implements [orders.Repository].
+func (s *stubOrdersRepo) UpdateVendorOrder(ctx context.Context, orderID uuid.UUID, updates map[string]any) error {
+	panic("unimplemented")
+}
+
 func (s *stubOrdersRepo) WithTx(tx *gorm.DB) orders.Repository { return s }
 func (s *stubOrdersRepo) CreateCheckoutGroup(ctx context.Context, group *models.CheckoutGroup) (*models.CheckoutGroup, error) {
 	group.ID = uuid.New()

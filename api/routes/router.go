@@ -101,6 +101,7 @@ func NewRouter(
 			r.Patch("/products/{productId}", controllers.VendorUpdateProduct(productService, logg))
 			r.Delete("/products/{productId}", controllers.VendorDeleteProduct(productService, logg))
 			r.Post("/orders/{orderId}/decision", ordercontrollers.VendorOrderDecision(ordersSvc, logg))
+			r.Post("/orders/{orderId}/line-items/decision", ordercontrollers.VendorLineItemDecision(ordersSvc, logg))
 		})
 
 		r.Route("/v1/stores", func(r chi.Router) {

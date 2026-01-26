@@ -174,6 +174,21 @@ type stubOrdersRepo struct {
 	detail     func(ctx context.Context, orderID uuid.UUID) (*ordersrepo.OrderDetail, error)
 }
 
+// FindOrderLineItem implements [orders.Repository].
+func (s *stubOrdersRepo) FindOrderLineItem(ctx context.Context, lineItemID uuid.UUID) (*models.OrderLineItem, error) {
+	panic("unimplemented")
+}
+
+// UpdateOrderLineItemStatus implements [orders.Repository].
+func (s *stubOrdersRepo) UpdateOrderLineItemStatus(ctx context.Context, lineItemID uuid.UUID, status enums.LineItemStatus, notes *string) error {
+	panic("unimplemented")
+}
+
+// UpdateVendorOrder implements [orders.Repository].
+func (s *stubOrdersRepo) UpdateVendorOrder(ctx context.Context, orderID uuid.UUID, updates map[string]any) error {
+	panic("unimplemented")
+}
+
 func (s *stubOrdersRepo) WithTx(tx *gorm.DB) ordersrepo.Repository {
 	return s
 }
@@ -241,6 +256,11 @@ func (s *stubOrdersRepo) UpdateVendorOrderStatus(ctx context.Context, orderID uu
 
 type stubOrdersService struct {
 	decision func(ctx context.Context, input ordersrepo.VendorDecisionInput) error
+}
+
+// LineItemDecision implements [orders.Service].
+func (s stubOrdersService) LineItemDecision(ctx context.Context, input ordersrepo.LineItemDecisionInput) error {
+	panic("unimplemented")
 }
 
 func (s stubOrdersService) VendorDecision(ctx context.Context, input ordersrepo.VendorDecisionInput) error {

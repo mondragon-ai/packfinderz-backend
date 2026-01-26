@@ -57,6 +57,18 @@ func (s *stubControllerOrdersRepo) FindOrderLineItemsByOrder(ctx context.Context
 	panic("not implemented")
 }
 
+func (s *stubControllerOrdersRepo) FindOrderLineItem(ctx context.Context, lineItemID uuid.UUID) (*models.OrderLineItem, error) {
+	return nil, gorm.ErrRecordNotFound
+}
+
+func (s *stubControllerOrdersRepo) UpdateOrderLineItemStatus(ctx context.Context, lineItemID uuid.UUID, status enums.LineItemStatus, notes *string) error {
+	return nil
+}
+
+func (s *stubControllerOrdersRepo) UpdateVendorOrder(ctx context.Context, orderID uuid.UUID, updates map[string]any) error {
+	return nil
+}
+
 func (s *stubControllerOrdersRepo) FindPaymentIntentByOrder(ctx context.Context, orderID uuid.UUID) (*models.PaymentIntent, error) {
 	panic("not implemented")
 }
@@ -91,12 +103,20 @@ func (s *stubControllerOrdersRepo) UpdateVendorOrderStatus(ctx context.Context, 
 }
 
 type stubControllerOrdersService struct {
-	decision func(ctx context.Context, input internalorders.VendorDecisionInput) error
+	decision         func(ctx context.Context, input internalorders.VendorDecisionInput) error
+	lineItemDecision func(ctx context.Context, input internalorders.LineItemDecisionInput) error
 }
 
 func (s *stubControllerOrdersService) VendorDecision(ctx context.Context, input internalorders.VendorDecisionInput) error {
 	if s.decision != nil {
 		return s.decision(ctx, input)
+	}
+	return nil
+}
+
+func (s *stubControllerOrdersService) LineItemDecision(ctx context.Context, input internalorders.LineItemDecisionInput) error {
+	if s.lineItemDecision != nil {
+		return s.lineItemDecision(ctx, input)
 	}
 	return nil
 }
@@ -317,6 +337,76 @@ func TestVendorOrderDecisionInvalidDecision(t *testing.T) {
 	orderID := uuid.New()
 	handler := VendorOrderDecision(&stubControllerOrdersService{}, nil)
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/vendor/orders/"+orderID.String()+"/decision", strings.NewReader(`{"decision":"maybe"}`))
+	req.Header.Set("Content-Type", "application/json")
+	ctx := chi.NewRouteContext()
+	ctx.URLParams.Add("orderId", orderID.String())
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, ctx))
+	req = req.WithContext(middleware.WithStoreID(req.Context(), storeID.String()))
+	req = req.WithContext(middleware.WithStoreType(req.Context(), enums.StoreTypeVendor))
+	req = req.WithContext(middleware.WithUserID(req.Context(), uuid.New().String()))
+
+	resp := httptest.NewRecorder()
+	handler.ServeHTTP(resp, req)
+	if resp.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 got %d", resp.Code)
+	}
+}
+
+func TestVendorLineItemDecisionSuccess(t *testing.T) {
+	storeID := uuid.New()
+	orderID := uuid.New()
+	lineItemID := uuid.New()
+	called := false
+	svc := &stubControllerOrdersService{
+		lineItemDecision: func(ctx context.Context, input internalorders.LineItemDecisionInput) error {
+			if input.OrderID != orderID {
+				t.Fatalf("unexpected order id %s", input.OrderID)
+			}
+			if input.LineItemID != lineItemID {
+				t.Fatalf("unexpected line item id %s", input.LineItemID)
+			}
+			if input.Decision != internalorders.LineItemDecisionFulfill {
+				t.Fatalf("unexpected decision %s", input.Decision)
+			}
+			if input.Notes == nil || *input.Notes != "ready" {
+				t.Fatalf("unexpected notes %v", input.Notes)
+			}
+			if input.ActorStoreID != storeID {
+				t.Fatalf("unexpected store id %s", input.ActorStoreID)
+			}
+			called = true
+			return nil
+		},
+	}
+
+	handler := VendorLineItemDecision(svc, nil)
+	body := `{"line_item_id":"` + lineItemID.String() + `","decision":"fulfill","notes":"ready"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/vendor/orders/"+orderID.String()+"/line-items/decision", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	ctx := chi.NewRouteContext()
+	ctx.URLParams.Add("orderId", orderID.String())
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, ctx))
+	req = req.WithContext(middleware.WithStoreID(req.Context(), storeID.String()))
+	req = req.WithContext(middleware.WithStoreType(req.Context(), enums.StoreTypeVendor))
+	req = req.WithContext(middleware.WithUserID(req.Context(), uuid.New().String()))
+
+	resp := httptest.NewRecorder()
+	handler.ServeHTTP(resp, req)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("expected 200 got %d", resp.Code)
+	}
+	if !called {
+		t.Fatalf("service not invoked")
+	}
+}
+
+func TestVendorLineItemDecisionInvalidDecision(t *testing.T) {
+	storeID := uuid.New()
+	orderID := uuid.New()
+	lineItemID := uuid.New()
+	handler := VendorLineItemDecision(&stubControllerOrdersService{}, nil)
+	body := `{"line_item_id":"` + lineItemID.String() + `","decision":"maybe"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/vendor/orders/"+orderID.String()+"/line-items/decision", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	ctx := chi.NewRouteContext()
 	ctx.URLParams.Add("orderId", orderID.String())

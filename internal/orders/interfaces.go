@@ -20,10 +20,13 @@ type Repository interface {
 	FindCheckoutGroupByID(ctx context.Context, id uuid.UUID) (*models.CheckoutGroup, error)
 	FindVendorOrdersByCheckoutGroup(ctx context.Context, checkoutGroupID uuid.UUID) ([]models.VendorOrder, error)
 	FindOrderLineItemsByOrder(ctx context.Context, orderID uuid.UUID) ([]models.OrderLineItem, error)
+	FindOrderLineItem(ctx context.Context, lineItemID uuid.UUID) (*models.OrderLineItem, error)
 	FindPaymentIntentByOrder(ctx context.Context, orderID uuid.UUID) (*models.PaymentIntent, error)
 	ListBuyerOrders(ctx context.Context, buyerStoreID uuid.UUID, params pagination.Params, filters BuyerOrderFilters) (*BuyerOrderList, error)
 	ListVendorOrders(ctx context.Context, vendorStoreID uuid.UUID, params pagination.Params, filters VendorOrderFilters) (*VendorOrderList, error)
 	FindOrderDetail(ctx context.Context, orderID uuid.UUID) (*OrderDetail, error)
 	FindVendorOrder(ctx context.Context, orderID uuid.UUID) (*models.VendorOrder, error)
 	UpdateVendorOrderStatus(ctx context.Context, orderID uuid.UUID, status enums.VendorOrderStatus) error
+	UpdateOrderLineItemStatus(ctx context.Context, lineItemID uuid.UUID, status enums.LineItemStatus, notes *string) error
+	UpdateVendorOrder(ctx context.Context, orderID uuid.UUID, updates map[string]any) error
 }

@@ -362,6 +362,8 @@ The GitHub Actions workflow (`.github/workflows/ci.yml`) runs gofmt, `golangci-l
   * Requires a vendor store context and body `{ "decision": "accept" | "reject" }`.
   * A successful accept transitions the order status to `accepted`; a reject sets it to `rejected`.
   * The endpoint is idempotent via `Idempotency-Key`, and it emits the `order_decided` outbox event so the buyer can be notified of the vendor's acknowledgment.
+* `POST /api/v1/vendor/orders/{orderId}/line-items/decision` – the vendor resolves an individual line item (`line_item_id`, `decision`: `fulfill|reject`, optional `notes`).
+  * Rejects release inventory (idempotently) and all decisions recompute `balance_due_cents`, update fulfillment/shipping readiness, and emit the new `order_fulfilled` outbox event once no pending line items remain.
 
 ### Health
 
