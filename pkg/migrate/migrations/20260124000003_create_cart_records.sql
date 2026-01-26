@@ -15,11 +15,11 @@ DO $$
 BEGIN
   CREATE TYPE cart_level_discount AS (
     "type" text,
-    title text NOT NULL,
-    id uuid NOT NULL,
-    value text NOT NULL,
-    value_type text NOT NULL,
-    vendor_id uuid NOT NULL
+    title text,
+    id uuid,
+    value text,
+    value_type text,
+    vendor_id uuid
   );
 EXCEPTION
   WHEN duplicate_object THEN NULL;
