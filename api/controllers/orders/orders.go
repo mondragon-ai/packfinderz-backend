@@ -219,6 +219,86 @@ func VendorOrderDecision(svc internalorders.Service, logg *logger.Logger) http.H
 	}
 }
 
+func VendorLineItemDecision(svc internalorders.Service, logg *logger.Logger) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if svc == nil {
+			responses.WriteError(r.Context(), logg, w, pkgerrors.New(pkgerrors.CodeInternal, "orders service unavailable"))
+			return
+		}
+
+		storeType, ok := middleware.StoreTypeFromContext(r.Context())
+		if !ok || storeType != enums.StoreTypeVendor {
+			responses.WriteError(r.Context(), logg, w, pkgerrors.New(pkgerrors.CodeForbidden, "vendor store context required"))
+			return
+		}
+
+		storeID, err := parseStoreID(r)
+		if err != nil {
+			responses.WriteError(r.Context(), logg, w, err)
+			return
+		}
+
+		userID := middleware.UserIDFromContext(r.Context())
+		if userID == "" {
+			responses.WriteError(r.Context(), logg, w, pkgerrors.New(pkgerrors.CodeUnauthorized, "user context missing"))
+			return
+		}
+		actorID, err := uuid.Parse(userID)
+		if err != nil {
+			responses.WriteError(r.Context(), logg, w, pkgerrors.Wrap(pkgerrors.CodeValidation, err, "invalid user id"))
+			return
+		}
+
+		role := middleware.RoleFromContext(r.Context())
+
+		var payload vendorLineItemDecisionRequest
+		if err := validators.DecodeJSONBody(r, &payload); err != nil {
+			responses.WriteError(r.Context(), logg, w, err)
+			return
+		}
+
+		lineItemID, err := uuid.Parse(strings.TrimSpace(payload.LineItemID))
+		if err != nil {
+			responses.WriteError(r.Context(), logg, w, pkgerrors.Wrap(pkgerrors.CodeValidation, err, "invalid line item id"))
+			return
+		}
+
+		decision, err := parseVendorLineItemDecision(payload.Decision)
+		if err != nil {
+			responses.WriteError(r.Context(), logg, w, err)
+			return
+		}
+
+		rawOrderID := strings.TrimSpace(chi.URLParam(r, "orderId"))
+		if rawOrderID == "" {
+			responses.WriteError(r.Context(), logg, w, pkgerrors.New(pkgerrors.CodeValidation, "order id is required"))
+			return
+		}
+		orderID, err := uuid.Parse(rawOrderID)
+		if err != nil {
+			responses.WriteError(r.Context(), logg, w, pkgerrors.Wrap(pkgerrors.CodeValidation, err, "invalid order id"))
+			return
+		}
+
+		input := internalorders.LineItemDecisionInput{
+			OrderID:      orderID,
+			LineItemID:   lineItemID,
+			Decision:     decision,
+			Notes:        payload.Notes,
+			ActorUserID:  actorID,
+			ActorStoreID: storeID,
+			ActorRole:    role,
+		}
+
+		if err := svc.LineItemDecision(r.Context(), input); err != nil {
+			responses.WriteError(r.Context(), logg, w, err)
+			return
+		}
+
+		responses.WriteSuccess(w, nil)
+	}
+}
+
 type vendorOrderDecisionRequest struct {
 	Decision string `json:"decision" validate:"required"`
 }
@@ -231,6 +311,23 @@ func parseVendorOrderDecision(raw string) (internalorders.VendorOrderDecision, e
 		return internalorders.VendorOrderDecisionReject, nil
 	default:
 		return "", pkgerrors.New(pkgerrors.CodeValidation, "decision must be accept or reject")
+	}
+}
+
+type vendorLineItemDecisionRequest struct {
+	LineItemID string  `json:"line_item_id" validate:"required,uuid4"`
+	Decision   string  `json:"decision" validate:"required"`
+	Notes      *string `json:"notes,omitempty"`
+}
+
+func parseVendorLineItemDecision(raw string) (internalorders.LineItemDecision, error) {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "fulfill":
+		return internalorders.LineItemDecisionFulfill, nil
+	case "reject":
+		return internalorders.LineItemDecisionReject, nil
+	default:
+		return "", pkgerrors.New(pkgerrors.CodeValidation, "decision must be fulfill or reject")
 	}
 }
 

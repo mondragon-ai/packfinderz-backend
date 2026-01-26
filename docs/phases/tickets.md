@@ -199,30 +199,30 @@
 
 ### 7A) Read APIs
 
-* [ ] Migrations (if any missing indexes): buyer/vendor list indexes + “needs action” composite index
-* [ ] Repo: buyer orders list (filters + cursor pagination)
-* [ ] Repo: vendor orders list (filters + cursor pagination)
-* [ ] Repo: order detail (preload line items + payment intent)
-* [ ] Controller/routes:
+* [X] Migrations (if any missing indexes): buyer/vendor list indexes + “needs action” composite index
+* [X] Repo: buyer orders list (filters + cursor pagination)
+* [X] Repo: vendor orders list (filters + cursor pagination)
+* [X] Repo: order detail (preload line items + payment intent)
+* [X] Controller/routes:
 
-  * [ ] `GET /api/v1/orders` (buyer/vendor perspective)
-  * [ ] `GET /api/v1/orders/{orderId}`
+  * [X] `GET /api/v1/orders` (buyer/vendor perspective)
+  * [X] `GET /api/v1/orders/{orderId}`
 
 ### 7B) Vendor decision flows
 
-* [ ] DTOs: order-level decision request/response
-* [ ] Service: `POST /api/v1/vendor/orders/{orderId}/decision`
+* [X] DTOs: order-level decision request/response
+* [X] Service: `POST /api/v1/vendor/orders/{orderId}/decision`
 
-  * [ ] State transition validation
-  * [ ] Set `accepted|rejected|partially_accepted` based on item outcomes
-  * [ ] Recompute `balance_due_cents` after partial accept
-  * [ ] Release inventory for rejected line items (reverse reserve)
-* [ ] Service: `POST /api/v1/vendor/orders/{orderId}/line-items/decision`
+  * [X] State transition validation
+  * [X] Set `accepted|rejected|partially_accepted` based on item outcomes
+  * [X] Recompute `balance_due_cents` after partial accept
+  * [X] Release inventory for rejected line items (reverse reserve)
+* [X] Service: `POST /api/v1/vendor/orders/{orderId}/line-items/decision`
 
-  * [ ] Per-line accept/reject + recompute order status + balance due
-  * [ ] Emit outbox events: `order_decided` (and line-level payload detail)
+  * [X] Per-line accept/reject + recompute order status + balance due
+  * [X] Emit outbox events: `order_decided` (and line-level payload detail)
 
-### 7C) Fulfillment
+### 7C) Fulfillment -> almsot handled automatically with the (`POST /api/v1/vendor/orders/{orderId}/line-items/decision`) ticket
 
 * [ ] Service: `POST /api/v1/vendor/orders/{orderId}/fulfill`
 
@@ -232,15 +232,15 @@
 
 ### 7D) Buyer actions
 
-* [ ] Service: `POST /api/v1/orders/{orderId}/cancel` (pre-transit only)
+* [X] Service: `POST /api/v1/orders/{orderId}/cancel` (pre-transit only)
 
-  * [ ] Release reserved inventory for all non-fulfilled items
-  * [ ] Order status to `canceled`
-  * [ ] Emit outbox: `order_canceled`
-* [ ] Service: `POST /api/v1/orders/{orderId}/nudge` (writes notification event; later email)
-* [ ] Service: `POST /api/v1/orders/{orderId}/retry` (only `expired`)
+  * [X] Release reserved inventory for all non-fulfilled items
+  * [X] Order status to `canceled`
+  * [X] Emit outbox: `order_canceled`
+* [X] Service: `POST /api/v1/orders/{orderId}/nudge` (writes notification event; later email)
+* [X] Service: `POST /api/v1/orders/{orderId}/retry` (only `expired`)
 
-  * [ ] Create new CheckoutGroup attempt from prior order snapshot (or re-run checkout-like flow)
+  * [X] Create new CheckoutGroup attempt from prior order snapshot (or re-run checkout-like flow)
 
 ### 7E) Reservation TTL scheduler (5d + nudge + 5d + expire)
 

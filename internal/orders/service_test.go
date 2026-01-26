@@ -16,6 +16,8 @@ import (
 type stubOrdersRepo struct {
 	order         *models.VendorOrder
 	updatedStatus enums.VendorOrderStatus
+	lineItems     map[uuid.UUID]*models.OrderLineItem
+	orderUpdates  map[string]any
 }
 
 func (s *stubOrdersRepo) WithTx(tx *gorm.DB) Repository {
@@ -47,7 +49,13 @@ func (s *stubOrdersRepo) FindVendorOrdersByCheckoutGroup(ctx context.Context, ch
 }
 
 func (s *stubOrdersRepo) FindOrderLineItemsByOrder(ctx context.Context, orderID uuid.UUID) ([]models.OrderLineItem, error) {
-	panic("not implemented")
+	items := make([]models.OrderLineItem, 0, len(s.lineItems))
+	for _, item := range s.lineItems {
+		if item.OrderID == orderID {
+			items = append(items, *item)
+		}
+	}
+	return items, nil
 }
 
 func (s *stubOrdersRepo) FindPaymentIntentByOrder(ctx context.Context, orderID uuid.UUID) (*models.PaymentIntent, error) {
@@ -78,6 +86,62 @@ func (s *stubOrdersRepo) UpdateVendorOrderStatus(ctx context.Context, orderID uu
 	return nil
 }
 
+func (s *stubOrdersRepo) FindOrderLineItem(ctx context.Context, lineItemID uuid.UUID) (*models.OrderLineItem, error) {
+	if s.lineItems == nil {
+		return nil, gorm.ErrRecordNotFound
+	}
+	item, ok := s.lineItems[lineItemID]
+	if !ok {
+		return nil, gorm.ErrRecordNotFound
+	}
+	return item, nil
+}
+
+func (s *stubOrdersRepo) UpdateOrderLineItemStatus(ctx context.Context, lineItemID uuid.UUID, status enums.LineItemStatus, notes *string) error {
+	if s.lineItems == nil {
+		return gorm.ErrRecordNotFound
+	}
+	item, ok := s.lineItems[lineItemID]
+	if !ok {
+		return gorm.ErrRecordNotFound
+	}
+	item.Status = status
+	item.Notes = notes
+	return nil
+}
+
+func (s *stubOrdersRepo) UpdateVendorOrder(ctx context.Context, orderID uuid.UUID, updates map[string]any) error {
+	s.orderUpdates = updates
+	if s.order == nil || s.order.ID != orderID {
+		return gorm.ErrRecordNotFound
+	}
+	for key, value := range updates {
+		switch key {
+		case "subtotal_cents":
+			if v, ok := value.(int); ok {
+				s.order.SubtotalCents = v
+			}
+		case "total_cents":
+			if v, ok := value.(int); ok {
+				s.order.TotalCents = v
+			}
+		case "balance_due_cents":
+			if v, ok := value.(int); ok {
+				s.order.BalanceDueCents = v
+			}
+		case "fulfillment_status":
+			if v, ok := value.(enums.VendorOrderFulfillmentStatus); ok {
+				s.order.FulfillmentStatus = v
+			}
+		case "status":
+			if v, ok := value.(enums.VendorOrderStatus); ok {
+				s.order.Status = v
+			}
+		}
+	}
+	return nil
+}
+
 type stubOutboxPublisher struct {
 	event  outbox.DomainEvent
 	called bool
@@ -90,6 +154,24 @@ func (s *stubOutboxPublisher) Emit(ctx context.Context, tx *gorm.DB, event outbo
 	}
 	s.called = true
 	s.event = event
+	return nil
+}
+
+type inventoryReleaseCall struct {
+	productID uuid.UUID
+	qty       int
+}
+
+type stubInventoryReleaser struct {
+	calls []inventoryReleaseCall
+	err   error
+}
+
+func (s *stubInventoryReleaser) Release(ctx context.Context, tx *gorm.DB, productID uuid.UUID, qty int) error {
+	if s.err != nil {
+		return s.err
+	}
+	s.calls = append(s.calls, inventoryReleaseCall{productID: productID, qty: qty})
 	return nil
 }
 
@@ -113,7 +195,7 @@ func TestVendorDecision(t *testing.T) {
 		},
 	}
 	outbox := &stubOutboxPublisher{}
-	svc, err := NewService(repo, stubTxRunner{}, outbox)
+	svc, err := NewService(repo, stubTxRunner{}, outbox, &stubInventoryReleaser{})
 	if err != nil {
 		t.Fatalf("service constructor failed: %v", err)
 	}
@@ -149,7 +231,7 @@ func TestVendorDecisionIdempotent(t *testing.T) {
 	}
 	repo := &stubOrdersRepo{order: order}
 	outbox := &stubOutboxPublisher{}
-	svc, _ := NewService(repo, stubTxRunner{}, outbox)
+	svc, _ := NewService(repo, stubTxRunner{}, outbox, &stubInventoryReleaser{})
 	err := svc.VendorDecision(context.Background(), VendorDecisionInput{
 		OrderID:      orderID,
 		Decision:     VendorOrderDecisionAccept,
@@ -175,7 +257,7 @@ func TestVendorDecisionInvalidState(t *testing.T) {
 		},
 	}
 	outbox := &stubOutboxPublisher{}
-	svc, _ := NewService(repo, stubTxRunner{}, outbox)
+	svc, _ := NewService(repo, stubTxRunner{}, outbox, &stubInventoryReleaser{})
 	err := svc.VendorDecision(context.Background(), VendorDecisionInput{
 		OrderID:      orderID,
 		Decision:     VendorOrderDecisionReject,
@@ -191,5 +273,164 @@ func TestVendorDecisionInvalidState(t *testing.T) {
 	}
 	if outbox.called {
 		t.Fatalf("unexpected outbox call")
+	}
+}
+
+func TestLineItemDecisionFulfillEmitsEvent(t *testing.T) {
+	orderID := uuid.New()
+	storeID := uuid.New()
+	buyerID := uuid.New()
+	lineID := uuid.New()
+	productID := uuid.New()
+	repo := &stubOrdersRepo{
+		order: &models.VendorOrder{
+			ID:                orderID,
+			VendorStoreID:     storeID,
+			BuyerStoreID:      buyerID,
+			CheckoutGroupID:   uuid.New(),
+			Status:            enums.VendorOrderStatusAccepted,
+			FulfillmentStatus: enums.VendorOrderFulfillmentStatusPending,
+			ShippingStatus:    enums.VendorOrderShippingStatusPending,
+			SubtotalCents:     1200,
+			TotalCents:        1200,
+			BalanceDueCents:   1200,
+		},
+		lineItems: map[uuid.UUID]*models.OrderLineItem{
+			lineID: {
+				ID:         lineID,
+				OrderID:    orderID,
+				ProductID:  &productID,
+				Qty:        2,
+				TotalCents: 1200,
+				Status:     enums.LineItemStatusPending,
+			},
+		},
+	}
+	outbox := &stubOutboxPublisher{}
+	inventory := &stubInventoryReleaser{}
+	svc, err := NewService(repo, stubTxRunner{}, outbox, inventory)
+	if err != nil {
+		t.Fatalf("constructor failed: %v", err)
+	}
+
+	err = svc.LineItemDecision(context.Background(), LineItemDecisionInput{
+		OrderID:      orderID,
+		LineItemID:   lineID,
+		Decision:     LineItemDecisionFulfill,
+		ActorUserID:  uuid.New(),
+		ActorStoreID: storeID,
+		ActorRole:    "owner",
+	})
+	if err != nil {
+		t.Fatalf("expected success got %v", err)
+	}
+
+	if len(inventory.calls) != 0 {
+		t.Fatalf("unexpected inventory release call")
+	}
+	if !outbox.called {
+		t.Fatal("expected outbox event")
+	}
+	event, ok := outbox.event.Data.(OrderFulfilledEvent)
+	if !ok {
+		t.Fatalf("unexpected event payload %T", outbox.event.Data)
+	}
+	if event.RejectedItemCount != 0 {
+		t.Fatalf("unexpected rejected item count %d", event.RejectedItemCount)
+	}
+	if event.ResolvedLineItemID != lineID {
+		t.Fatalf("unexpected resolved line item %s", event.ResolvedLineItemID)
+	}
+	if repo.order.Status != enums.VendorOrderStatusHold {
+		t.Fatalf("unexpected order status %s", repo.order.Status)
+	}
+	if repo.order.FulfillmentStatus != enums.VendorOrderFulfillmentStatusFulfilled {
+		t.Fatalf("unexpected fulfillment status %s", repo.order.FulfillmentStatus)
+	}
+	if repo.order.BalanceDueCents != 1200 {
+		t.Fatalf("unexpected balance %d", repo.order.BalanceDueCents)
+	}
+	if repo.lineItems[lineID].Status != enums.LineItemStatusFulfilled {
+		t.Fatalf("unexpected line item status %s", repo.lineItems[lineID].Status)
+	}
+}
+
+func TestLineItemDecisionRejectReleasesInventory(t *testing.T) {
+	orderID := uuid.New()
+	storeID := uuid.New()
+	buyerID := uuid.New()
+	lineID := uuid.New()
+	productID := uuid.New()
+	repo := &stubOrdersRepo{
+		order: &models.VendorOrder{
+			ID:                orderID,
+			VendorStoreID:     storeID,
+			BuyerStoreID:      buyerID,
+			CheckoutGroupID:   uuid.New(),
+			Status:            enums.VendorOrderStatusAccepted,
+			FulfillmentStatus: enums.VendorOrderFulfillmentStatusPending,
+			ShippingStatus:    enums.VendorOrderShippingStatusPending,
+			SubtotalCents:     2000,
+			TotalCents:        2000,
+			BalanceDueCents:   2000,
+		},
+		lineItems: map[uuid.UUID]*models.OrderLineItem{
+			lineID: {
+				ID:         lineID,
+				OrderID:    orderID,
+				ProductID:  &productID,
+				Qty:        3,
+				TotalCents: 2000,
+				Status:     enums.LineItemStatusPending,
+			},
+		},
+	}
+	outbox := &stubOutboxPublisher{}
+	inventory := &stubInventoryReleaser{}
+	svc, _ := NewService(repo, stubTxRunner{}, outbox, inventory)
+	notes := "damaged"
+	err := svc.LineItemDecision(context.Background(), LineItemDecisionInput{
+		OrderID:      orderID,
+		LineItemID:   lineID,
+		Decision:     LineItemDecisionReject,
+		Notes:        &notes,
+		ActorUserID:  uuid.New(),
+		ActorStoreID: storeID,
+		ActorRole:    "owner",
+	})
+	if err != nil {
+		t.Fatalf("expected success got %v", err)
+	}
+	if len(inventory.calls) != 1 {
+		t.Fatalf("expected inventory release")
+	}
+	call := inventory.calls[0]
+	if call.productID != productID || call.qty != 3 {
+		t.Fatalf("unexpected release call %+v", call)
+	}
+	if !outbox.called {
+		t.Fatal("expected outbox event")
+	}
+	event, ok := outbox.event.Data.(OrderFulfilledEvent)
+	if !ok {
+		t.Fatalf("unexpected event payload %T", outbox.event.Data)
+	}
+	if event.RejectedItemCount != 1 {
+		t.Fatalf("unexpected rejected count %d", event.RejectedItemCount)
+	}
+	if event.ResolvedLineItemID != lineID {
+		t.Fatalf("unexpected resolved line item id %s", event.ResolvedLineItemID)
+	}
+	if repo.order.SubtotalCents != 0 || repo.order.TotalCents != 0 || repo.order.BalanceDueCents != 0 {
+		t.Fatalf("unexpected order totals %+v", repo.order)
+	}
+	if repo.lineItems[lineID].Status != enums.LineItemStatusRejected {
+		t.Fatalf("unexpected line item status %s", repo.lineItems[lineID].Status)
+	}
+	if repo.lineItems[lineID].Notes == nil || *repo.lineItems[lineID].Notes != notes {
+		t.Fatalf("unexpected line item notes %v", repo.lineItems[lineID].Notes)
+	}
+	if repo.order.FulfillmentStatus != enums.VendorOrderFulfillmentStatusPartial {
+		t.Fatalf("unexpected fulfillment status %s", repo.order.FulfillmentStatus)
 	}
 }

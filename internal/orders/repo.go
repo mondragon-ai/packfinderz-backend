@@ -95,6 +95,17 @@ func (r *repository) FindOrderLineItemsByOrder(ctx context.Context, orderID uuid
 	return items, nil
 }
 
+func (r *repository) FindOrderLineItem(ctx context.Context, lineItemID uuid.UUID) (*models.OrderLineItem, error) {
+	var item models.OrderLineItem
+	err := r.db.WithContext(ctx).
+		Where("id = ?", lineItemID).
+		First(&item).Error
+	if err != nil {
+		return nil, err
+	}
+	return &item, nil
+}
+
 func (r *repository) FindPaymentIntentByOrder(ctx context.Context, orderID uuid.UUID) (*models.PaymentIntent, error) {
 	var intent models.PaymentIntent
 	err := r.db.WithContext(ctx).
@@ -124,6 +135,29 @@ func (r *repository) UpdateVendorOrderStatus(ctx context.Context, orderID uuid.U
 		Updates(map[string]any{
 			"status": status,
 		}).Error
+}
+
+func (r *repository) UpdateOrderLineItemStatus(ctx context.Context, lineItemID uuid.UUID, status enums.LineItemStatus, notes *string) error {
+	updates := map[string]any{
+		"status": status,
+	}
+	if notes != nil {
+		updates["notes"] = notes
+	}
+	return r.db.WithContext(ctx).
+		Model(&models.OrderLineItem{}).
+		Where("id = ?", lineItemID).
+		Updates(updates).Error
+}
+
+func (r *repository) UpdateVendorOrder(ctx context.Context, orderID uuid.UUID, updates map[string]any) error {
+	if len(updates) == 0 {
+		return nil
+	}
+	return r.db.WithContext(ctx).
+		Model(&models.VendorOrder{}).
+		Where("id = ?", orderID).
+		Updates(updates).Error
 }
 
 func (r *repository) ListBuyerOrders(ctx context.Context, buyerStoreID uuid.UUID, params pagination.Params, filters BuyerOrderFilters) (*BuyerOrderList, error) {

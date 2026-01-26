@@ -2098,9 +2098,11 @@ Headers:
 * `POST /api/v1/vendor/orders/{orderId}/line-items/decision`
 
   * Accept/reject specific line items.
+  * Rejects release inventory idempotently, every decision recomputes `balance_due_cents`, and once no `pending` line items remain the fulfillment status moves to `partial`/`fulfilled` while the order status lands in `hold` before emitting the new `order_fulfilled` outbox event.
   * **Idempotent:** YES (required)
   * Success: `200`
   * Errors: `401, 403, 404, 409, 422`
+  * Outbox event: `order_fulfilled` indicates the vendor has resolved all actionable line items and the order is ready to dispatch.
 
 **Vendor mark fulfillment**
 
