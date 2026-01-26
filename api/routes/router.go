@@ -8,12 +8,14 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/angelmondragon/packfinderz-backend/api/controllers"
+	ordercontrollers "github.com/angelmondragon/packfinderz-backend/api/controllers/orders"
 	"github.com/angelmondragon/packfinderz-backend/api/middleware"
 	"github.com/angelmondragon/packfinderz-backend/internal/auth"
 	"github.com/angelmondragon/packfinderz-backend/internal/cart"
 	checkoutsvc "github.com/angelmondragon/packfinderz-backend/internal/checkout"
 	"github.com/angelmondragon/packfinderz-backend/internal/licenses"
 	"github.com/angelmondragon/packfinderz-backend/internal/media"
+	"github.com/angelmondragon/packfinderz-backend/internal/orders"
 	products "github.com/angelmondragon/packfinderz-backend/internal/products"
 	"github.com/angelmondragon/packfinderz-backend/internal/stores"
 	"github.com/angelmondragon/packfinderz-backend/pkg/auth/session"
@@ -46,6 +48,7 @@ func NewRouter(
 	productService products.Service,
 	checkoutService checkoutsvc.Service,
 	cartService cart.Service,
+	ordersRepo orders.Repository,
 ) http.Handler {
 	r := chi.NewRouter()
 	r.Use(
@@ -119,6 +122,10 @@ func NewRouter(
 		r.Route("/v1/cart", func(r chi.Router) {
 			r.Get("/", controllers.CartFetch(cartService, logg))
 			r.Put("/", controllers.CartUpsert(cartService, logg))
+		})
+		r.Route("/v1/orders", func(r chi.Router) {
+			r.Get("/", ordercontrollers.List(ordersRepo, logg))
+			r.Get("/{orderId}", ordercontrollers.Detail(ordersRepo, logg))
 		})
 		r.Post("/v1/checkout", controllers.Checkout(checkoutService, storeService, logg))
 

@@ -16,6 +16,7 @@ import (
 	"github.com/angelmondragon/packfinderz-backend/internal/licenses"
 	"github.com/angelmondragon/packfinderz-backend/internal/media"
 	"github.com/angelmondragon/packfinderz-backend/internal/memberships"
+	ordersrepo "github.com/angelmondragon/packfinderz-backend/internal/orders"
 	product "github.com/angelmondragon/packfinderz-backend/internal/products"
 	"github.com/angelmondragon/packfinderz-backend/internal/stores"
 	pkgAuth "github.com/angelmondragon/packfinderz-backend/pkg/auth"
@@ -24,8 +25,10 @@ import (
 	"github.com/angelmondragon/packfinderz-backend/pkg/db/models"
 	"github.com/angelmondragon/packfinderz-backend/pkg/enums"
 	"github.com/angelmondragon/packfinderz-backend/pkg/logger"
+	"github.com/angelmondragon/packfinderz-backend/pkg/pagination"
 	"github.com/angelmondragon/packfinderz-backend/pkg/redis"
 	"github.com/google/uuid"
+	"gorm.io/gorm"
 )
 
 type stubPinger struct{}
@@ -165,6 +168,69 @@ func (s stubCartService) GetActiveCart(ctx context.Context, buyerStoreID uuid.UU
 	panic("unimplemented")
 }
 
+type stubOrdersRepo struct {
+	listBuyer  func(ctx context.Context, buyerStoreID uuid.UUID, params pagination.Params, filters ordersrepo.BuyerOrderFilters) (*ordersrepo.BuyerOrderList, error)
+	listVendor func(ctx context.Context, vendorStoreID uuid.UUID, params pagination.Params, filters ordersrepo.VendorOrderFilters) (*ordersrepo.VendorOrderList, error)
+	detail     func(ctx context.Context, orderID uuid.UUID) (*ordersrepo.OrderDetail, error)
+}
+
+func (s *stubOrdersRepo) WithTx(tx *gorm.DB) ordersrepo.Repository {
+	return s
+}
+
+func (s *stubOrdersRepo) CreateCheckoutGroup(ctx context.Context, group *models.CheckoutGroup) (*models.CheckoutGroup, error) {
+	panic("unimplemented")
+}
+
+func (s *stubOrdersRepo) CreateVendorOrder(ctx context.Context, order *models.VendorOrder) (*models.VendorOrder, error) {
+	panic("unimplemented")
+}
+
+func (s *stubOrdersRepo) CreateOrderLineItems(ctx context.Context, items []models.OrderLineItem) error {
+	panic("unimplemented")
+}
+
+func (s *stubOrdersRepo) CreatePaymentIntent(ctx context.Context, intent *models.PaymentIntent) (*models.PaymentIntent, error) {
+	panic("unimplemented")
+}
+
+func (s *stubOrdersRepo) FindCheckoutGroupByID(ctx context.Context, id uuid.UUID) (*models.CheckoutGroup, error) {
+	panic("unimplemented")
+}
+
+func (s *stubOrdersRepo) FindVendorOrdersByCheckoutGroup(ctx context.Context, checkoutGroupID uuid.UUID) ([]models.VendorOrder, error) {
+	panic("unimplemented")
+}
+
+func (s *stubOrdersRepo) FindOrderLineItemsByOrder(ctx context.Context, orderID uuid.UUID) ([]models.OrderLineItem, error) {
+	panic("unimplemented")
+}
+
+func (s *stubOrdersRepo) FindPaymentIntentByOrder(ctx context.Context, orderID uuid.UUID) (*models.PaymentIntent, error) {
+	panic("unimplemented")
+}
+
+func (s *stubOrdersRepo) ListBuyerOrders(ctx context.Context, buyerStoreID uuid.UUID, params pagination.Params, filters ordersrepo.BuyerOrderFilters) (*ordersrepo.BuyerOrderList, error) {
+	if s.listBuyer != nil {
+		return s.listBuyer(ctx, buyerStoreID, params, filters)
+	}
+	return nil, nil
+}
+
+func (s *stubOrdersRepo) ListVendorOrders(ctx context.Context, vendorStoreID uuid.UUID, params pagination.Params, filters ordersrepo.VendorOrderFilters) (*ordersrepo.VendorOrderList, error) {
+	if s.listVendor != nil {
+		return s.listVendor(ctx, vendorStoreID, params, filters)
+	}
+	return nil, nil
+}
+
+func (s *stubOrdersRepo) FindOrderDetail(ctx context.Context, orderID uuid.UUID) (*ordersrepo.OrderDetail, error) {
+	if s.detail != nil {
+		return s.detail(ctx, orderID)
+	}
+	return nil, nil
+}
+
 type stubCheckoutService struct{}
 
 // Execute implements [checkout.Service].
@@ -202,6 +268,7 @@ func newTestRouter(cfg *config.Config) http.Handler {
 		stubProductService{},
 		stubCheckoutService{},
 		stubCartService{},
+		&stubOrdersRepo{},
 	)
 }
 
@@ -287,10 +354,12 @@ func buildToken(t *testing.T, cfg *config.Config, role enums.MemberRole) string 
 	t.Helper()
 	storeID := uuid.New()
 	accessID := session.NewAccessID()
+	storeType := enums.StoreTypeBuyer
 	token, err := pkgAuth.MintAccessToken(cfg.JWT, time.Now(), pkgAuth.AccessTokenPayload{
 		UserID:        uuid.New(),
 		ActiveStoreID: &storeID,
 		Role:          role,
+		StoreType:     &storeType,
 		JTI:           accessID,
 	})
 	if err != nil {

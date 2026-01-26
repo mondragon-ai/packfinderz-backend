@@ -231,6 +231,7 @@ func main() {
 			productService,
 			checkoutService,
 			cartService,
+			ordersRepo,
 		),
 	}
 

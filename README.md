@@ -345,6 +345,17 @@ The GitHub Actions workflow (`.github/workflows/ci.yml`) runs gofmt, `golangci-l
 * `GET /api/v1/cart` – returns the buyer store's currently active `cart_record` along with its `cart_items` so the UI can recover or refresh the pending checkout.
 * Enforces the active store context, verifies the buyer store's ownership, and returns `404` when no active cart exists.
 
+### Orders
+
+* `GET /api/v1/orders` – cursor-paginated orders scoped to the active store's perspective (`buyer_store_id` for buyers, `vendor_store_id` for vendors).
+  * Accepts `limit` (default 25, max 100) plus `cursor` for pagination, `q` for a global name search, `order_status`, `fulfillment_status`, `shipping_status`, `payment_status`, and RFC 3339 `date_from`/`date_to` filters. Vendor stores may also pass `actionable_statuses=created_pending,accepted` (comma-separated statuses).
+  * Returns `BuyerOrderList` or `VendorOrderList` data with totals, discount/fee metadata, `payment_status`, `fulfillment_status`, `shipping_status`, `total_items`, and the peer store summary.
+  * `403` when the active store is missing from the JWT/store context.
+
+* `GET /api/v1/orders/{orderId}` – returns the full `OrderDetail` (order summary, buyer/vendor store metadata, line items, payment intent info, and the active agent assignment if present).
+  * Buyer stores only see orders where they are the buyer; vendor stores only see their vendor orders.
+  * `403` when the order doesn't belong to the active store, `404` when the `orderId` cannot be found.
+
 ### Health
 
 ```bash
