@@ -60,6 +60,9 @@ func Auth(cfg config.JWTConfig, verifier session.AccessSessionChecker, logg *log
 			if claims.ActiveStoreID != nil {
 				ctx = context.WithValue(ctx, ctxStoreID, claims.ActiveStoreID.String())
 			}
+			if claims.StoreType != nil {
+				ctx = context.WithValue(ctx, ctxStoreType, *claims.StoreType)
+			}
 
 			if logg != nil {
 				fields := map[string]any{

@@ -2034,6 +2034,7 @@ Headers:
   * Buyer: orders where `buyerStoreId == activeStoreId`
   * Vendor: orders where `vendorStoreId == activeStoreId`
   * Filters: `status`, `dateFrom/dateTo`, `fulfillmentStatus`, pagination.
+  * Controllers in `api/controllers/orders` parse the query params (statuses, dates, global `q`, vendor `actionable_statuses`, `limit`/`cursor`), enforce perspective-based access, and hand the filters to `internal/orders.Repository`.
   * PF-087 ensures `internal/orders.Repository.FindOrderDetail` preloads line items, payment intent, buyer/vendor metadata, and the active agent assignment.
   * Vendor dashboards (PF-086) also expose cursor pagination + global `q` search, actionable-state filters, and totals/discounts/total_items/payment_status/fulfillment_status/shipping_status/buyer summary metadata surfaced via `internal/orders.Repository.ListVendorOrders`.
   * Success: `200`
@@ -2044,6 +2045,7 @@ Headers:
 * `GET /api/v1/orders/{orderId}`
 
   * Success: `200`
+  * Controller enforces perspective-based ownership before returning `internal/orders.Repository.FindOrderDetail`.
   * Errors: `401, 403, 404`
 
 **Buyer cancel**
