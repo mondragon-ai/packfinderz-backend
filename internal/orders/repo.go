@@ -319,6 +319,68 @@ func (r *repository) ListVendorOrders(ctx context.Context, vendorStoreID uuid.UU
 	}, nil
 }
 
+func (r *repository) FindOrderDetail(ctx context.Context, orderID uuid.UUID) (*OrderDetail, error) {
+	var order models.VendorOrder
+	err := r.db.WithContext(ctx).
+		Preload("Items").
+		Preload("PaymentIntent").
+		Preload("Assignments", "active = ?", true).
+		Where("id = ?", orderID).
+		First(&order).Error
+	if err != nil {
+		return nil, err
+	}
+
+	buyer, err := r.loadStoreSummary(ctx, order.BuyerStoreID)
+	if err != nil {
+		return nil, err
+	}
+	vendor, err := r.loadStoreSummary(ctx, order.VendorStoreID)
+	if err != nil {
+		return nil, err
+	}
+
+	var assignment *OrderAssignmentSummary
+	if len(order.Assignments) > 0 {
+		assignment = buildAssignmentSummary(&order.Assignments[0])
+	}
+
+	lineItems := make([]LineItemDetail, 0, len(order.Items))
+	for _, item := range order.Items {
+		lineItems = append(lineItems, buildLineItemDetail(item))
+	}
+
+	var payment *PaymentIntentDetail
+	if order.PaymentIntent != nil {
+		payment = buildPaymentIntentDetail(order.PaymentIntent)
+	}
+
+	return &OrderDetail{
+		Order:            buildVendorOrderSummary(&order),
+		LineItems:        lineItems,
+		PaymentIntent:    payment,
+		BuyerStore:       buyer,
+		VendorStore:      vendor,
+		ActiveAssignment: assignment,
+	}, nil
+}
+
+func (r *repository) loadStoreSummary(ctx context.Context, storeID uuid.UUID) (OrderStoreSummary, error) {
+	var store models.Store
+	if err := r.db.WithContext(ctx).
+		Select("id", "company_name", "dba_name", "logo_url").
+		Where("id = ?", storeID).
+		First(&store).Error; err != nil {
+		return OrderStoreSummary{}, err
+	}
+	return OrderStoreSummary{
+		ID:          store.ID,
+		CompanyName: store.CompanyName,
+		DBAName:     store.DBAName,
+		LogoURL:     store.LogoURL,
+	}, nil
+}
+
 type buyerOrderRecord struct {
 	ID                uuid.UUID
 	CreatedAt         time.Time
@@ -349,4 +411,77 @@ type vendorOrderRecord struct {
 	BuyerDBAName      *string
 	BuyerLogoURL      *string
 	TotalItems        int
+}
+
+func buildVendorOrderSummary(order *models.VendorOrder) *VendorOrderSummary {
+	if order == nil {
+		return nil
+	}
+	return &VendorOrderSummary{
+		OrderNumber:       order.OrderNumber,
+		CreatedAt:         order.CreatedAt,
+		TotalCents:        order.TotalCents,
+		DiscountCents:     order.DiscountCents,
+		TotalItems:        sumOrderItems(order.Items),
+		PaymentStatus:     paymentStatus(order.PaymentIntent),
+		FulfillmentStatus: order.FulfillmentStatus,
+		ShippingStatus:    order.ShippingStatus,
+	}
+}
+
+func sumOrderItems(items []models.OrderLineItem) int {
+	total := 0
+	for _, item := range items {
+		total += item.Qty
+	}
+	return total
+}
+
+func paymentStatus(intent *models.PaymentIntent) enums.PaymentStatus {
+	if intent == nil {
+		return enums.PaymentStatusUnpaid
+	}
+	return intent.Status
+}
+func buildLineItemDetail(item models.OrderLineItem) LineItemDetail {
+	return LineItemDetail{
+		ID:             item.ID,
+		Name:           item.Name,
+		Category:       item.Category,
+		Strain:         item.Strain,
+		Classification: item.Classification,
+		Unit:           string(item.Unit),
+		UnitPriceCents: item.UnitPriceCents,
+		Qty:            item.Qty,
+		DiscountCents:  item.DiscountCents,
+		TotalCents:     item.TotalCents,
+		Status:         string(item.Status),
+		Notes:          item.Notes,
+	}
+}
+
+func buildPaymentIntentDetail(intent *models.PaymentIntent) *PaymentIntentDetail {
+	if intent == nil {
+		return nil
+	}
+	return &PaymentIntentDetail{
+		ID:              intent.ID,
+		Method:          string(intent.Method),
+		Status:          string(intent.Status),
+		AmountCents:     intent.AmountCents,
+		CashCollectedAt: intent.CashCollectedAt,
+		VendorPaidAt:    intent.VendorPaidAt,
+	}
+}
+
+func buildAssignmentSummary(assignment *models.OrderAssignment) *OrderAssignmentSummary {
+	if assignment == nil {
+		return nil
+	}
+	return &OrderAssignmentSummary{
+		AgentUserID:      assignment.AgentUserID,
+		AssignedByUserID: assignment.AssignedByUserID,
+		AssignedAt:       assignment.AssignedAt,
+		UnassignedAt:     assignment.UnassignedAt,
+	}
 }

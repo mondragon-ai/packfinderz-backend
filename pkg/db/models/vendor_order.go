@@ -33,6 +33,7 @@ type VendorOrder struct {
 	ExpiredAt         *time.Time                         `gorm:"column:expired_at"`
 	Items             []OrderLineItem                    `gorm:"foreignKey:OrderID;constraint:OnDelete:CASCADE"`
 	PaymentIntent     *PaymentIntent                     `gorm:"foreignKey:OrderID;constraint:OnDelete:CASCADE"`
+	Assignments       []OrderAssignment                  `gorm:"foreignKey:OrderID;constraint:OnDelete:CASCADE"`
 	CreatedAt         time.Time                          `gorm:"column:created_at;autoCreateTime"`
 	UpdatedAt         time.Time                          `gorm:"column:updated_at;autoUpdateTime"`
 }
