@@ -49,6 +49,7 @@ func NewRouter(
 	checkoutService checkoutsvc.Service,
 	cartService cart.Service,
 	ordersRepo orders.Repository,
+	ordersSvc orders.Service,
 ) http.Handler {
 	r := chi.NewRouter()
 	r.Use(
@@ -99,6 +100,7 @@ func NewRouter(
 			r.Post("/products", controllers.VendorCreateProduct(productService, logg))
 			r.Patch("/products/{productId}", controllers.VendorUpdateProduct(productService, logg))
 			r.Delete("/products/{productId}", controllers.VendorDeleteProduct(productService, logg))
+			r.Post("/orders/{orderId}/decision", ordercontrollers.VendorOrderDecision(ordersSvc, logg))
 		})
 
 		r.Route("/v1/stores", func(r chi.Router) {

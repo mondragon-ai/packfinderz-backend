@@ -106,6 +106,26 @@ func (r *repository) FindPaymentIntentByOrder(ctx context.Context, orderID uuid.
 	return &intent, nil
 }
 
+func (r *repository) FindVendorOrder(ctx context.Context, orderID uuid.UUID) (*models.VendorOrder, error) {
+	var order models.VendorOrder
+	err := r.db.WithContext(ctx).
+		Where("id = ?", orderID).
+		First(&order).Error
+	if err != nil {
+		return nil, err
+	}
+	return &order, nil
+}
+
+func (r *repository) UpdateVendorOrderStatus(ctx context.Context, orderID uuid.UUID, status enums.VendorOrderStatus) error {
+	return r.db.WithContext(ctx).
+		Model(&models.VendorOrder{}).
+		Where("id = ?", orderID).
+		Updates(map[string]any{
+			"status": status,
+		}).Error
+}
+
 func (r *repository) ListBuyerOrders(ctx context.Context, buyerStoreID uuid.UUID, params pagination.Params, filters BuyerOrderFilters) (*BuyerOrderList, error) {
 	pageSize := pagination.NormalizeLimit(params.Limit)
 	limitWithBuffer := pagination.LimitWithBuffer(params.Limit)

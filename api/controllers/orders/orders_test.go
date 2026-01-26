@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/go-chi/chi/v5"
@@ -79,6 +80,25 @@ func (s *stubControllerOrdersRepo) FindOrderDetail(ctx context.Context, orderID 
 		return s.detail(ctx, orderID)
 	}
 	return nil, nil
+}
+
+func (s *stubControllerOrdersRepo) FindVendorOrder(ctx context.Context, orderID uuid.UUID) (*models.VendorOrder, error) {
+	return nil, gorm.ErrRecordNotFound
+}
+
+func (s *stubControllerOrdersRepo) UpdateVendorOrderStatus(ctx context.Context, orderID uuid.UUID, status enums.VendorOrderStatus) error {
+	return nil
+}
+
+type stubControllerOrdersService struct {
+	decision func(ctx context.Context, input internalorders.VendorDecisionInput) error
+}
+
+func (s *stubControllerOrdersService) VendorDecision(ctx context.Context, input internalorders.VendorDecisionInput) error {
+	if s.decision != nil {
+		return s.decision(ctx, input)
+	}
+	return nil
 }
 
 func TestListBuyerPerspective(t *testing.T) {
@@ -231,5 +251,83 @@ func TestDetailSuccess(t *testing.T) {
 	}
 	if envelope.Data.Order == nil || envelope.Data.Order.OrderNumber != 7 {
 		t.Fatalf("unexpected order detail")
+	}
+}
+
+func TestVendorOrderDecisionSuccess(t *testing.T) {
+	storeID := uuid.New()
+	orderID := uuid.New()
+	called := false
+	svc := &stubControllerOrdersService{
+		decision: func(ctx context.Context, input internalorders.VendorDecisionInput) error {
+			if input.OrderID != orderID {
+				t.Fatalf("unexpected order id %s", input.OrderID)
+			}
+			if input.Decision != internalorders.VendorOrderDecisionAccept {
+				t.Fatalf("unexpected decision %s", input.Decision)
+			}
+			if input.ActorStoreID != storeID {
+				t.Fatalf("unexpected store id %s", input.ActorStoreID)
+			}
+			called = true
+			return nil
+		},
+	}
+
+	handler := VendorOrderDecision(svc, nil)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/vendor/orders/"+orderID.String()+"/decision", strings.NewReader(`{"decision":"accept"}`))
+	req.Header.Set("Content-Type", "application/json")
+	ctx := chi.NewRouteContext()
+	ctx.URLParams.Add("orderId", orderID.String())
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, ctx))
+	req = req.WithContext(middleware.WithStoreID(req.Context(), storeID.String()))
+	req = req.WithContext(middleware.WithStoreType(req.Context(), enums.StoreTypeVendor))
+	req = req.WithContext(middleware.WithUserID(req.Context(), uuid.New().String()))
+
+	resp := httptest.NewRecorder()
+	handler.ServeHTTP(resp, req)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("expected 200 got %d", resp.Code)
+	}
+	if !called {
+		t.Fatalf("service not invoked")
+	}
+}
+
+func TestVendorOrderDecisionStoreMismatch(t *testing.T) {
+	orderID := uuid.New()
+	handler := VendorOrderDecision(&stubControllerOrdersService{}, nil)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/vendor/orders/"+orderID.String()+"/decision", strings.NewReader(`{"decision":"accept"}`))
+	req.Header.Set("Content-Type", "application/json")
+	ctx := chi.NewRouteContext()
+	ctx.URLParams.Add("orderId", orderID.String())
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, ctx))
+	req = req.WithContext(middleware.WithStoreType(req.Context(), enums.StoreTypeBuyer))
+	req = req.WithContext(middleware.WithUserID(req.Context(), uuid.New().String()))
+
+	resp := httptest.NewRecorder()
+	handler.ServeHTTP(resp, req)
+	if resp.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 got %d", resp.Code)
+	}
+}
+
+func TestVendorOrderDecisionInvalidDecision(t *testing.T) {
+	storeID := uuid.New()
+	orderID := uuid.New()
+	handler := VendorOrderDecision(&stubControllerOrdersService{}, nil)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/vendor/orders/"+orderID.String()+"/decision", strings.NewReader(`{"decision":"maybe"}`))
+	req.Header.Set("Content-Type", "application/json")
+	ctx := chi.NewRouteContext()
+	ctx.URLParams.Add("orderId", orderID.String())
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, ctx))
+	req = req.WithContext(middleware.WithStoreID(req.Context(), storeID.String()))
+	req = req.WithContext(middleware.WithStoreType(req.Context(), enums.StoreTypeVendor))
+	req = req.WithContext(middleware.WithUserID(req.Context(), uuid.New().String()))
+
+	resp := httptest.NewRecorder()
+	handler.ServeHTTP(resp, req)
+	if resp.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 got %d", resp.Code)
 	}
 }

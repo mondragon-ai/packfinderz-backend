@@ -353,8 +353,15 @@ The GitHub Actions workflow (`.github/workflows/ci.yml`) runs gofmt, `golangci-l
   * `403` when the active store is missing from the JWT/store context.
 
 * `GET /api/v1/orders/{orderId}` – returns the full `OrderDetail` (order summary, buyer/vendor store metadata, line items, payment intent info, and the active agent assignment if present).
-  * Buyer stores only see orders where they are the buyer; vendor stores only see their vendor orders.
-  * `403` when the order doesn't belong to the active store, `404` when the `orderId` cannot be found.
+* Buyer stores only see orders where they are the buyer; vendor stores only see their vendor orders.
+* `403` when the order doesn't belong to the active store, `404` when the `orderId` cannot be found.
+
+### Vendor Decisions
+
+* `POST /api/v1/vendor/orders/{orderId}/decision` – the vendor acknowledges or rejects an order at the order level.
+  * Requires a vendor store context and body `{ "decision": "accept" | "reject" }`.
+  * A successful accept transitions the order status to `accepted`; a reject sets it to `rejected`.
+  * The endpoint is idempotent via `Idempotency-Key`, and it emits the `order_decided` outbox event so the buyer can be notified of the vendor's acknowledgment.
 
 ### Health
 
