@@ -15,6 +15,8 @@
 - `event_type_enum`: enumerates domain events (order/line item/license/media/payment/cash/vendor notification/reservation/ad) used by `outbox_events` (pkg/migrate/migrations/20260123000001_create_outbox_events.sql:1-38; pkg/enums/outbox.go:16-69).
 - `aggregate_type_enum`: vendor_order|checkout_group|license|store|media|ledger_event|notification|ad for the aggregate_id context (pkg/migrate/migrations/20260123000001_create_outbox_events.sql:39-77; pkg/enums/outbox.go:5-41).
 - `notification_type`: `system_announcement|market_update|security_alert|order_alert|compliance` used by the `notifications` table (pkg/migrate/migrations/20260124000000_create_notifications.sql:1-41; pkg/enums/notification.go:5-41).
+- `vendor_order_fulfillment_status`: `pending|partial|fulfilled` describes `vendor_orders.fulfillment_status` so buyers can filter ready/partial/fulfilled states (pkg/migrate/migrations/20260126000001_add_vendor_order_fields.sql:4-11; pkg/enums/vendor_order_fulfillment_status.go:5-42).
+- `vendor_order_shipping_status`: `pending|dispatched|in_transit|delivered` tracks the logistics stage on `vendor_orders.shipping_status`, enabling the buyer list to show shipment progress (pkg/migrate/migrations/20260126000001_add_vendor_order_fields.sql:15-23; pkg/enums/vendor_order_shipping_status.go:5-45).
 - `geography(Point,4326)`: stored in `stores.geom` and materialized via `types.GeographyPoint` `Value/Scan` (pkg/migrate/migrations/20260120003412_create_stores_table.sql:18-36; pkg/types/geography_point.go:12-117).
 - `ratings` JSONB uses `types.Ratings` for flexible score maps on stores (pkg/migrate/migrations/20260120003414_add_store_profile_fields.sql:1-8; pkg/types/ratings.go:9-47).
 
@@ -83,15 +85,13 @@
 
 ### vendor_orders
 - Per-vendor order snapshot produced after checkout converts a `cart_record` into `checkout_groups`/`vendor_orders`/`order_line_items`/`payment_intents` (pkg/migrate/migrations/20260124000004_create_checkout_order_tables.sql:84-205).
-- Fields include `checkout_group_id`, `buyer_store_id`, `vendor_store_id`, `status`, `refund_status`, money totals, `notes`/`internal_notes`, timestamps, and fulfillment/delivery/cancellation markers that are all defined in the migration file above.
+- Fields include `checkout_group_id`, `buyer_store_id`, `vendor_store_id`, `status`, `refund_status`, money totals, `notes`/`internal_notes`, timestamps, and the new `fulfillment_status`, `shipping_status`, and sequential `order_number` populated from `vendor_order_number_seq` so buyers can search by incremental order IDs (pkg/migrate/migrations/20260126000001_add_vendor_order_fields.sql:4-35).
 - Indexes:
-  - `(buyer_store_id, created_at DESC)` (idx_vendor_orders_buyer_created, buyer order list).
-  - `(vendor_store_id, created_at DESC)` (idx_vendor_orders_vendor_created, vendor order list).
-  - `(status)` (idx_vendor_orders_status, action-state lookups).
-  - `unique(checkout_group_id, vendor_store_id)` (ux_vendor_orders_group_vendor, one order per vendor per checkout).
+  - `(buyer_store_id, created_at DESC)` (idx_vendor_orders_buyer_created, buyer order list), `(vendor_store_id, created_at DESC)` (idx_vendor_orders_vendor_created, vendor order list), and `(status)` (idx_vendor_orders_status, action-state lookups) are defined in the checkout tables migration (pkg/migrate/migrations/20260124000004_create_checkout_order_tables.sql:138-150).
+  - `unique(order_number)` (ux_vendor_orders_order_number, sequential buyer reference) is created by the vendor order fields migration (pkg/migrate/migrations/20260126000001_add_vendor_order_fields.sql:29-35).
+  - `unique(checkout_group_id, vendor_store_id)` (ux_vendor_orders_group_vendor, one order per vendor per checkout) preserves the original checkout constraint (pkg/migrate/migrations/20260124000004_create_checkout_order_tables.sql:146-150).
 - Foreign keys: `checkout_group_id -> checkout_groups(id)`, `buyer_store_id -> stores(id)`, `vendor_store_id -> stores(id)` (all in the same migration block).
 - Constraint: `CHECK (buyer_store_id <> vendor_store_id)` to enforce opposing roles on the same order.
-- Note: the “needs action” queue filters by `vendor_store_id` plus `status`, but the current migration only defines the vendor timestamp index and the standalone `status` index; no `(vendor_store_id, status, created_at DESC)` composite index is present yet, so the optimizer must combine the two indexes when executing that query pattern.
 
 ### order_assignments
 - Purpose: keep agent assignment history per vendor order; the planned schema is recorded in `DESIGN_DOC.md:3135-3154`, but there is no Goose migration that creates `order_assignments` in `pkg/migrate/migrations`, so the implementation details and indexes below remain `UNKNOWN`.

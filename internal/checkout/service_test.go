@@ -13,6 +13,7 @@ import (
 	"github.com/angelmondragon/packfinderz-backend/pkg/enums"
 	pkgerrors "github.com/angelmondragon/packfinderz-backend/pkg/errors"
 	"github.com/angelmondragon/packfinderz-backend/pkg/outbox"
+	"github.com/angelmondragon/packfinderz-backend/pkg/pagination"
 	"github.com/angelmondragon/packfinderz-backend/pkg/types"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
@@ -257,6 +258,10 @@ func (s *stubOrdersRepo) FindOrderLineItemsByOrder(ctx context.Context, orderID 
 }
 func (s *stubOrdersRepo) FindPaymentIntentByOrder(ctx context.Context, orderID uuid.UUID) (*models.PaymentIntent, error) {
 	return nil, pkgerrors.New(pkgerrors.CodeNotFound, "not used")
+}
+
+func (s *stubOrdersRepo) ListBuyerOrders(ctx context.Context, buyerStoreID uuid.UUID, params pagination.Params, filters orders.BuyerOrderFilters) (*orders.BuyerOrderList, error) {
+	return &orders.BuyerOrderList{}, nil
 }
 
 type stubStoresService struct {

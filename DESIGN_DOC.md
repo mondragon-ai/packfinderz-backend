@@ -3016,6 +3016,9 @@ Fields
 * `transport_fee_cents int not null default 0`
 * `total_cents int not null`
 * `balance_due_cents int not null` (updated after partial accept)
+* `fulfillment_status vendor_order_fulfillment_status not null default 'pending'`
+* `shipping_status vendor_order_shipping_status not null default 'pending'`
+* `order_number bigint not null unique` (incremental # used for buyer dashboards)
 * `notes text null` (buyer notes)
 * `internal_notes text null` (vendor/admin)
 * `created_at timestamptz not null default now()`
@@ -3029,6 +3032,7 @@ Indexes
 
 * `(buyer_store_id, created_at desc)`
 * `(vendor_store_id, created_at desc)`
+* `unique(order_number)` (**PURPOSE:** sequential order identifier for buyer dashboards)
 * `(vendor_store_id, status, created_at desc)` (**PURPOSE:** vendor “needs action” queue scan)
 * `(status)`
 * `unique(checkout_group_id, vendor_store_id)` (**ASSUMPTION:** one per vendor per checkout)
