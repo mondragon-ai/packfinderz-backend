@@ -258,6 +258,21 @@ type stubOrdersService struct {
 	decision func(ctx context.Context, input ordersrepo.VendorDecisionInput) error
 }
 
+// CancelOrder implements [orders.Service].
+func (s stubOrdersService) CancelOrder(ctx context.Context, input ordersrepo.BuyerCancelInput) error {
+	panic("unimplemented")
+}
+
+// NudgeVendor implements [orders.Service].
+func (s stubOrdersService) NudgeVendor(ctx context.Context, input ordersrepo.BuyerNudgeInput) error {
+	panic("unimplemented")
+}
+
+// RetryOrder implements [orders.Service].
+func (s stubOrdersService) RetryOrder(ctx context.Context, input ordersrepo.BuyerRetryInput) (*ordersrepo.BuyerRetryResult, error) {
+	panic("unimplemented")
+}
+
 // LineItemDecision implements [orders.Service].
 func (s stubOrdersService) LineItemDecision(ctx context.Context, input ordersrepo.LineItemDecisionInput) error {
 	panic("unimplemented")

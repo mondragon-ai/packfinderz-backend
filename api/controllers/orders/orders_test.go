@@ -105,6 +105,9 @@ func (s *stubControllerOrdersRepo) UpdateVendorOrderStatus(ctx context.Context, 
 type stubControllerOrdersService struct {
 	decision         func(ctx context.Context, input internalorders.VendorDecisionInput) error
 	lineItemDecision func(ctx context.Context, input internalorders.LineItemDecisionInput) error
+	cancel           func(ctx context.Context, input internalorders.BuyerCancelInput) error
+	nudge            func(ctx context.Context, input internalorders.BuyerNudgeInput) error
+	retry            func(ctx context.Context, input internalorders.BuyerRetryInput) (*internalorders.BuyerRetryResult, error)
 }
 
 func (s *stubControllerOrdersService) VendorDecision(ctx context.Context, input internalorders.VendorDecisionInput) error {
@@ -119,6 +122,27 @@ func (s *stubControllerOrdersService) LineItemDecision(ctx context.Context, inpu
 		return s.lineItemDecision(ctx, input)
 	}
 	return nil
+}
+
+func (s *stubControllerOrdersService) CancelOrder(ctx context.Context, input internalorders.BuyerCancelInput) error {
+	if s.cancel != nil {
+		return s.cancel(ctx, input)
+	}
+	return nil
+}
+
+func (s *stubControllerOrdersService) NudgeVendor(ctx context.Context, input internalorders.BuyerNudgeInput) error {
+	if s.nudge != nil {
+		return s.nudge(ctx, input)
+	}
+	return nil
+}
+
+func (s *stubControllerOrdersService) RetryOrder(ctx context.Context, input internalorders.BuyerRetryInput) (*internalorders.BuyerRetryResult, error) {
+	if s.retry != nil {
+		return s.retry(ctx, input)
+	}
+	return nil, nil
 }
 
 func TestListBuyerPerspective(t *testing.T) {
@@ -349,6 +373,124 @@ func TestVendorOrderDecisionInvalidDecision(t *testing.T) {
 	handler.ServeHTTP(resp, req)
 	if resp.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400 got %d", resp.Code)
+	}
+}
+
+func TestCancelOrderSuccess(t *testing.T) {
+	storeID := uuid.New()
+	orderID := uuid.New()
+	called := false
+	svc := &stubControllerOrdersService{
+		cancel: func(ctx context.Context, input internalorders.BuyerCancelInput) error {
+			if input.OrderID != orderID {
+				t.Fatalf("unexpected order id %s", input.OrderID)
+			}
+			if input.ActorStoreID != storeID {
+				t.Fatalf("unexpected store id %s", input.ActorStoreID)
+			}
+			called = true
+			return nil
+		},
+	}
+
+	handler := CancelOrder(svc, nil)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/orders/"+orderID.String()+"/cancel", nil)
+	ctx := chi.NewRouteContext()
+	ctx.URLParams.Add("orderId", orderID.String())
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, ctx))
+	req = req.WithContext(middleware.WithStoreID(req.Context(), storeID.String()))
+	req = req.WithContext(middleware.WithStoreType(req.Context(), enums.StoreTypeBuyer))
+	req = req.WithContext(middleware.WithUserID(req.Context(), uuid.New().String()))
+
+	resp := httptest.NewRecorder()
+	handler.ServeHTTP(resp, req)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("expected 200 got %d", resp.Code)
+	}
+	if !called {
+		t.Fatalf("service not invoked")
+	}
+}
+
+func TestNudgeVendorSuccess(t *testing.T) {
+	storeID := uuid.New()
+	orderID := uuid.New()
+	called := false
+	svc := &stubControllerOrdersService{
+		nudge: func(ctx context.Context, input internalorders.BuyerNudgeInput) error {
+			if input.OrderID != orderID {
+				t.Fatalf("unexpected order id %s", input.OrderID)
+			}
+			if input.ActorStoreID != storeID {
+				t.Fatalf("unexpected store id %s", input.ActorStoreID)
+			}
+			called = true
+			return nil
+		},
+	}
+
+	handler := NudgeVendor(svc, nil)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/orders/"+orderID.String()+"/nudge", nil)
+	ctx := chi.NewRouteContext()
+	ctx.URLParams.Add("orderId", orderID.String())
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, ctx))
+	req = req.WithContext(middleware.WithStoreID(req.Context(), storeID.String()))
+	req = req.WithContext(middleware.WithStoreType(req.Context(), enums.StoreTypeBuyer))
+	req = req.WithContext(middleware.WithUserID(req.Context(), uuid.New().String()))
+
+	resp := httptest.NewRecorder()
+	handler.ServeHTTP(resp, req)
+	if resp.Code != http.StatusAccepted {
+		t.Fatalf("expected 202 got %d", resp.Code)
+	}
+	if !called {
+		t.Fatalf("service not invoked")
+	}
+}
+
+func TestRetryOrderSuccess(t *testing.T) {
+	storeID := uuid.New()
+	orderID := uuid.New()
+	newOrderID := uuid.New()
+	called := false
+	svc := &stubControllerOrdersService{
+		retry: func(ctx context.Context, input internalorders.BuyerRetryInput) (*internalorders.BuyerRetryResult, error) {
+			if input.OrderID != orderID {
+				t.Fatalf("unexpected order id %s", input.OrderID)
+			}
+			if input.ActorStoreID != storeID {
+				t.Fatalf("unexpected store id %s", input.ActorStoreID)
+			}
+			called = true
+			return &internalorders.BuyerRetryResult{OrderID: newOrderID}, nil
+		},
+	}
+
+	handler := RetryOrder(svc, nil)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/orders/"+orderID.String()+"/retry", nil)
+	ctx := chi.NewRouteContext()
+	ctx.URLParams.Add("orderId", orderID.String())
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, ctx))
+	req = req.WithContext(middleware.WithStoreID(req.Context(), storeID.String()))
+	req = req.WithContext(middleware.WithStoreType(req.Context(), enums.StoreTypeBuyer))
+	req = req.WithContext(middleware.WithUserID(req.Context(), uuid.New().String()))
+
+	resp := httptest.NewRecorder()
+	handler.ServeHTTP(resp, req)
+	if resp.Code != http.StatusCreated {
+		t.Fatalf("expected 201 got %d", resp.Code)
+	}
+	if !called {
+		t.Fatalf("service not invoked")
+	}
+	var envelope struct {
+		Data internalorders.BuyerRetryResult `json:"data"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&envelope); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if envelope.Data.OrderID != newOrderID {
+		t.Fatalf("unexpected retry order id %s", envelope.Data.OrderID)
 	}
 }
 

@@ -2062,6 +2062,8 @@ Headers:
 * `POST /api/v1/orders/{orderId}/cancel`
 
   * Allowed before `in_transit`.
+  * Releases inventory owned by any non-fulfilled line items, marks them rejected, zeroes `balance_due_cents`, and records `canceled_at`.
+  * Emits `order_canceled` so downstream analytics/notifications know the buyer gave up on that vendor order (no retry yet).
   * **Idempotent:** YES (required)
   * Success: `200`
   * Errors: `401, 403, 404, 409, 422`
@@ -2071,6 +2073,7 @@ Headers:
 * `POST /api/v1/orders/{orderId}/nudge`
 
   * Sends notification (email later).
+  * Emits `notification_requested` with `Type=order_nudge` so the notification consumer can fan out a reminder.
   * **Idempotent:** YES (required)
   * Success: `202`
   * Errors: `401, 403, 404, 409`
@@ -2080,6 +2083,8 @@ Headers:
 * `POST /api/v1/orders/{orderId}/retry`
 
   * Allowed only if `expired`.
+  * Reuses the expired order’s snapshot for that vendor: new `checkout_groups`, vendor order, line items, and payment intent; re-reserves inventory before persisting so the vendor sees the same data again.
+  * Emits `order_retried` (payload includes the new order ID and original order ID) once the replacement order is created.
   * **Idempotent:** YES (required)
   * Success: `201`
   * Errors: `401, 403, 404, 409, 422`
