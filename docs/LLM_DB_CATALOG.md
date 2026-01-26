@@ -59,9 +59,6 @@
 ### checkout_groups
 - Placeholder for the `checkout_groups` table introduced in PF-077; it will reference `cart_records`, mirror buyer context, store aggregated totals, and own linkages to `vendor_orders` once the migrations are in place (implementation pending, see PF-077).
 
-### vendor_orders
-- Placeholder for the `vendor_orders` table introduced in PF-077; it will reference `checkout_groups`, `stores` (buyers + vendors), and include status/totals so vendor-specific fulfillment snapshots persist (implementation pending, see PF-077).
-
 ### order_line_items
 - Placeholder for the `order_line_items` table introduced in PF-077; it will reference `vendor_orders`, capture product snapshots, quantities, pricing tiers, and inventory references, mirroring the `cart_items` payload (implementation pending, see PF-077).
 
@@ -83,3 +80,19 @@
 - `id`, `store_id`, `type notification_type`, `title`, `message`, optional `link`, `read_at`, `created_at` default `now()` (pkg/migrate/migrations/20260124000000_create_notifications.sql:1-41; pkg/db/models/notification.go:10-24).
 - Indexes on `(store_id,created_at desc)`, `(store_id,read_at)`, and `(created_at)` plus `store_id -> stores(id)` cascade FK (pkg/migrate/migrations/20260124000000_create_notifications.sql:1-41).
 - Compliance workflows insert `notification_type=compliance` rows for pending uploads (admin notices) and verified/rejected licences (store notices) when `license_status_changed` events are consumed, keeping a `store_id` anchor and `link` for UI navigation (internal/notifications/consumer.go:128-186).
+
+### vendor_orders
+- Per-vendor order snapshot produced after checkout converts a `cart_record` into `checkout_groups`/`vendor_orders`/`order_line_items`/`payment_intents` (pkg/migrate/migrations/20260124000004_create_checkout_order_tables.sql:84-205).
+- Fields include `checkout_group_id`, `buyer_store_id`, `vendor_store_id`, `status`, `refund_status`, money totals, `notes`/`internal_notes`, timestamps, and fulfillment/delivery/cancellation markers that are all defined in the migration file above.
+- Indexes:
+  - `(buyer_store_id, created_at DESC)` (idx_vendor_orders_buyer_created, buyer order list).
+  - `(vendor_store_id, created_at DESC)` (idx_vendor_orders_vendor_created, vendor order list).
+  - `(status)` (idx_vendor_orders_status, action-state lookups).
+  - `unique(checkout_group_id, vendor_store_id)` (ux_vendor_orders_group_vendor, one order per vendor per checkout).
+- Foreign keys: `checkout_group_id -> checkout_groups(id)`, `buyer_store_id -> stores(id)`, `vendor_store_id -> stores(id)` (all in the same migration block).
+- Constraint: `CHECK (buyer_store_id <> vendor_store_id)` to enforce opposing roles on the same order.
+- Note: the “needs action” queue filters by `vendor_store_id` plus `status`, but the current migration only defines the vendor timestamp index and the standalone `status` index; no `(vendor_store_id, status, created_at DESC)` composite index is present yet, so the optimizer must combine the two indexes when executing that query pattern.
+
+### order_assignments
+- Purpose: keep agent assignment history per vendor order; the planned schema is recorded in `DESIGN_DOC.md:3135-3154`, but there is no Goose migration that creates `order_assignments` in `pkg/migrate/migrations`, so the implementation details and indexes below remain `UNKNOWN`.
+- Expected indexes per the design doc are `(agent_user_id, active)`, `(order_id)`, and `unique(order_id) WHERE active = true`, but without a migration to inspect these cannot be confirmed.

@@ -3029,6 +3029,7 @@ Indexes
 
 * `(buyer_store_id, created_at desc)`
 * `(vendor_store_id, created_at desc)`
+* `(vendor_store_id, status, created_at desc)` (**PURPOSE:** vendor “needs action” queue scan)
 * `(status)`
 * `unique(checkout_group_id, vendor_store_id)` (**ASSUMPTION:** one per vendor per checkout)
 

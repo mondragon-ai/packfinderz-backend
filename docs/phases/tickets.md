@@ -1,19 +1,7 @@
-# ✅ HOW THIS LIST IS DERIVED (IMPORTANT)
-
 **Source of truth used:**
 
-* Your `git log --oneline` (PF-000 → PF-067)
+* Your `git log --oneline`
 * Your locked Master Context + Architecture docs
-
-**What I did:**
-
-* Grouped commits into **completed phases**
-* Removed already-implemented work from future phases
-* Re-numbered phases logically (not PF numbers)
-* Marked **“DONE” vs “REMAINING”** explicitly
-* Avoided inventing scope that isn’t implied
-
----
 
 # PHASED IMPLEMENTATION — REALITY-BASED
 
@@ -63,6 +51,12 @@
 
 ➡️ **Auth + tenancy is production-grade and DONE.**
 
+**REMAINING (small, real hardening):**
+
+* [ ] Remove/retire deprecated token parser (`api/validators/token.go`) everywhere (per doc note)
+* [ ] Add auth middleware tests: missing/expired token, revoked session, missing activeStoreId
+* [ ] Add RBAC guard tests for `/api/admin/*` and `/api/agent/*`
+
 ---
 
 ## **Phase 2 — Media System (Canonical, Enforced)** ✅ DONE
@@ -82,6 +76,11 @@
 * [x] Presigned READ URL generation (TTL-based)
 
 ➡️ **Media is correctly centralized and enforced.**
+
+**REMAINING (only if you truly need it):**
+
+* [ ] Optional: add “delete_requested → deleted” async delete path (if you want delete to be worker-safe)
+* [ ] Add media lifecycle GC scheduler: stale `pending` rows cleanup (no GCS object)
 
 ---
 
@@ -106,6 +105,13 @@
 
 ➡️ **Creation path is correct; enforcement + lifecycle remain.**
 
+
+**REMAINING (cleanup/ops polish):**
+
+* [ ] License retention scheduler: hard-delete expired licenses after 30d + detach media if unreferenced
+* [ ] Admin “license queue” list endpoint (pending verification, paginated)
+* [ ] Audit log rows for: admin verify/reject + scheduler expiry flip
+
 ---
 
 ## **Phase 4 — Async Backbone (Outbox Pattern)** ✅ DONE
@@ -122,6 +128,11 @@
 
 ➡️ **This is a major milestone. Fully implemented.**
 
+**REMAINING (safety):**
+
+* [ ] Outbox cleanup scheduler: delete published rows older than 30d
+* [ ] DLQ policy + max retry conventions (document + minimal implementation hooks)
+
 ---
 
 ## **Phase 5 — Products, Inventory, Pricing** ⚠️ MOSTLY COMPLETE
@@ -136,159 +147,279 @@
 * [x] Vendor create product endpoint
 * [x] Vendor update product endpoint (media immutable)
 * [x] Vendor delete product endpoint
-* [ ] Inventory set endpoint (idempotent)
 * [x] MOQ validation (client + server)
 * [x] Vendor visibility gating (license + subscription)
-* [ ] Product audit logging
+
+
+**REMAINING (what’s actually still missing):**
+
+* [ ] **Inventory set endpoint** (`PUT /api/v1/inventory/{productId}`): service + repo update, idempotency required
+* [ ] Inventory list endpoint (vendor-only): paginated list of inventory rows with product summary
+* [ ] Product audit logging:
+
+  * [ ] Audit action schema + helper (`pkg/audit` or `internal/audit`)
+  * [ ] Emit audit rows on product create/update/delete + inventory set
+
+**Small “vendor summary” ticket (from your note):**
+
+* [ ] Add `VendorSummary` shape returned in product browse/detail:
+
+  * [ ] Repo query joins `stores` + optional logo media attachment
+  * [ ] DTO includes `{vendor_store_id, vendor_name, logo_gcs_key?, logo_url?}`
 
 ---
 
-## **Phase 6 — Cart & Checkout** ❌ NOT STARTED
+## **Phase 6 — Cart & Checkout** ✅ DONE
 
 **Goal:** Multi-vendor checkout with atomic reservation
 
 **Planned tickets:**
 
-* [ ] CartRecord + CartItem models
-* [ ] Cart upsert endpoint
-* [ ] Cart fetch endpoint
-* [ ] Checkout submission endpoint
-* [ ] CheckoutGroup creation
-* [ ] VendorOrder creation per vendor
-* [ ] Atomic inventory reservation logic
-* [ ] Partial checkout semantics
-* [ ] Checkout idempotency enforcement
-* [ ] Emit `order_created` outbox event
+* [X] CartRecord + CartItem models
+* [X] Cart upsert endpoint
+* [X] Cart fetch endpoint
+* [X] Checkout submission endpoint
+* [X] CheckoutGroup creation
+* [X] VendorOrder creation per vendor
+* [X] Atomic inventory reservation logic
+* [X] Partial checkout semantics
+* [X] Checkout idempotency enforcement
+* [X] Emit `order_created` outbox event
+
+**REMAINING**
+
+* [ ] Checkout response contract tests (partial vendor failures + line-level failures)
+* [ ] “Converted cart” behavior: enforce `cart_records.status=converted` and reject future cart upserts if desired
 
 ---
 
-## **Phase 7 — Orders, Fulfillment, TTL** ❌ NOT STARTED
+## Phase 7 — Orders: Read APIs + Decisioning + Fulfillment + TTL
 
-**Goal:** Vendor decisioning + lifecycle automation
+**Goal:** Everything after checkout: order list/detail, accept/reject, fulfill, expire, retry
 
-**Planned tickets:**
+### 7A) Read APIs
 
-* [ ] Buyer order list + detail endpoints
-* [ ] Vendor order list + detail endpoints
-* [ ] Vendor accept/reject order
-* [ ] Vendor line-item decision endpoint
-* [ ] Vendor fulfill endpoint
-* [ ] Buyer cancel (pre-transit)
-* [ ] Buyer nudge vendor
-* [ ] Buyer retry expired order
-* [ ] Reservation TTL scheduler (nudge + expire)
-* [ ] Inventory release on expiration
-* [ ] Order state transition outbox events
+* [ ] Migrations (if any missing indexes): buyer/vendor list indexes + “needs action” composite index
+* [ ] Repo: buyer orders list (filters + cursor pagination)
+* [ ] Repo: vendor orders list (filters + cursor pagination)
+* [ ] Repo: order detail (preload line items + payment intent)
+* [ ] Controller/routes:
 
----
+  * [ ] `GET /api/v1/orders` (buyer/vendor perspective)
+  * [ ] `GET /api/v1/orders/{orderId}`
 
-## **Phase 8 — Delivery, Agents, Cash Collection** ❌ NOT STARTED
+### 7B) Vendor decision flows
 
-**Goal:** Internal logistics + cash MVP
+* [ ] DTOs: order-level decision request/response
+* [ ] Service: `POST /api/v1/vendor/orders/{orderId}/decision`
 
-**Planned tickets:**
+  * [ ] State transition validation
+  * [ ] Set `accepted|rejected|partially_accepted` based on item outcomes
+  * [ ] Recompute `balance_due_cents` after partial accept
+  * [ ] Release inventory for rejected line items (reverse reserve)
+* [ ] Service: `POST /api/v1/vendor/orders/{orderId}/line-items/decision`
 
-* [ ] Agent role + auth gating
-* [ ] Dispatch queue endpoint
-* [ ] Agent assigned orders endpoint
-* [ ] Agent pickup endpoint
-* [ ] Agent delivery confirmation
-* [ ] Cash collected endpoint
-* [ ] LedgerEvent: `cash_collected`
-* [ ] PaymentIntent settlement
-* [ ] Delivery outbox events
+  * [ ] Per-line accept/reject + recompute order status + balance due
+  * [ ] Emit outbox events: `order_decided` (and line-level payload detail)
 
----
+### 7C) Fulfillment
 
-## **Phase 9 — Ledger, Payouts, Admin Ops** ❌ NOT STARTED
+* [ ] Service: `POST /api/v1/vendor/orders/{orderId}/fulfill`
 
-**Goal:** Financial correctness + auditability
+  * [ ] Mark accepted items fulfilled (idempotent)
+  * [ ] Set order status to `fulfilled` then `hold` (hold_for_pickup semantics)
+  * [ ] Emit outbox: `order_ready_for_dispatch`
 
-**Planned tickets:**
+### 7D) Buyer actions
 
-* [ ] LedgerEvent model (append-only)
-* [ ] Admin payout queue endpoint
-* [ ] Admin confirm payout endpoint
-* [ ] LedgerEvent: `vendor_payout`
-* [ ] PaymentIntent → paid
-* [ ] Order close logic
-* [ ] Financial audit logging
-* [ ] Exportable summaries
+* [ ] Service: `POST /api/v1/orders/{orderId}/cancel` (pre-transit only)
 
----
+  * [ ] Release reserved inventory for all non-fulfilled items
+  * [ ] Order status to `canceled`
+  * [ ] Emit outbox: `order_canceled`
+* [ ] Service: `POST /api/v1/orders/{orderId}/nudge` (writes notification event; later email)
+* [ ] Service: `POST /api/v1/orders/{orderId}/retry` (only `expired`)
 
-## **Phase 10 — Notifications** ❌ NOT STARTED
+  * [ ] Create new CheckoutGroup attempt from prior order snapshot (or re-run checkout-like flow)
 
-**Goal:** User awareness without polling
+### 7E) Reservation TTL scheduler (5d + nudge + 5d + expire)
 
-**Planned tickets:**
-
-* [ ] Notification model + migrations
-* [ ] Notification worker
-* [ ] List notifications endpoint
-* [ ] Mark read / mark all read
-* [ ] Notification cleanup scheduler
+* [ ] Scheduler: find orders `created_pending` beyond TTL window
+* [ ] Scheduler: emit “nudge” event once + extend TTL marker
+* [ ] Scheduler: expire after second window → `expired_at`, status `expired`
+* [ ] Scheduler: release inventory reservations idempotently
+* [ ] Emit outbox: `order_expired`
 
 ---
 
-## **Phase 11 — Analytics (Marketplace)** ❌ NOT STARTED
+## Phase 8 — Delivery & Agents (Internal Logistics)
 
-**Goal:** Vendor + admin insight via BigQuery
+**Goal:** Agent queue + assignment + pickup/deliver + cash collection
 
-**Planned tickets:**
+### 8A) Agent identity + gating
 
-* [ ] BigQuery datasets + tables
-* [ ] Marketplace event schema
-* [ ] Analytics ingestion worker
-* [ ] Emit order / cash / payout events
-* [ ] Vendor analytics endpoint
-* [ ] Admin analytics endpoint
-* [ ] Preset aggregations (7d/30d/90d)
+* [ ] Ensure `users.system_role=agent` path works end-to-end (seed agent user + login + middleware)
+* [ ] Add `/api/agent/*` route group controllers/tests
 
----
+### 8B) Assignment + queues
 
-## **Phase 12 — Ads & Attribution** ❌ NOT STARTED
+* [ ] Migration: `order_assignments` (if not already in DB)
+* [ ] Repo/service: create assignment on “ready for dispatch” (random auto-assign MVP)
+* [ ] Endpoint: `GET /api/v1/agent/orders/queue` (unassigned hold orders)
+* [ ] Endpoint: `GET /api/v1/agent/orders` (my active assignments)
 
-**Goal:** Monetization via demand capture
+### 8C) State transitions
 
-**Planned tickets:**
+* [ ] Endpoint: `POST /api/v1/agent/orders/{orderId}/pickup` → status `in_transit`
+* [ ] Endpoint: `POST /api/v1/agent/orders/{orderId}/deliver` → status `delivered`
+* [ ] Endpoint: `POST /api/v1/agent/orders/{orderId}/cash-collected`
 
-* [ ] Ad model + creatives (media_id required)
-* [ ] Ad CRUD endpoints
-* [ ] Ad eligibility gating
-* [ ] Redis ad counters
-* [ ] Impression + click tracking
-* [ ] Last-click attribution at checkout
-* [ ] Daily spend rollups
-* [ ] Ad analytics endpoint
+  * [ ] Create `ledger_events(cash_collected)`
+  * [ ] Set `payment_intents.status=settled` + `cash_collected_at`
+  * [ ] Emit outbox: `cash_collected`
 
 ---
 
-## **Phase 13 — Subscriptions & Billing** ❌ NOT STARTED
+## Phase 9 — Ledger, Payouts, Admin Ops
 
-**Goal:** Vendor monetization enforcement
+**Goal:** Append-only finance correctness + admin payout confirmation
 
-**Planned tickets:**
+* [ ] Migration: `ledger_events` (append-only) + required indexes
+* [ ] Repo/service: append ledger event helpers (no updates)
+* [ ] Admin endpoint: `GET /api/v1/admin/orders/payout-queue` (delivered + settled, unpaid)
+* [ ] Admin endpoint: `POST /api/v1/admin/orders/{orderId}/confirm-payout`
 
-* [ ] Stripe subscription integration
-* [ ] Subscription create / cancel endpoints
-* [ ] Enforce vendor subscription gating
-* [ ] Billing history endpoints
-* [ ] Usage charge records
-* [ ] Billing audit logging
+  * [ ] Create `ledger_events(vendor_payout)`
+  * [ ] Set `payment_intents.status=paid` + `vendor_paid_at`
+  * [ ] Set order status `closed`
+  * [ ] Emit outbox: `order_paid`
+* [ ] Optional secondary endpoint: vendor “confirm paid” (audited, doesn’t flip truth)
 
 ---
 
-## **Phase 14 — Security, Ops, Hardening** ❌ NOT STARTED
+## Phase 10 — Notifications (In-app)
 
-**Goal:** Production resilience
+**Goal:** In-app notifications without polling loops
 
-**Planned tickets:**
+* [ ] Migration: `notifications` table + indexes (store_id, read_at, created_at)
+* [ ] Repo/service: list notifications (cursor pagination + unread filter)
+* [ ] Endpoint: `GET /api/v1/notifications`
+* [ ] Endpoint: `POST /api/v1/notifications/{id}/read` (idempotent)
+* [ ] Endpoint: `POST /api/v1/notifications/read-all` (idempotent)
+* [ ] Cleanup scheduler: delete notifications older than 30d
 
-* [ ] Rate limiting (critical endpoints)
-* [ ] Metrics (API + workers)
-* [ ] Alert thresholds
-* [ ] Backup & restore runbook
-* [ ] Migration rollback strategy
-* [ ] Feature flags
-* [ ] MFA adapter hooks
+---
+
+## Phase 11 — Analytics (Marketplace via BigQuery)
+
+**Goal:** BigQuery ingestion + vendor/admin analytics endpoints
+
+### 11A) BigQuery infra + schema
+
+* [ ] Create dataset + tables (`marketplace_events`, `ad_events`) with partition/cluster rules
+* [ ] `pkg/bigquery` client bootstrap + readiness checks (API/worker if needed)
+
+### 11B) Ingestion worker (outbox consumer)
+
+* [ ] Consumer: `order_created` → insert BigQuery row
+* [ ] Consumer: `cash_collected` → insert BigQuery row
+* [ ] Consumer: `order_paid` → insert BigQuery row
+* [ ] Idempotency keys per consumer (`pf:evt:processed:<consumer>:<event_id>`)
+
+### 11C) Query APIs
+
+* [ ] Vendor analytics endpoint: `GET /api/v1/vendor/analytics` (time presets + series + KPIs)
+* [ ] Admin analytics endpoint: `GET /api/v1/admin/analytics` (global KPIs)
+
+---
+
+## Phase 12 — Ads & Attribution
+
+**Goal:** Monetization: ad CRUD + tracking + last-click attribution + rollups
+
+### 12A) Core ads
+
+* [ ] Migrations: `ads`, `ad_creatives`, `ad_clicks`, `ad_events` + indexes
+* [ ] Vendor CRUD endpoints:
+
+  * [ ] `POST /api/v1/vendor/ads` (idempotent)
+  * [ ] `GET /api/v1/vendor/ads`
+  * [ ] `GET /api/v1/vendor/ads/{adId}`
+  * [ ] `PATCH /api/v1/vendor/ads/{adId}`
+  * [ ] `DELETE /api/v1/vendor/ads/{adId}`
+* [ ] Eligibility enforcement: license verified + subscription active + ad status active + budget remaining
+
+### 12B) Tracking + attribution
+
+* [ ] Impression endpoint (or middleware hook) increments Redis counters + writes `ad_events(impression)`
+* [ ] Click endpoint writes:
+
+  * [ ] `ad_clicks` row (30d TTL semantics)
+  * [ ] `ad_events(click)`
+* [ ] Checkout integration: attach last eligible click to `checkout_groups.attributed_ad_click_id` and propagate to vendor orders
+
+### 12C) Rollups + analytics
+
+* [ ] Daily rollup scheduler: compute per-ad spend and write `usage_charges(ad_spend_daily)`
+* [ ] Ad analytics endpoint: vendor view (CTR, impressions, clicks, ROAS via attributed orders)
+
+---
+
+## Phase 13 — Subscriptions & Billing (Stripe CC)
+
+**Goal:** Vendor subscription gating + billing history
+
+### 13A) Stripe integration
+
+* [ ] Stripe client bootstrap + config/secrets
+* [ ] Migrations: `subscriptions`, `payment_methods`, `charges`, `usage_charges` (if not already applied)
+
+### 13B) Subscription flows
+
+* [ ] `POST /api/v1/vendor/subscriptions` (create subscription, idempotent)
+* [ ] `POST /api/v1/vendor/subscriptions/cancel` (idempotent)
+* [ ] `GET /api/v1/vendor/subscriptions/active`
+* [ ] Webhook consumer (Stripe) updates subscription state + mirrors `stores.subscription_active`
+
+### 13C) Billing history
+
+* [ ] `GET /api/v1/vendor/billing/charges` (ads + subscriptions)
+* [ ] Enforce gating everywhere:
+
+  * [ ] browse/search hides vendor listings if `subscription_active=false`
+  * [ ] ads/analytics blocked if inactive
+
+---
+
+## Phase 14 — Search & Geo (PostGIS-enabled filters)
+
+**Goal:** Buyer-origin geo filtering + vendor delivery radius rules
+
+* [ ] PostGIS extension migration + verify in Heroku
+* [ ] Store geocoding integration on create (and admin override only)
+* [ ] Persist `stores.geom` correctly from lat/lng
+* [ ] Directory endpoint: `GET /api/v1/stores/vendors` with:
+
+  * [ ] `ST_DWithin` filter by delivery radius
+  * [ ] sort by distance
+* [ ] Product browse endpoint improvements:
+
+  * [ ] filter by state + vendor visibility + optional geo gate
+* [ ] Index tuning: `gist(stores.geom)` + composite visibility indexes
+
+---
+
+## Phase 15 — Security, Ops, Hardening
+
+**Goal:** Production resilience + auditability
+
+* [ ] Rate limiting expansion to critical endpoints (checkout, decisions, agent cash)
+* [ ] Audit log system:
+
+  * [ ] Migration `audit_logs`
+  * [ ] Helper to write append-only audit rows
+  * [ ] Emit audit logs for: admin verify license, payouts, order decisions, inventory changes
+* [ ] Metrics (API + workers) + basic dashboards/alerts
+* [ ] Backup/restore runbook (Heroku PG + Redis)
+* [ ] Feature flags (minimal) for risky rollouts (ads/subscription/analytics)
+* [ ] MFA/email verification adapter hooks (no full build until needed)
