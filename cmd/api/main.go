@@ -11,6 +11,7 @@ import (
 	"github.com/angelmondragon/packfinderz-backend/internal/auth"
 	"github.com/angelmondragon/packfinderz-backend/internal/cart"
 	checkoutsvc "github.com/angelmondragon/packfinderz-backend/internal/checkout"
+	"github.com/angelmondragon/packfinderz-backend/internal/ledger"
 	"github.com/angelmondragon/packfinderz-backend/internal/licenses"
 	"github.com/angelmondragon/packfinderz-backend/internal/media"
 	"github.com/angelmondragon/packfinderz-backend/internal/memberships"
@@ -166,8 +167,15 @@ func main() {
 	outboxRepo := outbox.NewRepository(dbClient.DB())
 	outboxPublisher := outbox.NewService(outboxRepo, logg)
 
+	ledgerRepo := ledger.NewRepository(dbClient.DB())
+	ledgerService, err := ledger.NewService(ledgerRepo)
+	if err != nil {
+		logg.Error(context.Background(), "failed to create ledger service", err)
+		os.Exit(1)
+	}
+
 	ordersRepo := orders.NewRepository(dbClient.DB())
-	ordersService, err := orders.NewService(ordersRepo, dbClient, outboxPublisher, orders.NewInventoryReleaser(), orders.NewInventoryReserver())
+	ordersService, err := orders.NewService(ordersRepo, dbClient, outboxPublisher, orders.NewInventoryReleaser(), orders.NewInventoryReserver(), ledgerService)
 	if err != nil {
 		logg.Error(context.Background(), "failed to create orders service", err)
 		os.Exit(1)

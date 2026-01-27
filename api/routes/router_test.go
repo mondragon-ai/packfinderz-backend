@@ -321,6 +321,10 @@ func (s stubOrdersService) AgentDeliver(ctx context.Context, input ordersrepo.Ag
 	return nil
 }
 
+func (s stubOrdersService) ConfirmPayout(ctx context.Context, input ordersrepo.ConfirmPayoutInput) error {
+	return nil
+}
+
 type stubCheckoutService struct{}
 
 // Execute implements [checkout.Service].

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/angelmondragon/packfinderz-backend/internal/checkout/reservation"
+	"github.com/angelmondragon/packfinderz-backend/internal/ledger"
 	"github.com/angelmondragon/packfinderz-backend/pkg/db/models"
 	"github.com/angelmondragon/packfinderz-backend/pkg/enums"
 	pkgerrors "github.com/angelmondragon/packfinderz-backend/pkg/errors"
@@ -203,6 +204,25 @@ func (s *stubOrdersRepo) UpdateOrderAssignment(ctx context.Context, assignmentID
 	return nil
 }
 
+type stubLedgerService struct {
+	recordFn func(ctx context.Context, input ledger.RecordLedgerEventInput) (*models.LedgerEvent, error)
+}
+
+func (s *stubLedgerService) RecordEvent(ctx context.Context, input ledger.RecordLedgerEventInput) (*models.LedgerEvent, error) {
+	if s.recordFn != nil {
+		return s.recordFn(ctx, input)
+	}
+	return &models.LedgerEvent{ID: uuid.New()}, nil
+}
+
+func newStubLedgerService(recordFn func(ctx context.Context, input ledger.RecordLedgerEventInput) (*models.LedgerEvent, error)) *stubLedgerService {
+	return &stubLedgerService{recordFn: recordFn}
+}
+
+func newTestOrdersService(repo Repository, tx txRunner, outbox outboxPublisher, inventory InventoryReleaser, reserver inventoryReserver) (Service, error) {
+	return NewService(repo, tx, outbox, inventory, reserver, newStubLedgerService(nil))
+}
+
 type stubOutboxPublisher struct {
 	event  outbox.DomainEvent
 	called bool
@@ -280,7 +300,7 @@ func TestVendorDecision(t *testing.T) {
 	outbox := &stubOutboxPublisher{}
 	inventory := &stubInventoryReleaser{}
 	reserver := &stubInventoryReserver{}
-	svc, err := NewService(repo, stubTxRunner{}, outbox, inventory, reserver)
+	svc, err := newTestOrdersService(repo, stubTxRunner{}, outbox, inventory, reserver)
 	if err != nil {
 		t.Fatalf("service constructor failed: %v", err)
 	}
@@ -317,7 +337,7 @@ func TestVendorDecisionIdempotent(t *testing.T) {
 	repo := &stubOrdersRepo{order: order}
 	outbox := &stubOutboxPublisher{}
 	reserver := &stubInventoryReserver{}
-	svc, _ := NewService(repo, stubTxRunner{}, outbox, &stubInventoryReleaser{}, reserver)
+	svc, _ := newTestOrdersService(repo, stubTxRunner{}, outbox, &stubInventoryReleaser{}, reserver)
 	err := svc.VendorDecision(context.Background(), VendorDecisionInput{
 		OrderID:      orderID,
 		Decision:     VendorOrderDecisionAccept,
@@ -344,7 +364,7 @@ func TestVendorDecisionInvalidState(t *testing.T) {
 	}
 	outbox := &stubOutboxPublisher{}
 	reserver := &stubInventoryReserver{}
-	svc, _ := NewService(repo, stubTxRunner{}, outbox, &stubInventoryReleaser{}, reserver)
+	svc, _ := newTestOrdersService(repo, stubTxRunner{}, outbox, &stubInventoryReleaser{}, reserver)
 	err := svc.VendorDecision(context.Background(), VendorDecisionInput{
 		OrderID:      orderID,
 		Decision:     VendorOrderDecisionReject,
@@ -390,7 +410,7 @@ func TestCancelOrderReleasesInventory(t *testing.T) {
 	outbox := &stubOutboxPublisher{}
 	inventory := &stubInventoryReleaser{}
 	reserver := &stubInventoryReserver{}
-	svc, err := NewService(repo, stubTxRunner{}, outbox, inventory, reserver)
+	svc, err := newTestOrdersService(repo, stubTxRunner{}, outbox, inventory, reserver)
 	if err != nil {
 		t.Fatalf("construct service: %v", err)
 	}
@@ -433,7 +453,7 @@ func TestNudgeVendorEmitsNotificationEvent(t *testing.T) {
 	outbox := &stubOutboxPublisher{}
 	inventory := &stubInventoryReleaser{}
 	reserver := &stubInventoryReserver{}
-	svc, err := NewService(repo, stubTxRunner{}, outbox, inventory, reserver)
+	svc, err := newTestOrdersService(repo, stubTxRunner{}, outbox, inventory, reserver)
 	if err != nil {
 		t.Fatalf("construct service: %v", err)
 	}
@@ -511,7 +531,7 @@ func TestRetryOrderCreatesNewOrder(t *testing.T) {
 	outbox := &stubOutboxPublisher{}
 	inventory := &stubInventoryReleaser{}
 	reserver := &stubInventoryReserver{}
-	svc, err := NewService(repo, stubTxRunner{}, outbox, inventory, reserver)
+	svc, err := newTestOrdersService(repo, stubTxRunner{}, outbox, inventory, reserver)
 	if err != nil {
 		t.Fatalf("construct service: %v", err)
 	}
@@ -575,7 +595,7 @@ func TestLineItemDecisionFulfillEmitsEvent(t *testing.T) {
 	outbox := &stubOutboxPublisher{}
 	inventory := &stubInventoryReleaser{}
 	reserver := &stubInventoryReserver{}
-	svc, err := NewService(repo, stubTxRunner{}, outbox, inventory, reserver)
+	svc, err := newTestOrdersService(repo, stubTxRunner{}, outbox, inventory, reserver)
 	if err != nil {
 		t.Fatalf("constructor failed: %v", err)
 	}
@@ -655,7 +675,7 @@ func TestLineItemDecisionRejectReleasesInventory(t *testing.T) {
 	outbox := &stubOutboxPublisher{}
 	inventory := &stubInventoryReleaser{}
 	reserver := &stubInventoryReserver{}
-	svc, _ := NewService(repo, stubTxRunner{}, outbox, inventory, reserver)
+	svc, _ := newTestOrdersService(repo, stubTxRunner{}, outbox, inventory, reserver)
 	notes := "damaged"
 	err := svc.LineItemDecision(context.Background(), LineItemDecisionInput{
 		OrderID:      orderID,
@@ -739,7 +759,7 @@ func TestAgentPickupSuccess(t *testing.T) {
 	outbox := &stubOutboxPublisher{}
 	inventory := &stubInventoryReleaser{}
 	reserver := &stubInventoryReserver{}
-	svc, _ := NewService(repo, stubTxRunner{}, outbox, inventory, reserver)
+	svc, _ := newTestOrdersService(repo, stubTxRunner{}, outbox, inventory, reserver)
 	err := svc.AgentPickup(context.Background(), AgentPickupInput{OrderID: orderID, AgentUserID: agentID})
 	if err != nil {
 		t.Fatalf("expected success got %v", err)
@@ -770,7 +790,7 @@ func TestAgentPickupForbiddenWhenNotAssigned(t *testing.T) {
 			return detail, nil
 		},
 	}
-	svc, _ := NewService(repo, stubTxRunner{}, &stubOutboxPublisher{}, &stubInventoryReleaser{}, &stubInventoryReserver{})
+	svc, _ := newTestOrdersService(repo, stubTxRunner{}, &stubOutboxPublisher{}, &stubInventoryReleaser{}, &stubInventoryReserver{})
 	err := svc.AgentPickup(context.Background(), AgentPickupInput{OrderID: orderID, AgentUserID: uuid.New()})
 	if err == nil {
 		t.Fatal("expected error")
@@ -798,7 +818,7 @@ func TestAgentPickupStateConflict(t *testing.T) {
 			return detail, nil
 		},
 	}
-	svc, _ := NewService(repo, stubTxRunner{}, &stubOutboxPublisher{}, &stubInventoryReleaser{}, &stubInventoryReserver{})
+	svc, _ := newTestOrdersService(repo, stubTxRunner{}, &stubOutboxPublisher{}, &stubInventoryReleaser{}, &stubInventoryReserver{})
 	err := svc.AgentPickup(context.Background(), AgentPickupInput{OrderID: orderID, AgentUserID: detail.ActiveAssignment.AgentUserID})
 	if err == nil {
 		t.Fatal("expected error")
@@ -835,7 +855,7 @@ func TestAgentPickupIdempotent(t *testing.T) {
 			return nil
 		},
 	}
-	svc, _ := NewService(repo, stubTxRunner{}, &stubOutboxPublisher{}, &stubInventoryReleaser{}, &stubInventoryReserver{})
+	svc, _ := newTestOrdersService(repo, stubTxRunner{}, &stubOutboxPublisher{}, &stubInventoryReleaser{}, &stubInventoryReserver{})
 	err := svc.AgentPickup(context.Background(), AgentPickupInput{OrderID: orderID, AgentUserID: agentID})
 	if err != nil {
 		t.Fatalf("expected success got %v", err)
@@ -880,7 +900,7 @@ func TestAgentDeliverSuccess(t *testing.T) {
 			return nil
 		},
 	}
-	svc, _ := NewService(repo, stubTxRunner{}, &stubOutboxPublisher{}, &stubInventoryReleaser{}, &stubInventoryReserver{})
+	svc, _ := newTestOrdersService(repo, stubTxRunner{}, &stubOutboxPublisher{}, &stubInventoryReleaser{}, &stubInventoryReserver{})
 	err := svc.AgentDeliver(context.Background(), AgentDeliverInput{OrderID: orderID, AgentUserID: agentID})
 	if err != nil {
 		t.Fatalf("expected success got %v", err)
@@ -917,7 +937,7 @@ func TestAgentDeliverForbiddenWhenNotAssigned(t *testing.T) {
 			return detail, nil
 		},
 	}
-	svc, _ := NewService(repo, stubTxRunner{}, &stubOutboxPublisher{}, &stubInventoryReleaser{}, &stubInventoryReserver{})
+	svc, _ := newTestOrdersService(repo, stubTxRunner{}, &stubOutboxPublisher{}, &stubInventoryReleaser{}, &stubInventoryReserver{})
 	err := svc.AgentDeliver(context.Background(), AgentDeliverInput{OrderID: orderID, AgentUserID: uuid.New()})
 	if err == nil {
 		t.Fatal("expected error")
@@ -945,7 +965,7 @@ func TestAgentDeliverStateConflict(t *testing.T) {
 			return detail, nil
 		},
 	}
-	svc, _ := NewService(repo, stubTxRunner{}, &stubOutboxPublisher{}, &stubInventoryReleaser{}, &stubInventoryReserver{})
+	svc, _ := newTestOrdersService(repo, stubTxRunner{}, &stubOutboxPublisher{}, &stubInventoryReleaser{}, &stubInventoryReserver{})
 	err := svc.AgentDeliver(context.Background(), AgentDeliverInput{OrderID: orderID, AgentUserID: detail.ActiveAssignment.AgentUserID})
 	if err == nil {
 		t.Fatal("expected error")
@@ -981,12 +1001,99 @@ func TestAgentDeliverIdempotent(t *testing.T) {
 			return nil
 		},
 	}
-	svc, _ := NewService(repo, stubTxRunner{}, &stubOutboxPublisher{}, &stubInventoryReleaser{}, &stubInventoryReserver{})
+	svc, _ := newTestOrdersService(repo, stubTxRunner{}, &stubOutboxPublisher{}, &stubInventoryReleaser{}, &stubInventoryReserver{})
 	err := svc.AgentDeliver(context.Background(), AgentDeliverInput{OrderID: orderID, AgentUserID: agentID})
 	if err != nil {
 		t.Fatalf("expected success got %v", err)
 	}
 	if repo.orderUpdates != nil {
 		t.Fatalf("expected no order updates, got %v", repo.orderUpdates)
+	}
+}
+
+func TestService_ConfirmPayout_AppendsLedgerEvent(t *testing.T) {
+	orderID := uuid.New()
+	buyerID := uuid.New()
+	vendorID := uuid.New()
+	actorID := uuid.New()
+
+	detail := &OrderDetail{
+		Order:       &VendorOrderSummary{},
+		BuyerStore:  OrderStoreSummary{ID: buyerID},
+		VendorStore: OrderStoreSummary{ID: vendorID},
+		PaymentIntent: &PaymentIntentDetail{
+			ID:          uuid.New(),
+			AmountCents: 12345,
+			Status:      string(enums.PaymentStatusSettled),
+		},
+	}
+	repo := &stubOrdersRepo{
+		order: &models.VendorOrder{ID: orderID},
+		findOrderDetail: func(ctx context.Context, id uuid.UUID) (*OrderDetail, error) {
+			if id != orderID {
+				t.Fatalf("unexpected order id %v", id)
+			}
+			return detail, nil
+		},
+	}
+
+	var recorded ledger.RecordLedgerEventInput
+	ledgerSvc := newStubLedgerService(func(ctx context.Context, input ledger.RecordLedgerEventInput) (*models.LedgerEvent, error) {
+		recorded = input
+		return &models.LedgerEvent{ID: uuid.New()}, nil
+	})
+
+	svc, err := NewService(repo, stubTxRunner{}, &stubOutboxPublisher{}, &stubInventoryReleaser{}, &stubInventoryReserver{}, ledgerSvc)
+	if err != nil {
+		t.Fatalf("failed to create service: %v", err)
+	}
+
+	if err := svc.ConfirmPayout(context.Background(), ConfirmPayoutInput{OrderID: orderID, ActorUserID: actorID}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if recorded.OrderID != orderID {
+		t.Fatalf("ledger recorded wrong order %v", recorded.OrderID)
+	}
+	if recorded.BuyerStoreID != buyerID || recorded.VendorStoreID != vendorID {
+		t.Fatalf("ledger recorded wrong stores %+v", recorded)
+	}
+	if recorded.ActorUserID != actorID {
+		t.Fatalf("ledger recorded wrong actor %v", recorded.ActorUserID)
+	}
+	if recorded.AmountCents != detail.PaymentIntent.AmountCents {
+		t.Fatalf("ledger recorded wrong amount %d", recorded.AmountCents)
+	}
+	if recorded.Type != enums.LedgerEventTypeVendorPayout {
+		t.Fatalf("unexpected ledger type %s", recorded.Type)
+	}
+}
+
+func TestService_ConfirmPayoutValidation(t *testing.T) {
+	svc, _ := NewService(&stubOrdersRepo{}, stubTxRunner{}, &stubOutboxPublisher{}, &stubInventoryReleaser{}, &stubInventoryReserver{}, newStubLedgerService(nil))
+
+	if err := svc.ConfirmPayout(context.Background(), ConfirmPayoutInput{OrderID: uuid.Nil, ActorUserID: uuid.New()}); err == nil {
+		t.Fatal("expected validation error for missing order")
+	}
+	if err := svc.ConfirmPayout(context.Background(), ConfirmPayoutInput{OrderID: uuid.New(), ActorUserID: uuid.Nil}); err == nil {
+		t.Fatal("expected validation error for missing actor")
+	}
+}
+
+func TestService_ConfirmPayoutMissingPaymentIntent(t *testing.T) {
+	orderID := uuid.New()
+	repo := &stubOrdersRepo{
+		order: &models.VendorOrder{ID: orderID},
+		findOrderDetail: func(ctx context.Context, id uuid.UUID) (*OrderDetail, error) {
+			return &OrderDetail{
+				Order:       &VendorOrderSummary{},
+				BuyerStore:  OrderStoreSummary{ID: uuid.New()},
+				VendorStore: OrderStoreSummary{ID: uuid.New()},
+			}, nil
+		},
+	}
+	svc, _ := NewService(repo, stubTxRunner{}, &stubOutboxPublisher{}, &stubInventoryReleaser{}, &stubInventoryReserver{}, newStubLedgerService(nil))
+
+	if err := svc.ConfirmPayout(context.Background(), ConfirmPayoutInput{OrderID: orderID, ActorUserID: uuid.New()}); err == nil {
+		t.Fatal("expected error for missing payment intent")
 	}
 }

@@ -122,6 +122,7 @@ type stubControllerOrdersService struct {
 	cancel           func(ctx context.Context, input internalorders.BuyerCancelInput) error
 	nudge            func(ctx context.Context, input internalorders.BuyerNudgeInput) error
 	retry            func(ctx context.Context, input internalorders.BuyerRetryInput) (*internalorders.BuyerRetryResult, error)
+	confirmPayout    func(ctx context.Context, input internalorders.ConfirmPayoutInput) error
 }
 
 func (s *stubControllerOrdersService) VendorDecision(ctx context.Context, input internalorders.VendorDecisionInput) error {
@@ -164,6 +165,13 @@ func (s *stubControllerOrdersService) AgentPickup(ctx context.Context, input int
 }
 
 func (s *stubControllerOrdersService) AgentDeliver(ctx context.Context, input internalorders.AgentDeliverInput) error {
+	return nil
+}
+
+func (s *stubControllerOrdersService) ConfirmPayout(ctx context.Context, input internalorders.ConfirmPayoutInput) error {
+	if s.confirmPayout != nil {
+		return s.confirmPayout(ctx, input)
+	}
 	return nil
 }
 

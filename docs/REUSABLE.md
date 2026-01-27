@@ -448,7 +448,9 @@ All enums implement:
 * `LedgerEventType` constants live in `pkg/enums/ledger_event_type.go`.
 * `ledger_events` table stores `order_id`, `type`, `amount_cents`, optional `metadata`, and `created_at`; indexes `(order_id, created_at)` and `(type, created_at)` satisfy audit queries, and the `order_id` FK uses `ON DELETE RESTRICT` to preserve append-only semantics.
 * Every row also captures `buyer_store_id`, `vendor_store_id`, and `actor_user_id` so buyers/vendors can filter the ledger by their stores and agents/admins can see who logged the cash collection or payout.
+* `internal/ledger/service.RecordEvent` is the canonical helper and is already wired into payout confirmation flows so that only inserts ever touch `ledger_events`.
 * `internal/ledger.Repository` only exposes `Create`/`ListByOrderID`, `internal/ledger.Service.RecordEvent` validates the enum, and no UPDATE/DELETE paths exist so the ledger remains append-only by construction (internal/ledger/service.go:22-64; internal/ledger/repo.go:12-38).
+* `internal/orders.Service.ConfirmPayout` calls `ledger.Service.RecordEvent` inside the payout transaction so each vendor payout appends a ledger row without supporting updates/deletes (internal/orders/service.go:847-889; internal/ledger/service.go:22-64).
 
 ### `NotificationType`
 
