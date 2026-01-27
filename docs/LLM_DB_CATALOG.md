@@ -94,6 +94,13 @@
 - Foreign keys: `checkout_group_id -> checkout_groups(id)`, `buyer_store_id -> stores(id)`, `vendor_store_id -> stores(id)` (all in the same migration block).
 - Constraint: `CHECK (buyer_store_id <> vendor_store_id)` to enforce opposing roles on the same order.
 
+### ledger_events
+- Append-only ledger rows capturing cash collection, vendor payouts, adjustments, and future refunds; defined by `pkg/migrate/migrations/20260130000000_create_ledger_events_table.sql`, which creates `ledger_event_type_enum`, `ledger_events`, and the `(order_id, created_at)` and `(type, created_at)` indexes while the Goose down block drops the table+enum.
+- Fields: `id uuid pk`; `order_id uuid not null`; `type ledger_event_type_enum not null`; `amount_cents int not null`; `metadata jsonb null`; `created_at timestamptz not null default now()` (pkg/db/models/ledger_event.go:9-33; pkg/enums/ledger_event_type.go:7-33; pkg/migrate/migrations/20260130000000_create_ledger_events_table.sql:1-27).
+- Indexes: `(order_id, created_at)` (ledger_events_order_created_idx) and `(type, created_at)` (ledger_events_type_created_idx) (pkg/migrate/migrations/20260130000000_create_ledger_events_table.sql:19-27).
+- Foreign keys: `order_id -> vendor_orders(id) ON DELETE RESTRICT` (pkg/migrate/migrations/20260130000000_create_ledger_events_table.sql:13-23).
+- Append-only enforcement: `internal/ledger.Repository` only exposes `Create` and `ListByOrderID`, and `internal/ledger.Service.RecordEvent` validates the enum before persisting so no application path issues `UPDATE`/`DELETE` against ledger rows (internal/ledger/service.go:22-64; internal/ledger/repo.go:12-38).
+
 ### order_assignments
 - Tracks agent assignments per vendor order so there is always at most one `active = true` row that `internal/orders.Repository.FindOrderDetail` can read for dashboards (pkg/migrate/migrations/20260128000000_create_order_assignments_table.sql:1-24; internal/orders/repo.go:322-347).
 - Fields: `id uuid pk`; `order_id uuid not null`; `agent_user_id uuid not null`; `assigned_by_user_id uuid null`; `assigned_at timestamptz not null default now()`; `unassigned_at timestamptz null`; `active boolean not null default true`.

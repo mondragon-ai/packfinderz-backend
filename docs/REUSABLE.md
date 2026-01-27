@@ -442,6 +442,14 @@ All enums implement:
 * `order_created` events fire when `internal/checkout/service.emitOrderCreatedEvent` (internal/checkout/service.go:150-271) builds an `OrderCreatedEvent` payload that copies the completed `checkout_group_id` and every `vendor_order_id`, tags the aggregate as `checkout_group`/`version=1` (pkg/enums/outbox.go:5-108), and emits it via `pkg/outbox.Service.Emit` so the outbox row persists in the same transaction that flips the cart to `converted`, guaranteeing consumers observe the same split metadata.
 * `internal/notifications/consumer` (set up in `cmd/worker/main`) subscribes to the domain topic, uses `pkg/outbox/idempotency.Manager` to honor the `pf:evt:processed:<consumer>:<event_id>` TTL, and writes `NotificationTypeCompliance` rows with links and rejection details for admins/stores based on the status in the event payload (internal/notifications/consumer.go:18-186; cmd/worker/main.go:83-116).
 
+### `LedgerEvent`
+
+* `ledger_event_type_enum`: `cash_collected`, `vendor_payout`, `adjustment`, `refund`.
+* `LedgerEventType` constants live in `pkg/enums/ledger_event_type.go`.
+* `ledger_events` table stores `order_id`, `type`, `amount_cents`, optional `metadata`, and `created_at`; indexes `(order_id, created_at)` and `(type, created_at)` satisfy audit queries, and the `order_id` FK uses `ON DELETE RESTRICT` to preserve append-only semantics.
+* Every row also captures `buyer_store_id`, `vendor_store_id`, and `actor_user_id` so buyers/vendors can filter the ledger by their stores and agents/admins can see who logged the cash collection or payout.
+* `internal/ledger.Repository` only exposes `Create`/`ListByOrderID`, `internal/ledger.Service.RecordEvent` validates the enum, and no UPDATE/DELETE paths exist so the ledger remains append-only by construction (internal/ledger/service.go:22-64; internal/ledger/repo.go:12-38).
+
 ### `NotificationType`
 
 * `system_announcement`

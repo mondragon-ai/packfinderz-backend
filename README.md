@@ -240,6 +240,8 @@ Re-running the migration is safe because the statements use `CREATE EXTENSION IF
 
 * MVP: **cash at delivery**
 * `LedgerEvent` is append-only
+* `ledger_events` table stores every money lifecycle row (`order_id`, `type`, `amount_cents`, `metadata`, `created_at`) with `(order_id, created_at)` and `(type, created_at)` indexes and an `ON DELETE RESTRICT` FK to `vendor_orders`.
+* Each ledger row also stores `buyer_store_id`, `vendor_store_id`, and `actor_user_id` to let buyers, vendors, and agents/admins audit who produced the event.
 * Payment lifecycle:
   `unpaid → settled → paid`
 
