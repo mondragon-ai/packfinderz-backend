@@ -508,6 +508,11 @@ All enums implement:
 * `Service` validates `StoreID`, decodes/encodes cursors with `pagination.ParseCursor`/`EncodeCursor`, and surfaces the `List`, `MarkRead`, and `MarkAllRead` helpers API controllers will consume while keeping store validation, pagination limits, and read-state idempotency centralized (internal/notifications/service.go:1-109; pkg/pagination/pagination.go:12-40).
 * `ListNotifications`, `MarkNotificationRead`, and `MarkAllNotificationsRead` sit on top of the notifications service, parse `unreadOnly|limit|cursor` or `notificationId`, enforce the active `StoreID`, require the `Idempotency-Key` injected by `middleware.Idempotency`, and return the success envelopes (`{"items":…,"cursor":…}`, `{"read": true}`, `{"updated": count}`) while honoring store ownership so cross-tenant updates are rejected (api/controllers/notifications.go:1-118; api/routes/router.go:129-133; api/middleware/idempotency.go:37-208).
 
+### `internal/consumers/analytics`
+* `Consumer` decodes `order_created`, `cash_collected`, and `order_paid` outbox payloads, guards with `pf:evt:processed:analytics:<event_id>`, and inserts a single `marketplace_events` row per event via `pkg/bigquery.Client.InsertRows`.
+* Rows capture `event_id`, `event_type`, `occurred_at`, optional store/order IDs, and the raw JSON payload stored through `bigquery.NullJSON`.
+* Any payload or insert failure deletes the idempotency key so retries are allowed, and the handler logs via `pkg/logger`.
+
 ### `internal/cart`
 * `Repository` secures `CartRecord` + `CartItem` persistence by scoping every operation to the owning `buyer_store_id`.
 * `ReplaceItems` wipes the previous `cart_items` rows before inserting the new snapshot, while `UpdateStatus` flips the record from `active` to `converted`.

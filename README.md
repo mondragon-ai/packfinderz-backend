@@ -292,6 +292,7 @@ Re-running the migration is safe because the statements use `CREATE EXTENSION IF
 * Marketplace events
 * Ad telemetry
 * KPI rollups
+* `internal/consumers/analytics.Consumer` (BigQuery + Redis idempotency) processes `order_created`, `cash_collected`, and `order_paid` outbox events so each analytics row is deduplicated via `pf:evt:processed:analytics:<event_id>` before writing to the configured `marketplace_events` table.
 * Environment vars:
   * `PACKFINDERZ_BIGQUERY_DATASET` (default `packfinderz`)
   * `PACKFINDERZ_BIGQUERY_MARKETPLACE_TABLE` (default `marketplace_events`)

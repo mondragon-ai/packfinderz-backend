@@ -36,6 +36,7 @@
 - `DecoderRegistry` registers custom decoders for consumed events, enabling deterministic payload parsing downstream (pkg/outbox/registry.go:1-32).
 - `pkg/outbox/idempotency.Manager` paired with `cfg.Eventing.OutboxIdempotencyTTL` prevents duplicate consumer side effects via `pf:idempotency:evt:processed:<consumer>:<event_id>` keys (pkg/outbox/idempotency/idempotency.go:1-66; pkg/config/config.go:131-181).
 - `license_status_changed` events flow through the domain topic so the compliance consumer can branch between admin notifications for pending uploads and store notifications for verified/rejected licenses while honoring the idempotency key tracking (`internal/notifications/consumer.go:71-186`).
+- `internal/consumers/analytics.Consumer` handles `order_created`, `cash_collected`, and `order_paid` envelopes; it calls `pkg/outbox/idempotency.Manager.CheckAndMarkProcessed`/`Delete` with the `pf:evt:processed:analytics:<event_id>` guard, logs failures, and funnels exactly one row per event into `marketplace_events` via `pkg/bigquery.Client.InsertRows` so analytics ingestion stays deduplicated (`internal/consumers/analytics/consumer.go`:17-114; pkg/bigquery/client.go:149-168; pkg/outbox/idempotency/idempotency.go:1-66).
 - Admin license decisions recompute `stores.kyc_status` inside the same transaction by scanning all licenses and calling `DetermineStoreKYCStatus`, ensuring the mirror flips to `verified`, `rejected`, or `expired` before the outbox event fires (`internal/licenses/service.go:385-425`).
 
 ## Session & Idempotency
