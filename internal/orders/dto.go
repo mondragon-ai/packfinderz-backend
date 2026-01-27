@@ -59,6 +59,7 @@ type BuyerOrderList struct {
 
 // VendorOrderSummary exposes aggregated fields returned in the vendor list.
 type VendorOrderSummary struct {
+	Status            enums.VendorOrderStatus            `json:"status"`
 	OrderNumber       int64                              `json:"order_number"`
 	CreatedAt         time.Time                          `json:"created_at"`
 	TotalCents        int                                `json:"total_cents"`
@@ -101,10 +102,16 @@ type VendorOrderList struct {
 
 // OrderAssignmentSummary highlights the active agent assignment for an order.
 type OrderAssignmentSummary struct {
-	AgentUserID      uuid.UUID  `json:"agent_user_id"`
-	AssignedByUserID *uuid.UUID `json:"assigned_by_user_id,omitempty"`
-	AssignedAt       time.Time  `json:"assigned_at"`
-	UnassignedAt     *time.Time `json:"unassigned_at,omitempty"`
+	ID                      uuid.UUID  `json:"id"`
+	AgentUserID             uuid.UUID  `json:"agent_user_id"`
+	AssignedByUserID        *uuid.UUID `json:"assigned_by_user_id,omitempty"`
+	AssignedAt              time.Time  `json:"assigned_at"`
+	UnassignedAt            *time.Time `json:"unassigned_at,omitempty"`
+	PickupTime              *time.Time `json:"pickup_time,omitempty"`
+	DeliveryTime            *time.Time `json:"delivery_time,omitempty"`
+	CashPickupTime          *time.Time `json:"cash_pickup_time,omitempty"`
+	PickupSignatureGCSKey   *string    `json:"pickup_signature_gcs_key,omitempty"`
+	DeliverySignatureGCSKey *string    `json:"delivery_signature_gcs_key,omitempty"`
 }
 
 // LineItemDetail mirrors the order_line_items fields required by detail views.

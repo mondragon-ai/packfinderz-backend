@@ -38,6 +38,7 @@ type Service interface {
 	CancelOrder(ctx context.Context, input BuyerCancelInput) error
 	NudgeVendor(ctx context.Context, input BuyerNudgeInput) error
 	RetryOrder(ctx context.Context, input BuyerRetryInput) (*BuyerRetryResult, error)
+	AgentPickup(ctx context.Context, input AgentPickupInput) error
 }
 
 type service struct {
@@ -111,6 +112,12 @@ type BuyerRetryInput struct {
 // BuyerRetryResult surfaces the new order created during a retry.
 type BuyerRetryResult struct {
 	OrderID uuid.UUID `json:"order_id"`
+}
+
+// AgentPickupInput captures the agent and order for pickup confirmation.
+type AgentPickupInput struct {
+	OrderID     uuid.UUID
+	AgentUserID uuid.UUID
 }
 
 // OrderDecisionEvent is emitted when a vendor decides an order.
@@ -648,6 +655,64 @@ func (s *service) RetryOrder(ctx context.Context, input BuyerRetryInput) (*Buyer
 		return nil, err
 	}
 	return result, nil
+}
+
+func (s *service) AgentPickup(ctx context.Context, input AgentPickupInput) error {
+	if input.OrderID == uuid.Nil {
+		return pkgerrors.New(pkgerrors.CodeValidation, "order id required")
+	}
+	if input.AgentUserID == uuid.Nil {
+		return pkgerrors.New(pkgerrors.CodeUnauthorized, "agent identity missing")
+	}
+
+	return s.tx.WithTx(ctx, func(tx *gorm.DB) error {
+		repo := s.repo.WithTx(tx)
+		detail, err := repo.FindOrderDetail(ctx, input.OrderID)
+		if err != nil {
+			if err == gorm.ErrRecordNotFound {
+				return pkgerrors.New(pkgerrors.CodeNotFound, "order not found")
+			}
+			return pkgerrors.Wrap(pkgerrors.CodeDependency, err, "load order detail")
+		}
+		if detail == nil || detail.ActiveAssignment == nil || detail.Order == nil {
+			return pkgerrors.New(pkgerrors.CodeForbidden, "order not assigned to agent")
+		}
+		if detail.ActiveAssignment.AgentUserID != input.AgentUserID {
+			return pkgerrors.New(pkgerrors.CodeForbidden, "order not assigned to agent")
+		}
+		status := detail.Order.Status
+		if status != enums.VendorOrderStatusHold &&
+			status != enums.VendorOrderStatusHoldForPickup &&
+			status != enums.VendorOrderStatusInTransit {
+			return pkgerrors.New(pkgerrors.CodeStateConflict, "order cannot be picked up in current state")
+		}
+
+		now := time.Now().UTC()
+		orderUpdates := map[string]any{}
+		if status != enums.VendorOrderStatusInTransit {
+			orderUpdates["status"] = enums.VendorOrderStatusInTransit
+		}
+		if detail.Order.ShippingStatus != enums.VendorOrderShippingStatusInTransit {
+			orderUpdates["shipping_status"] = enums.VendorOrderShippingStatusInTransit
+		}
+		if len(orderUpdates) > 0 {
+			if err := repo.UpdateVendorOrder(ctx, input.OrderID, orderUpdates); err != nil {
+				return pkgerrors.Wrap(pkgerrors.CodeDependency, err, "update order status")
+			}
+		}
+
+		assignUpdates := map[string]any{}
+		if detail.ActiveAssignment.PickupTime == nil {
+			assignUpdates["pickup_time"] = now
+		}
+		if len(assignUpdates) > 0 {
+			if err := repo.UpdateOrderAssignment(ctx, detail.ActiveAssignment.ID, assignUpdates); err != nil {
+				return pkgerrors.Wrap(pkgerrors.CodeDependency, err, "update order assignment")
+			}
+		}
+
+		return nil
+	})
 }
 
 func mapDecisionToStatus(decision VendorOrderDecision) (enums.VendorOrderStatus, error) {

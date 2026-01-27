@@ -669,6 +669,7 @@ func buildVendorOrderSummary(order *models.VendorOrder) *VendorOrderSummary {
 		return nil
 	}
 	return &VendorOrderSummary{
+		Status:            order.Status,
 		OrderNumber:       order.OrderNumber,
 		CreatedAt:         order.CreatedAt,
 		TotalCents:        order.TotalCents,
@@ -730,9 +731,25 @@ func buildAssignmentSummary(assignment *models.OrderAssignment) *OrderAssignment
 		return nil
 	}
 	return &OrderAssignmentSummary{
-		AgentUserID:      assignment.AgentUserID,
-		AssignedByUserID: assignment.AssignedByUserID,
-		AssignedAt:       assignment.AssignedAt,
-		UnassignedAt:     assignment.UnassignedAt,
+		ID:                      assignment.ID,
+		AgentUserID:             assignment.AgentUserID,
+		AssignedByUserID:        assignment.AssignedByUserID,
+		AssignedAt:              assignment.AssignedAt,
+		UnassignedAt:            assignment.UnassignedAt,
+		PickupTime:              assignment.PickupTime,
+		DeliveryTime:            assignment.DeliveryTime,
+		CashPickupTime:          assignment.CashPickupTime,
+		PickupSignatureGCSKey:   assignment.PickupSignatureGCSKey,
+		DeliverySignatureGCSKey: assignment.DeliverySignatureGCSKey,
 	}
+}
+
+func (r *repository) UpdateOrderAssignment(ctx context.Context, assignmentID uuid.UUID, updates map[string]any) error {
+	if len(updates) == 0 {
+		return nil
+	}
+	return r.db.WithContext(ctx).
+		Model(&models.OrderAssignment{}).
+		Where("id = ?", assignmentID).
+		Updates(updates).Error
 }

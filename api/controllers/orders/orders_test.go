@@ -79,6 +79,10 @@ func (s *stubControllerOrdersRepo) UpdateVendorOrder(ctx context.Context, orderI
 	return nil
 }
 
+func (s *stubControllerOrdersRepo) UpdateOrderAssignment(ctx context.Context, assignmentID uuid.UUID, updates map[string]any) error {
+	return nil
+}
+
 func (s *stubControllerOrdersRepo) FindPaymentIntentByOrder(ctx context.Context, orderID uuid.UUID) (*models.PaymentIntent, error) {
 	panic("not implemented")
 }
@@ -153,6 +157,10 @@ func (s *stubControllerOrdersService) RetryOrder(ctx context.Context, input inte
 		return s.retry(ctx, input)
 	}
 	return nil, nil
+}
+
+func (s *stubControllerOrdersService) AgentPickup(ctx context.Context, input internalorders.AgentPickupInput) error {
+	return nil
 }
 
 func TestListBuyerPerspective(t *testing.T) {

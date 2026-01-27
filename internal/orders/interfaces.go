@@ -31,4 +31,5 @@ type Repository interface {
 	UpdateVendorOrderStatus(ctx context.Context, orderID uuid.UUID, status enums.VendorOrderStatus) error
 	UpdateOrderLineItemStatus(ctx context.Context, lineItemID uuid.UUID, status enums.LineItemStatus, notes *string) error
 	UpdateVendorOrder(ctx context.Context, orderID uuid.UUID, updates map[string]any) error
+	UpdateOrderAssignment(ctx context.Context, assignmentID uuid.UUID, updates map[string]any) error
 }

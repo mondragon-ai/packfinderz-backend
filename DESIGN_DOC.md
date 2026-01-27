@@ -2362,13 +2362,13 @@ Headers:
 
 * `GET /api/v1/agent/orders`
 
-  * Returns cursor-paginated vendor orders that join `order_assignments` to `vendor_orders`, filtered by the agent's user ID so the response lists only the agent’s active assignments (api/controllers/agent_assigned_orders.go:9-58; internal/orders/repo.go:225-312).
+  * Accepts optional `limit`/`cursor` (via `pagination.Params`), joins `vendor_orders` → `order_assignments` (active = true) filtered by the requesting agent’s user ID, orders the queue by `created_at DESC`/`id DESC`, applies the `LimitWithBuffer` buffering strategy, and returns an `AgentOrderQueueList` so agents page through only their active assignments (api/controllers/agent_assigned_orders.go:9-58; internal/orders/repo.go:376-433).
   * Success: `200`
   * Errors: `401, 403`
 
 * `GET /api/v1/agent/orders/{orderId}`
 
-  * Loads the shared `OrderDetail`, but rejects requests if the active `order_assignments` row lacks the agent’s user ID; mostly mirrors `/api/v1/orders/{orderId}` but without store context (api/controllers/agent_assigned_orders.go:60-109; internal/orders/repo.go:143-222).
+  * Loads `internal/orders.Repository.FindOrderDetail`, which preloads `OrderLineItems`, `PaymentIntent`, `Stores`, and the active assignment; the controller rejects the request if the resolved assignment is missing or belongs to another agent so only the owning agent sees the order detail (api/controllers/agent_assigned_orders.go:60-109; internal/orders/repo.go:553-596).
   * Success: `200`
   * Errors: `401, 403, 404`
 
@@ -2376,10 +2376,9 @@ Headers:
 
 * `POST /api/v1/agent/orders/{orderId}/pickup`
 
-  * Sets order `in_transit`.
-  * **Idempotent:** YES (required)
+  * Agent role + `Idempotency` middleware guard; `internal/orders.Service.AgentPickup` loads `FindOrderDetail`, verifies the assignment belongs to the caller, rejects states outside `hold|hold_for_pickup|in_transit` with `pkg/errors.CodeStateConflict`/HTTP `422`, updates `vendor_orders.status`/`vendor_orders.shipping_status` to `in_transit`, and records `order_assignments.pickup_time` only once using the metadata columns added by `pkg/migrate/migrations/20260129000000_add_order_assignment_meta.sql` so retries stay idempotent (api/controllers/agent_assigned_orders.go:110-154; internal/orders/service.go:641-712; pkg/migrate/migrations/20260129000000_add_order_assignment_meta.sql).
   * Success: `200`
-  * Errors: `401, 403, 404, 409`
+  * Errors: `401, 403, 404, 422`
 
 **Confirm delivery**
 
@@ -3177,6 +3176,8 @@ Fields
 * `assigned_at timestamptz not null default now()`
 * `unassigned_at timestamptz null`
 * `active boolean not null default true`
+* `pickup_time`, `delivery_time`, `cash_pickup_time` (timestamps filled by the agent pickup/delivery/cash flows)
+* nullable signature references (`pickup_signature_gcs_key`, `delivery_signature_gcs_key`) reserved for upcoming proof-of-delivery assets
 
 Indexes
 
@@ -3189,6 +3190,9 @@ FKs
 * `order_id -> vendor_orders(id) on delete cascade`
 * `agent_user_id -> users(id) on delete restrict`
 * `assigned_by_user_id -> users(id) on delete set null`
+
+Notes:
+* Agent pickup/delivery workflows update the `pickup_time`/`delivery_time` columns and later may attach signed vectors via the GCS key columns so the history trails where proofs live.
 
 ---
 
