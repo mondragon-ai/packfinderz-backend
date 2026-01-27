@@ -59,7 +59,7 @@ func TestService_ListNotifications(t *testing.T) {
 
 	repo := &fakeRepository{
 		listFn: func(ctx context.Context, params listNotificationsParams) ([]models.Notification, *paginationpkg.Cursor, error) {
-			if params.Limit != paginationpkg.LimitWithBuffer(1) {
+			if params.Limit != 1 {
 				t.Fatalf("unexpected limit %d", params.Limit)
 			}
 			return []models.Notification{first}, &paginationpkg.Cursor{CreatedAt: second.CreatedAt, ID: second.ID}, nil
@@ -83,6 +83,21 @@ func TestService_ListNotifications(t *testing.T) {
 	}
 	if decoded.ID != second.ID {
 		t.Fatalf("expected cursor id %s got %s", second.ID, decoded.ID)
+	}
+}
+
+func TestService_ListNotificationsDefaultLimit(t *testing.T) {
+	repo := &fakeRepository{
+		listFn: func(ctx context.Context, params listNotificationsParams) ([]models.Notification, *paginationpkg.Cursor, error) {
+			if params.Limit != paginationpkg.DefaultLimit {
+				t.Fatalf("expected default limit %d, got %d", paginationpkg.DefaultLimit, params.Limit)
+			}
+			return nil, nil, nil
+		},
+	}
+	svc := newServiceWithRepo(repo)
+	if _, err := svc.List(context.Background(), ListParams{StoreID: uuid.New()}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
 

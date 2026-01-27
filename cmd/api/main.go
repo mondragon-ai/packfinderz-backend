@@ -15,6 +15,7 @@ import (
 	"github.com/angelmondragon/packfinderz-backend/internal/licenses"
 	"github.com/angelmondragon/packfinderz-backend/internal/media"
 	"github.com/angelmondragon/packfinderz-backend/internal/memberships"
+	"github.com/angelmondragon/packfinderz-backend/internal/notifications"
 	"github.com/angelmondragon/packfinderz-backend/internal/orders"
 	products "github.com/angelmondragon/packfinderz-backend/internal/products"
 	"github.com/angelmondragon/packfinderz-backend/internal/stores"
@@ -180,6 +181,13 @@ func main() {
 		logg.Error(context.Background(), "failed to create orders service", err)
 		os.Exit(1)
 	}
+
+	notificationsRepo := notifications.NewRepository(dbClient.DB())
+	notificationsService, err := notifications.NewService(notificationsRepo)
+	if err != nil {
+		logg.Error(context.Background(), "failed to create notifications service", err)
+		os.Exit(1)
+	}
 	checkoutService, err := checkoutsvc.NewService(
 		dbClient,
 		cartRepo,
@@ -244,6 +252,7 @@ func main() {
 			productService,
 			checkoutService,
 			cartService,
+			notificationsService,
 			ordersRepo,
 			ordersService,
 		),
