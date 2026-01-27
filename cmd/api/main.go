@@ -21,6 +21,7 @@ import (
 	"github.com/angelmondragon/packfinderz-backend/internal/stores"
 	"github.com/angelmondragon/packfinderz-backend/internal/users"
 	"github.com/angelmondragon/packfinderz-backend/pkg/auth/session"
+	"github.com/angelmondragon/packfinderz-backend/pkg/bigquery"
 	"github.com/angelmondragon/packfinderz-backend/pkg/config"
 	"github.com/angelmondragon/packfinderz-backend/pkg/db"
 	"github.com/angelmondragon/packfinderz-backend/pkg/logger"
@@ -90,6 +91,17 @@ func main() {
 	defer func() {
 		if err := gcsClient.Close(); err != nil {
 			logg.Error(context.Background(), "error closing gcs client", err)
+		}
+	}()
+
+	bqClient, err := bigquery.NewClient(context.Background(), cfg.GCP, cfg.BigQuery, logg)
+	if err != nil {
+		logg.Error(context.Background(), "failed to bootstrap bigquery", err)
+		os.Exit(1)
+	}
+	defer func() {
+		if err := bqClient.Close(); err != nil {
+			logg.Error(context.Background(), "error closing bigquery client", err)
 		}
 	}()
 
@@ -242,6 +254,7 @@ func main() {
 			dbClient,
 			redisClient,
 			gcsClient,
+			bqClient,
 			sessionManager,
 			authService,
 			registerService,

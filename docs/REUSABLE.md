@@ -88,6 +88,21 @@ go-redis v9 wrapper.
 * Refresh/session helpers
 * `Ping`, `Close`
 
+### `bigquery`
+
+Reusable BigQuery bootstrap + readiness guard.
+
+**Client**
+
+* `NewClient(ctx, config.GCPConfig, config.BigQueryConfig, logger)` (credentials via JSON/file, dataset + table validation, log the initialization).
+* `InsertRows(ctx, table, rows)` uses the configured dataset and accepts `[]any` so ingestion helpers can send maps, ValueSaver structs, or `bigquery.ValuesSaver`.
+* `Query(ctx, sql, params)` returns a `*bigquery.RowIterator` so analytics helpers can run parameterized queries without touching the raw SDK.
+
+**Readiness**
+
+* `Ping(ctx)` re-checks the configured dataset + tables so `/health/ready` and `cmd/worker` dependency pings fail fast when `marketplace_events` or `ad_events` are missing.
+* Configured via `PACKFINDERZ_BIGQUERY_DATASET` (default `packfinderz`), `PACKFINDERZ_BIGQUERY_MARKETPLACE_TABLE`, and `PACKFINDERZ_BIGQUERY_AD_TABLE`.
+
 ### `pagination`
 
 Cursor-based limit/cursor helpers reused across list endpoints.

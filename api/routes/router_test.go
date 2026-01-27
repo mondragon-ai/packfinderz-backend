@@ -384,6 +384,7 @@ func newTestRouter(cfg *config.Config) http.Handler {
 		stubPinger{},          // db.Pinger
 		(*redis.Client)(nil),  // *redis.Client
 		stubPinger{},          // gcs.Pinger
+		stubPinger{},          // bigquery.Pinger
 		stubSessionManager{},  // sessionManager
 		stubAuthService{},     // auth.Service
 		stubRegisterService{}, // auth.RegisterService
@@ -500,9 +501,10 @@ func TestAgentAssignedOrdersRequiresAgentRole(t *testing.T) {
 	router := NewRouter(
 		cfg,
 		logg,
-		stubPinger{},
-		(*redis.Client)(nil),
-		stubPinger{},
+		stubPinger{},         // db.Pinger
+		(*redis.Client)(nil), // *redis.Client
+		stubPinger{},         // gcs.Pinger
+		stubPinger{},         // bigquery.Pinger
 		stubSessionManager{},
 		stubAuthService{},
 		stubRegisterService{},
@@ -558,9 +560,10 @@ func TestAgentAssignedOrderDetailRequiresAgentRole(t *testing.T) {
 	router := NewRouter(
 		cfg,
 		logg,
-		stubPinger{},
-		(*redis.Client)(nil),
-		stubPinger{},
+		stubPinger{},         // db.Pinger
+		(*redis.Client)(nil), // *redis.Client
+		stubPinger{},         // gcs.Pinger
+		stubPinger{},         // bigquery.Pinger
 		stubSessionManager{},
 		stubAuthService{},
 		stubRegisterService{},
@@ -592,9 +595,10 @@ func TestAgentPickupRequiresAgentRole(t *testing.T) {
 	router := NewRouter(
 		cfg,
 		logg,
-		stubPinger{},
-		(*redis.Client)(nil),
-		stubPinger{},
+		stubPinger{},         // db.Pinger
+		(*redis.Client)(nil), // *redis.Client
+		stubPinger{},         // gcs.Pinger
+		stubPinger{},         // bigquery.Pinger
 		stubSessionManager{},
 		stubAuthService{},
 		stubRegisterService{},
@@ -641,9 +645,10 @@ func TestAgentDeliverRequiresAgentRole(t *testing.T) {
 	router := NewRouter(
 		cfg,
 		logg,
-		stubPinger{},
-		(*redis.Client)(nil),
-		stubPinger{},
+		stubPinger{},         // db.Pinger
+		(*redis.Client)(nil), // *redis.Client
+		stubPinger{},         // gcs.Pinger
+		stubPinger{},         // bigquery.Pinger
 		stubSessionManager{},
 		stubAuthService{},
 		stubRegisterService{},

@@ -316,21 +316,19 @@
 
 ### 11A) BigQuery infra + schema
 
-* [ ] Create dataset + tables (`marketplace_events`, `ad_events`) with partition/cluster rules (this may be code + gcloud CLI --- break up accordingly)
-* [ ] `pkg/bigquery` client bootstrap + readiness checks (API/worker if needed)
+* [X] Create dataset + tables (`marketplace_events`, `ad_events`) with partition/cluster rules (this may be code + gcloud CLI --- break up accordingly)
+* [X] `pkg/bigquery` client bootstrap + readiness checks (API/worker if needed)
 
 ### 11B) Ingestion worker (outbox consumer) 
 
-MAybe i wait to add these into a seperate ticket. For now we have the outbox worker scheduler in place. These read the PSQL and emit messages. We need interna/consumers/<domain>/* to handle the actual actions like analytics, ads, notifications, charging, etc. You know best. We can create the consumer ready and inside the scheduled worker we ad case switch statements based on the event type to enure the consumer is handling messages correctly. 
-
-* [ ] Consumer: `order_created` → insert BigQuery row
-* [ ] Consumer: `cash_collected` → insert BigQuery row
-* [ ] Consumer: `order_paid` → insert BigQuery row
-* [ ] Idempotency keys per consumer (`pf:evt:processed:<consumer>:<event_id>`)
+* [X] Consumer: `order_created` → insert BigQuery row
+* [X] Consumer: `cash_collected` → insert BigQuery row
+* [X] Consumer: `order_paid` → insert BigQuery row
+* [X] Idempotency keys per consumer (`pf:evt:processed:<consumer>:<event_id>`)
 
 ### 11C) Query APIs
 
-* [ ] Vendor analytics endpoint: `GET /api/v1/vendor/analytics` (time presets + series + KPIs)
+* [X] Vendor analytics endpoint: `GET /api/v1/vendor/analytics` (time presets + series + KPIs)
 * [ ] Admin analytics endpoint: `GET /api/v1/admin/analytics` (global KPIs)
 
 ---

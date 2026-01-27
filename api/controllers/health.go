@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/angelmondragon/packfinderz-backend/api/responses"
+	"github.com/angelmondragon/packfinderz-backend/pkg/bigquery"
 	"github.com/angelmondragon/packfinderz-backend/pkg/config"
 	"github.com/angelmondragon/packfinderz-backend/pkg/db"
 	pkgerrors "github.com/angelmondragon/packfinderz-backend/pkg/errors"
@@ -20,7 +21,7 @@ func HealthLive(cfg *config.Config) http.HandlerFunc {
 	}
 }
 
-func HealthReady(cfg *config.Config, logg *logger.Logger, dbP db.Pinger, redisP redis.Pinger, gcsP gcs.Pinger) http.HandlerFunc {
+func HealthReady(cfg *config.Config, logg *logger.Logger, dbP db.Pinger, redisP redis.Pinger, gcsP gcs.Pinger, bigqueryP bigquery.Pinger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 		w.Header().Set("X-PackFinderz-Env", cfg.App.Env)
@@ -51,6 +52,14 @@ func HealthReady(cfg *config.Config, logg *logger.Logger, dbP db.Pinger, redisP 
 			}
 		} else if err := gcsP.Ping(ctx); err != nil {
 			failures["gcs"] = err.Error()
+		}
+
+		if bigqueryP == nil {
+			if cfg.App.Env != "test" {
+				failures["bigquery"] = "not configured"
+			}
+		} else if err := bigqueryP.Ping(ctx); err != nil {
+			failures["bigquery"] = err.Error()
 		}
 
 		if len(failures) > 0 {
