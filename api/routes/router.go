@@ -151,7 +151,6 @@ func NewRouter(
 
 	r.Route("/api/agent", func(r chi.Router) {
 		r.Use(middleware.Auth(cfg.JWT, sessionManager, logg))
-		r.Use(middleware.StoreContext(logg))
 		r.Use(middleware.RequireRole("agent", logg))
 		r.Use(middleware.Idempotency(redisClient, logg))
 		r.Use(middleware.RateLimit())

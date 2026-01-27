@@ -44,6 +44,7 @@
 * Atomic inventory reservation (optimistic + retry)
 * Vendor accept/reject at **order and line-item level**
 * Internal agent delivery with **cash-at-delivery**
+* Internal agents authenticate via `users.system_role='agent'`, receive JWTs with `role=agent`, and are restricted to `/api/agent/*` endpoints.
 * Append-only **ledger events**
 * Subscription-gated vendor visibility
 * Ads with **last-click attribution**

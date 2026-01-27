@@ -13,6 +13,7 @@ import (
 	"github.com/angelmondragon/packfinderz-backend/pkg/auth/session"
 	"github.com/angelmondragon/packfinderz-backend/pkg/config"
 	"github.com/angelmondragon/packfinderz-backend/pkg/db/models"
+	"github.com/angelmondragon/packfinderz-backend/pkg/enums"
 	pkgerrors "github.com/angelmondragon/packfinderz-backend/pkg/errors"
 	"github.com/angelmondragon/packfinderz-backend/pkg/security"
 	"github.com/google/uuid"
@@ -99,7 +100,9 @@ func (s *service) Login(ctx context.Context, req LoginRequest) (*LoginResponse, 
 	if err != nil {
 		return nil, pkgerrors.Wrap(pkgerrors.CodeInternal, err, "list stores")
 	}
-	if len(memberships) == 0 {
+	systemRole := normalizedSystemRole(user.SystemRole)
+
+	if len(memberships) == 0 && systemRole == "" {
 		return nil, pkgerrors.New(pkgerrors.CodeUnauthorized, invalidCredentialsMessage)
 	}
 
@@ -124,15 +127,33 @@ func (s *service) Login(ctx context.Context, req LoginRequest) (*LoginResponse, 
 		activeStoreID = &id
 	}
 
-	primary := memberships[0]
-	storeType := primary.StoreType
+	var storeTypePtr *enums.StoreType
+	var role enums.MemberRole
+	if len(memberships) > 0 {
+		primary := memberships[0]
+		role = primary.Role
+		storeTypeVal := primary.StoreType
+		storeTypePtr = &storeTypeVal
+	}
+
+	if systemRole != "" {
+		parsedRole, err := enums.ParseMemberRole(systemRole)
+		if err != nil {
+			return nil, pkgerrors.Wrap(pkgerrors.CodeInternal, err, "invalid system role")
+		}
+		role = parsedRole
+	}
+
+	if !role.IsValid() {
+		return nil, pkgerrors.New(pkgerrors.CodeUnauthorized, invalidCredentialsMessage)
+	}
 
 	accessID := session.NewAccessID()
 	tokenPayload := pkgAuth.AccessTokenPayload{
 		UserID:        user.ID,
 		ActiveStoreID: activeStoreID,
-		Role:          primary.Role,
-		StoreType:     &storeType,
+		Role:          role,
+		StoreType:     storeTypePtr,
 		JTI:           accessID,
 	}
 	accessToken, err := pkgAuth.MintAccessToken(s.jwtCfg, now, tokenPayload)
@@ -150,4 +171,15 @@ func (s *service) Login(ctx context.Context, req LoginRequest) (*LoginResponse, 
 		Stores:       stores,
 		User:         users.FromModel(user),
 	}, nil
+}
+
+func normalizedSystemRole(role *string) string {
+	if role == nil {
+		return ""
+	}
+	value := strings.TrimSpace(*role)
+	if value == "" {
+		return ""
+	}
+	return strings.ToLower(value)
 }

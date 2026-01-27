@@ -1,7 +1,7 @@
 ## Shared conventions
 - Authentication: `Authorization: Bearer <token>` is validated by `middleware.Auth`, loads `user_id`, `store_id`, and `role` into context before entering `/api` handlers (api/middleware/auth.go:23-80).
 - Store context: `middleware.StoreContext` rejects requests without a store ID once the JWT is validated (api/middleware/store.go:6-16).
-- Roles: `middleware.RequireRole("admin"/"agent")` gates `/api/admin` and `/api/agent` ping endpoints (api/middleware/roles.go:1-27).
+- Roles: `middleware.Auth` seeds the JWT `role` claim from `AccessTokenClaims.Role` (derived from the primary membership or `users.system_role`), and `middleware.RequireRole("admin"/"agent")` gates `/api/admin` and `/api/agent` ping endpoints (api/middleware/auth.go:19-80; api/middleware/roles.go:1-27).
 - Idempotency: `Idempotency-Key` is required for `POST /api/v1/auth/register`, `/api/v1/stores/me/users/invite`, `/api/v1/licenses`, and `/api/v1/media/presign`, with TTL rules defined in `api/middleware/idempotency.go:37-208`.
 - Errors: handlers emit `pkg/errors.Code*` metadata so HTTP status and retryability follow `pkg/errors/errors.go:9-100`.
 
@@ -14,7 +14,7 @@
 - `POST /api/public/validate` – validates `name`/`email` payload, echoes sanitized `name`, `email`, and optional `limit` (validators enforce length/format) (api/controllers/validate.go:11-35).
 
 ## Auth
-- `POST /api/v1/auth/login` – public, body `{"email","password"}` per `auth.LoginRequest`, returns `auth.LoginResponse` plus `X-PF-Token` (auth.Service.Login) for downstream requests (api/controllers/auth.go:13-36; internal/auth/dto.go:9-29).
+- `POST /api/v1/auth/login` – public, body `{"email","password"}` per `auth.LoginRequest`, returns `auth.LoginResponse` plus `X-PF-Token` (auth.Service.Login) for downstream requests. The service normalizes `users.system_role`, parses it as an `enums.MemberRole`, and uses that value (even when the user lacks store memberships) to set the JWT `role` claim so agents can receive `role=agent` tokens that still pass through `middleware.RequireRole` (api/controllers/auth.go:13-36; internal/auth/service.go:24-153; api/middleware/auth.go:19-80).
 - `POST /api/v1/auth/register` – public, body `RegisterRequest` (first/last name, email, password, company, store_type, address, accept_tos), reuses `auth.Service` to auto-login, returns 201 with tokens and `X-PF-Token` (api/controllers/register.go:13-41; internal/auth/register.go:21-133).
 - `POST /api/v1/auth/logout` – requires Authorization Bearer token, revokes the access session via `session.Manager.Revoke`, returns `{"status":"logged_out"}` (api/controllers/session.go:47-79).
 - `POST /api/v1/auth/refresh` – requires Authorization, body `{"refresh_token"}`, rotates session, issues new `AccessToken`/`RefreshToken` plus `X-PF-Token` header (api/controllers/session.go:81-143).
@@ -68,4 +68,4 @@
 - `POST /api/v1/admin/licenses/{licenseId}/verify` – admin-only, path parameter parsed as UUID, body `{"decision":"verified|rejected","reason"?}` drives `licenses.Service.VerifyLicense`, which enforces the license is still pending, writes the new status, emits `license_status_changed`, and returns the updated license DTO; invalid decisions or non-pending licenses are rejected with `4xx` errors (api/controllers/licenses.go:233-279; internal/licenses/service.go:382-419).
 
 ## Agent
-- `GET /api/agent/ping` – requires Authorization + role `agent`, similar to admin ping (api/routes/router.go:83-101; api/controllers/ping.go:36-43).
+- `GET /api/agent/ping` – requires Authorization + role `agent`, similar to admin ping. The `/api/agent` group omits `StoreContext` (api/routes/router.go:83-101) so system agents seeded purely by `users.system_role='agent'` can run without an `activeStoreId`, and `RequireRole("agent")` (api/middleware/roles.go:1-27) rejects non-agent tokens.
