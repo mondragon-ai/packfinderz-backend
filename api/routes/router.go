@@ -128,6 +128,8 @@ func NewRouter(
 
 			r.Route("/v1/notifications", func(r chi.Router) {
 				r.Get("/", controllers.ListNotifications(notificationsService, logg))
+				r.Post("/{notificationId}/read", controllers.MarkNotificationRead(notificationsService, logg))
+				r.Post("/read-all", controllers.MarkAllNotificationsRead(notificationsService, logg))
 			})
 
 			r.Route("/v1/cart", func(r chi.Router) {

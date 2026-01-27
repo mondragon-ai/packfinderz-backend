@@ -301,11 +301,11 @@
 
 **Goal:** In-app notifications without polling loops
 
-* [ ] Migration: `notifications` table + indexes (store_id, read_at, created_at)
-* [ ] Repo/service: list notifications (cursor pagination + unread filter)
-* [ ] Endpoint: `GET /api/v1/notifications`
-* [ ] Endpoint: `POST /api/v1/notifications/{id}/read` (idempotent)
-* [ ] Endpoint: `POST /api/v1/notifications/read-all` (idempotent)
+* [X] Migration: `notifications` table + indexes (store_id, read_at, created_at)
+* [X] Repo/service: list notifications (cursor pagination + unread filter)
+* [X] Endpoint: `GET /api/v1/notifications`
+* [X] Endpoint: `POST /api/v1/notifications/{id}/read` (idempotent)
+* [X] Endpoint: `POST /api/v1/notifications/read-all` (idempotent)
 * [ ] Cleanup scheduler: delete notifications older than 30d
 
 ---
@@ -316,10 +316,12 @@
 
 ### 11A) BigQuery infra + schema
 
-* [ ] Create dataset + tables (`marketplace_events`, `ad_events`) with partition/cluster rules
+* [ ] Create dataset + tables (`marketplace_events`, `ad_events`) with partition/cluster rules (this may be code + gcloud CLI --- break up accordingly)
 * [ ] `pkg/bigquery` client bootstrap + readiness checks (API/worker if needed)
 
-### 11B) Ingestion worker (outbox consumer)
+### 11B) Ingestion worker (outbox consumer) 
+
+MAybe i wait to add these into a seperate ticket. For now we have the outbox worker scheduler in place. These read the PSQL and emit messages. We need interna/consumers/<domain>/* to handle the actual actions like analytics, ads, notifications, charging, etc. You know best. We can create the consumer ready and inside the scheduled worker we ad case switch statements based on the event type to enure the consumer is handling messages correctly. 
 
 * [ ] Consumer: `order_created` → insert BigQuery row
 * [ ] Consumer: `cash_collected` → insert BigQuery row
