@@ -634,6 +634,11 @@ Redis-backed refresh sessions.
 * `internal/auth.Service.Login` pairs membership data with `users.system_role`, lets system agents mint tokens with `role=agent` even without store records, and keeps `/api/v1/agent/*` guarded by `RequireRole("agent")` (internal/auth/service.go).
 * `api/middleware.Auth` parses the JWT via `pkg/auth.ParseAccessToken`, verifies the refresh session via `session.AccessSessionChecker.HasSession`, and seeds context with `user_id`, `role`, plus optional `store_id`/`store_type` so `middleware.RequireRole("agent")`/`("admin")` can block unauthorized routes even when `activeStoreId` is nil (api/middleware/auth.go:23-80; api/middleware/roles.go:1-27).
 
+### `internal/analytics`
+
+* `internal/analytics.Service.VendorAnalytics` verifies vendor store context, normalizes either preset (`7d|30d|90d`) or custom `from`/`to` ranges, and returns KPIs + daily series by querying the configured `marketplace_events` table via `pkg/bigquery.Client.Query`.
+* `api/controllers/analytics/vendor` enforces vendor access, resolves the preset/custom range, delegates to `internal/analytics.Service`, and wraps the result in the canonical success envelope so `/api/v1/vendor/analytics` remains read-only and idempotency-key free.
+
 
 ## API
 
@@ -650,6 +655,7 @@ Redis-backed refresh sessions.
 * `/api/v1/agent/orders`
 * `/api/v1/agent/orders/{orderId}`
 * `/api/v1/agent/orders/queue`
+* `/api/v1/vendor/analytics`
 
 ---
 

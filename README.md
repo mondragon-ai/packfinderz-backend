@@ -262,6 +262,7 @@ Re-running the migration is safe because the statements use `CREATE EXTENSION IF
   * subscription active
 * Last-click attribution (30d)
 * BigQuery used for analytics only
+* Vendors can query KPIs/time-series via `GET /api/v1/vendor/analytics`, which runs parameterized BigQuery queries (presets 7d/30d/90d or custom `from`/`to`) against `marketplace_events` and returns the canonical success envelope scoped to `activeStoreId`.
 
 ---
 

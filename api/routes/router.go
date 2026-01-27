@@ -8,8 +8,10 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/angelmondragon/packfinderz-backend/api/controllers"
+	analysiscontrollers "github.com/angelmondragon/packfinderz-backend/api/controllers/analytics"
 	ordercontrollers "github.com/angelmondragon/packfinderz-backend/api/controllers/orders"
 	"github.com/angelmondragon/packfinderz-backend/api/middleware"
+	"github.com/angelmondragon/packfinderz-backend/internal/analytics"
 	"github.com/angelmondragon/packfinderz-backend/internal/auth"
 	"github.com/angelmondragon/packfinderz-backend/internal/cart"
 	checkoutsvc "github.com/angelmondragon/packfinderz-backend/internal/checkout"
@@ -42,6 +44,7 @@ func NewRouter(
 	gcsClient gcs.Pinger,
 	bigqueryClient bigquery.Pinger,
 	sessionManager sessionManager,
+	analyticsService analytics.Service,
 	authService auth.Service,
 	registerService auth.RegisterService,
 	switchService auth.SwitchStoreService,
@@ -106,6 +109,7 @@ func NewRouter(
 				r.Post("/products", controllers.VendorCreateProduct(productService, logg))
 				r.Patch("/products/{productId}", controllers.VendorUpdateProduct(productService, logg))
 				r.Delete("/products/{productId}", controllers.VendorDeleteProduct(productService, logg))
+				r.Get("/analytics", analysiscontrollers.VendorAnalytics(analyticsService, logg))
 				r.Post("/orders/{orderId}/decision", ordercontrollers.VendorOrderDecision(ordersSvc, logg))
 				r.Post("/orders/{orderId}/line-items/decision", ordercontrollers.VendorLineItemDecision(ordersSvc, logg))
 			})

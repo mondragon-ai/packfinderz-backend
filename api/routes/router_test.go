@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/angelmondragon/packfinderz-backend/internal/analytics"
 	"github.com/angelmondragon/packfinderz-backend/internal/auth"
 	"github.com/angelmondragon/packfinderz-backend/internal/cart"
 	"github.com/angelmondragon/packfinderz-backend/internal/checkout"
@@ -116,6 +117,26 @@ func (s stubStoreService) RemoveUser(ctx context.Context, actorID uuid.UUID, sto
 // Update implements [stores.Service].
 func (s stubStoreService) Update(ctx context.Context, userID uuid.UUID, storeID uuid.UUID, input stores.UpdateStoreInput) (*stores.StoreDTO, error) {
 	panic("unimplemented")
+}
+
+type stubAnalyticsService struct {
+	last struct {
+		vendorStoreID string
+		start         time.Time
+		end           time.Time
+	}
+	response *analytics.VendorAnalyticsResult
+	err      error
+}
+
+func (s *stubAnalyticsService) VendorAnalytics(ctx context.Context, vendorStoreID string, start, end time.Time) (*analytics.VendorAnalyticsResult, error) {
+	s.last.vendorStoreID = vendorStoreID
+	s.last.start = start
+	s.last.end = end
+	if s.response == nil {
+		s.response = &analytics.VendorAnalyticsResult{}
+	}
+	return s.response, s.err
 }
 
 type stubLicensesService struct{}
@@ -381,14 +402,15 @@ func newTestRouter(cfg *config.Config) http.Handler {
 	return NewRouter(
 		cfg,
 		logg,
-		stubPinger{},          // db.Pinger
-		(*redis.Client)(nil),  // *redis.Client
-		stubPinger{},          // gcs.Pinger
-		stubPinger{},          // bigquery.Pinger
-		stubSessionManager{},  // sessionManager
-		stubAuthService{},     // auth.Service
-		stubRegisterService{}, // auth.RegisterService
-		stubSwitchService{},   // auth.SwitchStoreService
+		stubPinger{},            // db.Pinger
+		(*redis.Client)(nil),    // *redis.Client
+		stubPinger{},            // gcs.Pinger
+		stubPinger{},            // bigquery.Pinger
+		stubSessionManager{},    // sessionManager
+		&stubAnalyticsService{}, // analytics.Service
+		stubAuthService{},       // auth.Service
+		stubRegisterService{},   // auth.RegisterService
+		stubSwitchService{},     // auth.SwitchStoreService
 		stubStoreService{},
 		stubMediaService{},
 		stubLicensesService{},
@@ -506,6 +528,7 @@ func TestAgentAssignedOrdersRequiresAgentRole(t *testing.T) {
 		stubPinger{},         // gcs.Pinger
 		stubPinger{},         // bigquery.Pinger
 		stubSessionManager{},
+		&stubAnalyticsService{},
 		stubAuthService{},
 		stubRegisterService{},
 		stubSwitchService{},
@@ -565,6 +588,7 @@ func TestAgentAssignedOrderDetailRequiresAgentRole(t *testing.T) {
 		stubPinger{},         // gcs.Pinger
 		stubPinger{},         // bigquery.Pinger
 		stubSessionManager{},
+		&stubAnalyticsService{},
 		stubAuthService{},
 		stubRegisterService{},
 		stubSwitchService{},
@@ -600,6 +624,7 @@ func TestAgentPickupRequiresAgentRole(t *testing.T) {
 		stubPinger{},         // gcs.Pinger
 		stubPinger{},         // bigquery.Pinger
 		stubSessionManager{},
+		&stubAnalyticsService{},
 		stubAuthService{},
 		stubRegisterService{},
 		stubSwitchService{},
@@ -650,6 +675,7 @@ func TestAgentDeliverRequiresAgentRole(t *testing.T) {
 		stubPinger{},         // gcs.Pinger
 		stubPinger{},         // bigquery.Pinger
 		stubSessionManager{},
+		&stubAnalyticsService{},
 		stubAuthService{},
 		stubRegisterService{},
 		stubSwitchService{},
