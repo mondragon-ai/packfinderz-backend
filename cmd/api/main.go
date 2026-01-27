@@ -8,6 +8,7 @@ import (
 	"github.com/joho/godotenv"
 
 	"github.com/angelmondragon/packfinderz-backend/api/routes"
+	"github.com/angelmondragon/packfinderz-backend/internal/analytics"
 	"github.com/angelmondragon/packfinderz-backend/internal/auth"
 	"github.com/angelmondragon/packfinderz-backend/internal/cart"
 	checkoutsvc "github.com/angelmondragon/packfinderz-backend/internal/checkout"
@@ -104,6 +105,12 @@ func main() {
 			logg.Error(context.Background(), "error closing bigquery client", err)
 		}
 	}()
+
+	analyticsService, err := analytics.NewService(bqClient, cfg.GCP.ProjectID, cfg.BigQuery.Dataset, cfg.BigQuery.MarketplaceEventsTable)
+	if err != nil {
+		logg.Error(context.Background(), "failed to create analytics service", err)
+		os.Exit(1)
+	}
 
 	usersRepo := users.NewRepository(dbClient.DB())
 	membershipsRepo := memberships.NewRepository(dbClient.DB())
@@ -256,6 +263,7 @@ func main() {
 			gcsClient,
 			bqClient,
 			sessionManager,
+			analyticsService,
 			authService,
 			registerService,
 			switchService,
