@@ -3,6 +3,7 @@ package orders
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/angelmondragon/packfinderz-backend/internal/checkout/reservation"
 	"github.com/angelmondragon/packfinderz-backend/pkg/db/models"
@@ -24,6 +25,8 @@ type stubOrdersRepo struct {
 	createOrderLineItems func(ctx context.Context, items []models.OrderLineItem) error
 	createPaymentIntent  func(ctx context.Context, intent *models.PaymentIntent) (*models.PaymentIntent, error)
 	findPaymentIntent    func(ctx context.Context, orderID uuid.UUID) (*models.PaymentIntent, error)
+	findOrderDetail      func(ctx context.Context, orderID uuid.UUID) (*OrderDetail, error)
+	updateAssignment     func(ctx context.Context, assignmentID uuid.UUID, updates map[string]any) error
 }
 
 func (s *stubOrdersRepo) WithTx(tx *gorm.DB) Repository {
@@ -119,7 +122,10 @@ func (s *stubOrdersRepo) ListAssignedOrders(ctx context.Context, agentID uuid.UU
 }
 
 func (s *stubOrdersRepo) FindOrderDetail(ctx context.Context, orderID uuid.UUID) (*OrderDetail, error) {
-	panic("not implemented")
+	if s.findOrderDetail != nil {
+		return s.findOrderDetail(ctx, orderID)
+	}
+	return nil, gorm.ErrRecordNotFound
 }
 
 func (s *stubOrdersRepo) FindVendorOrder(ctx context.Context, orderID uuid.UUID) (*models.VendorOrder, error) {
@@ -186,6 +192,13 @@ func (s *stubOrdersRepo) UpdateVendorOrder(ctx context.Context, orderID uuid.UUI
 				s.order.Status = v
 			}
 		}
+	}
+	return nil
+}
+
+func (s *stubOrdersRepo) UpdateOrderAssignment(ctx context.Context, assignmentID uuid.UUID, updates map[string]any) error {
+	if s.updateAssignment != nil {
+		return s.updateAssignment(ctx, assignmentID, updates)
 	}
 	return nil
 }
@@ -687,5 +700,150 @@ func TestLineItemDecisionRejectReleasesInventory(t *testing.T) {
 	}
 	if repo.order.FulfillmentStatus != enums.VendorOrderFulfillmentStatusPartial {
 		t.Fatalf("unexpected fulfillment status %s", repo.order.FulfillmentStatus)
+	}
+}
+
+func TestAgentPickupSuccess(t *testing.T) {
+	orderID := uuid.New()
+	agentID := uuid.New()
+	assignID := uuid.New()
+	detail := &OrderDetail{
+		Order: &VendorOrderSummary{
+			Status:         enums.VendorOrderStatusHold,
+			ShippingStatus: enums.VendorOrderShippingStatusPending,
+		},
+		ActiveAssignment: &OrderAssignmentSummary{
+			ID:          assignID,
+			AgentUserID: agentID,
+			AssignedAt:  time.Now().UTC(),
+		},
+	}
+	repo := &stubOrdersRepo{
+		order: &models.VendorOrder{ID: orderID},
+		findOrderDetail: func(ctx context.Context, id uuid.UUID) (*OrderDetail, error) {
+			if id != orderID {
+				t.Fatalf("unexpected order id %s", id)
+			}
+			return detail, nil
+		},
+		updateAssignment: func(ctx context.Context, id uuid.UUID, updates map[string]any) error {
+			if id != assignID {
+				t.Fatalf("unexpected assignment id %s", id)
+			}
+			if _, ok := updates["pickup_time"]; !ok {
+				t.Fatalf("expected pickup_time update")
+			}
+			return nil
+		},
+	}
+	outbox := &stubOutboxPublisher{}
+	inventory := &stubInventoryReleaser{}
+	reserver := &stubInventoryReserver{}
+	svc, _ := NewService(repo, stubTxRunner{}, outbox, inventory, reserver)
+	err := svc.AgentPickup(context.Background(), AgentPickupInput{OrderID: orderID, AgentUserID: agentID})
+	if err != nil {
+		t.Fatalf("expected success got %v", err)
+	}
+	if repo.orderUpdates["status"] != enums.VendorOrderStatusInTransit {
+		t.Fatalf("expected status in_transit got %v", repo.orderUpdates["status"])
+	}
+	if repo.orderUpdates["shipping_status"] != enums.VendorOrderShippingStatusInTransit {
+		t.Fatalf("expected shipping_status in_transit got %v", repo.orderUpdates["shipping_status"])
+	}
+}
+
+func TestAgentPickupForbiddenWhenNotAssigned(t *testing.T) {
+	orderID := uuid.New()
+	detail := &OrderDetail{
+		Order: &VendorOrderSummary{
+			Status: enums.VendorOrderStatusHold,
+		},
+		ActiveAssignment: &OrderAssignmentSummary{
+			ID:          uuid.New(),
+			AgentUserID: uuid.New(),
+			AssignedAt:  time.Now().UTC(),
+		},
+	}
+	repo := &stubOrdersRepo{
+		order: &models.VendorOrder{ID: orderID},
+		findOrderDetail: func(ctx context.Context, id uuid.UUID) (*OrderDetail, error) {
+			return detail, nil
+		},
+	}
+	svc, _ := NewService(repo, stubTxRunner{}, &stubOutboxPublisher{}, &stubInventoryReleaser{}, &stubInventoryReserver{})
+	err := svc.AgentPickup(context.Background(), AgentPickupInput{OrderID: orderID, AgentUserID: uuid.New()})
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if pkgerrors.As(err).Code() != pkgerrors.CodeForbidden {
+		t.Fatalf("unexpected error %v", err)
+	}
+}
+
+func TestAgentPickupStateConflict(t *testing.T) {
+	orderID := uuid.New()
+	detail := &OrderDetail{
+		Order: &VendorOrderSummary{
+			Status: enums.VendorOrderStatusAccepted,
+		},
+		ActiveAssignment: &OrderAssignmentSummary{
+			ID:          uuid.New(),
+			AgentUserID: uuid.New(),
+			AssignedAt:  time.Now().UTC(),
+		},
+	}
+	repo := &stubOrdersRepo{
+		order: &models.VendorOrder{ID: orderID},
+		findOrderDetail: func(ctx context.Context, id uuid.UUID) (*OrderDetail, error) {
+			return detail, nil
+		},
+	}
+	svc, _ := NewService(repo, stubTxRunner{}, &stubOutboxPublisher{}, &stubInventoryReleaser{}, &stubInventoryReserver{})
+	err := svc.AgentPickup(context.Background(), AgentPickupInput{OrderID: orderID, AgentUserID: detail.ActiveAssignment.AgentUserID})
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if pkgerrors.As(err).Code() != pkgerrors.CodeStateConflict {
+		t.Fatalf("unexpected error %v", err)
+	}
+}
+
+func TestAgentPickupIdempotent(t *testing.T) {
+	orderID := uuid.New()
+	agentID := uuid.New()
+	now := time.Now().UTC()
+	detail := &OrderDetail{
+		Order: &VendorOrderSummary{
+			Status:         enums.VendorOrderStatusInTransit,
+			ShippingStatus: enums.VendorOrderShippingStatusInTransit,
+		},
+		ActiveAssignment: &OrderAssignmentSummary{
+			ID:          uuid.New(),
+			AgentUserID: agentID,
+			AssignedAt:  now,
+			PickupTime:  &now,
+		},
+	}
+	updatesCalled := false
+	repo := &stubOrdersRepo{
+		order: &models.VendorOrder{ID: orderID},
+		findOrderDetail: func(ctx context.Context, id uuid.UUID) (*OrderDetail, error) {
+			return detail, nil
+		},
+		updateAssignment: func(ctx context.Context, assignmentID uuid.UUID, updates map[string]any) error {
+			updatesCalled = true
+			return nil
+		},
+	}
+	svc, _ := NewService(repo, stubTxRunner{}, &stubOutboxPublisher{}, &stubInventoryReleaser{}, &stubInventoryReserver{})
+	err := svc.AgentPickup(context.Background(), AgentPickupInput{OrderID: orderID, AgentUserID: agentID})
+	if err != nil {
+		t.Fatalf("expected success got %v", err)
+	}
+	if updatesCalled {
+		t.Fatalf("expected assignment update skipped")
+	}
+	if repo.orderUpdates != nil {
+		t.Fatalf("expected no order updates, got %v", repo.orderUpdates)
 	}
 }

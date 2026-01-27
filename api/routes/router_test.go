@@ -191,6 +191,10 @@ func (s *stubOrdersRepo) UpdateVendorOrder(ctx context.Context, orderID uuid.UUI
 	panic("unimplemented")
 }
 
+func (s *stubOrdersRepo) UpdateOrderAssignment(ctx context.Context, assignmentID uuid.UUID, updates map[string]any) error {
+	panic("unimplemented")
+}
+
 func (s *stubOrdersRepo) WithTx(tx *gorm.DB) ordersrepo.Repository {
 	return s
 }
@@ -271,7 +275,8 @@ func (s *stubOrdersRepo) UpdateVendorOrderStatus(ctx context.Context, orderID uu
 }
 
 type stubOrdersService struct {
-	decision func(ctx context.Context, input ordersrepo.VendorDecisionInput) error
+	decision    func(ctx context.Context, input ordersrepo.VendorDecisionInput) error
+	agentPickup func(ctx context.Context, input ordersrepo.AgentPickupInput) error
 }
 
 // CancelOrder implements [orders.Service].
@@ -297,6 +302,13 @@ func (s stubOrdersService) LineItemDecision(ctx context.Context, input ordersrep
 func (s stubOrdersService) VendorDecision(ctx context.Context, input ordersrepo.VendorDecisionInput) error {
 	if s.decision != nil {
 		return s.decision(ctx, input)
+	}
+	return nil
+}
+
+func (s stubOrdersService) AgentPickup(ctx context.Context, input ordersrepo.AgentPickupInput) error {
+	if s.agentPickup != nil {
+		return s.agentPickup(ctx, input)
 	}
 	return nil
 }
@@ -523,6 +535,54 @@ func TestAgentAssignedOrderDetailRequiresAgentRole(t *testing.T) {
 	router.ServeHTTP(resp, req)
 	if resp.Code != http.StatusOK {
 		t.Fatalf("expected 200 for assigned order detail got %d", resp.Code)
+	}
+}
+
+func TestAgentPickupRequiresAgentRole(t *testing.T) {
+	cfg := testConfig()
+	repo := &stubOrdersRepo{}
+	logg := logger.New(logger.Options{ServiceName: "test", Level: logger.ParseLevel("debug"), Output: io.Discard})
+	router := NewRouter(
+		cfg,
+		logg,
+		stubPinger{},
+		(*redis.Client)(nil),
+		stubPinger{},
+		stubSessionManager{},
+		stubAuthService{},
+		stubRegisterService{},
+		stubSwitchService{},
+		stubStoreService{},
+		stubMediaService{},
+		stubLicensesService{},
+		stubProductService{},
+		stubCheckoutService{},
+		stubCartService{},
+		repo,
+		stubOrdersService{},
+	)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/agent/orders/"+uuid.NewString()+"/pickup", nil)
+	resp := httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+	if resp.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401 when missing token got %d", resp.Code)
+	}
+
+	nonAgent := httptest.NewRequest(http.MethodPost, "/api/v1/agent/orders/"+uuid.NewString()+"/pickup", nil)
+	nonAgent.Header.Set("Authorization", "Bearer "+buildToken(t, cfg, enums.MemberRoleViewer))
+	resp = httptest.NewRecorder()
+	router.ServeHTTP(resp, nonAgent)
+	if resp.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 for non-agent pickup got %d", resp.Code)
+	}
+
+	agent := httptest.NewRequest(http.MethodPost, "/api/v1/agent/orders/"+uuid.NewString()+"/pickup", nil)
+	agent.Header.Set("Authorization", "Bearer "+buildToken(t, cfg, enums.MemberRoleAgent))
+	resp = httptest.NewRecorder()
+	router.ServeHTTP(resp, agent)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("expected 200 for agent pickup got %d", resp.Code)
 	}
 }
 func TestPublicValidateRejectsBadJSON(t *testing.T) {

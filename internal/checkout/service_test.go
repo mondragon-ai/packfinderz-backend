@@ -218,6 +218,10 @@ func (s *stubOrdersRepo) UpdateVendorOrder(ctx context.Context, orderID uuid.UUI
 	panic("unimplemented")
 }
 
+func (s *stubOrdersRepo) UpdateOrderAssignment(ctx context.Context, assignmentID uuid.UUID, updates map[string]any) error {
+	panic("unimplemented")
+}
+
 func (s *stubOrdersRepo) WithTx(tx *gorm.DB) orders.Repository { return s }
 func (s *stubOrdersRepo) CreateCheckoutGroup(ctx context.Context, group *models.CheckoutGroup) (*models.CheckoutGroup, error) {
 	group.ID = uuid.New()
