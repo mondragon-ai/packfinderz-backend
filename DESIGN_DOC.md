@@ -312,6 +312,7 @@ Outbox pattern: YES:
   * `cmd/outbox-publisher/service.go` loops over `Repository.FetchUnpublishedForPublish`, publishes via `pubsub.DomainPublisher`, marks `published_at`/attempts, and backs off with jitter when idle/errors so the worker publishes batches safely (cmd/outbox-publisher/service.go:66-235).
   * Consumers use the registry built via `pkg/outbox/registry.DecoderRegistry` so payload parsing stays deterministic and versioned (pkg/outbox/registry.go:1-32).
 * `license_status_changed` events flow through the domain topic so `internal/notifications/consumer` (bootstrapped in `cmd/worker/main` with `pubsub.NotificationSubscription()` and `pkg/outbox/idempotency.Manager`) can decode the envelope, check `pf:evt:processed:<consumer>:<event_id>`, and write `NotificationTypeCompliance` rows for pending uploads (admin link) and verified/rejected statuses (store link + rejection reason) while logging the `licenseId/storeId` context for audits (internal/notifications/consumer.go:18-186; pkg/outbox/idempotency/idempotency.go:1-66).
+* `internal/consumers/analytics.Consumer` watches `order_created`, `cash_collected`, and `order_paid` outbox envelopes, applies the `pf:evt:processed:analytics:<event_id>` guard, and inserts rows into `marketplace_events` via `pkg/bigquery` so analytics ingestion stays deduplicated.
 
 ---
 
