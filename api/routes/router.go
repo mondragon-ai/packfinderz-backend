@@ -146,6 +146,7 @@ func NewRouter(
 				r.Get("/queue", controllers.AgentOrderQueue(ordersRepo, logg))
 				r.Get("/{orderId}", controllers.AgentAssignedOrderDetail(ordersRepo, logg))
 				r.Post("/{orderId}/pickup", controllers.AgentPickupOrder(ordersSvc, logg))
+				r.Post("/{orderId}/deliver", controllers.AgentDeliverOrder(ordersSvc, logg))
 			})
 		})
 	})

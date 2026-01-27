@@ -147,3 +147,44 @@ func AgentPickupOrder(svc internalorders.Service, logg *logger.Logger) http.Hand
 		responses.WriteSuccess(w, map[string]string{"status": "in_transit"})
 	}
 }
+
+func AgentDeliverOrder(svc internalorders.Service, logg *logger.Logger) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if svc == nil {
+			responses.WriteError(r.Context(), logg, w, pkgerrors.New(pkgerrors.CodeInternal, "orders service unavailable"))
+			return
+		}
+
+		userID := middleware.UserIDFromContext(r.Context())
+		if userID == "" {
+			responses.WriteError(r.Context(), logg, w, pkgerrors.New(pkgerrors.CodeUnauthorized, "user context missing"))
+			return
+		}
+		agentID, err := uuid.Parse(userID)
+		if err != nil {
+			responses.WriteError(r.Context(), logg, w, pkgerrors.Wrap(pkgerrors.CodeValidation, err, "invalid user id"))
+			return
+		}
+
+		rawOrderID := strings.TrimSpace(chi.URLParam(r, "orderId"))
+		if rawOrderID == "" {
+			responses.WriteError(r.Context(), logg, w, pkgerrors.New(pkgerrors.CodeValidation, "order id is required"))
+			return
+		}
+		orderID, err := uuid.Parse(rawOrderID)
+		if err != nil {
+			responses.WriteError(r.Context(), logg, w, pkgerrors.Wrap(pkgerrors.CodeValidation, err, "invalid order id"))
+			return
+		}
+
+		if err := svc.AgentDeliver(r.Context(), internalorders.AgentDeliverInput{
+			OrderID:     orderID,
+			AgentUserID: agentID,
+		}); err != nil {
+			responses.WriteError(r.Context(), logg, w, err)
+			return
+		}
+
+		responses.WriteSuccess(w, map[string]string{"status": "delivered"})
+	}
+}

@@ -847,3 +847,146 @@ func TestAgentPickupIdempotent(t *testing.T) {
 		t.Fatalf("expected no order updates, got %v", repo.orderUpdates)
 	}
 }
+
+func TestAgentDeliverSuccess(t *testing.T) {
+	orderID := uuid.New()
+	agentID := uuid.New()
+	assignID := uuid.New()
+	detail := &OrderDetail{
+		Order: &VendorOrderSummary{
+			Status:         enums.VendorOrderStatusInTransit,
+			ShippingStatus: enums.VendorOrderShippingStatusInTransit,
+		},
+		ActiveAssignment: &OrderAssignmentSummary{
+			ID:          assignID,
+			AgentUserID: agentID,
+			AssignedAt:  time.Now().UTC(),
+		},
+	}
+	assignmentUpdated := false
+	repo := &stubOrdersRepo{
+		order: &models.VendorOrder{ID: orderID},
+		findOrderDetail: func(ctx context.Context, id uuid.UUID) (*OrderDetail, error) {
+			return detail, nil
+		},
+		updateAssignment: func(ctx context.Context, id uuid.UUID, updates map[string]any) error {
+			assignmentUpdated = true
+			if id != assignID {
+				t.Fatalf("unexpected assignment id %s", id)
+			}
+			if _, ok := updates["delivery_time"]; !ok {
+				t.Fatalf("expected delivery_time update")
+			}
+			return nil
+		},
+	}
+	svc, _ := NewService(repo, stubTxRunner{}, &stubOutboxPublisher{}, &stubInventoryReleaser{}, &stubInventoryReserver{})
+	err := svc.AgentDeliver(context.Background(), AgentDeliverInput{OrderID: orderID, AgentUserID: agentID})
+	if err != nil {
+		t.Fatalf("expected success got %v", err)
+	}
+	if repo.orderUpdates["status"] != enums.VendorOrderStatusDelivered {
+		t.Fatalf("expected status delivered got %v", repo.orderUpdates["status"])
+	}
+	if repo.orderUpdates["shipping_status"] != enums.VendorOrderShippingStatusDelivered {
+		t.Fatalf("expected shipping_status delivered got %v", repo.orderUpdates["shipping_status"])
+	}
+	if _, ok := repo.orderUpdates["delivered_at"]; !ok {
+		t.Fatal("expected delivered_at timestamp")
+	}
+	if !assignmentUpdated {
+		t.Fatal("expected assignment update")
+	}
+}
+
+func TestAgentDeliverForbiddenWhenNotAssigned(t *testing.T) {
+	orderID := uuid.New()
+	detail := &OrderDetail{
+		Order: &VendorOrderSummary{
+			Status: enums.VendorOrderStatusInTransit,
+		},
+		ActiveAssignment: &OrderAssignmentSummary{
+			ID:          uuid.New(),
+			AgentUserID: uuid.New(),
+			AssignedAt:  time.Now().UTC(),
+		},
+	}
+	repo := &stubOrdersRepo{
+		order: &models.VendorOrder{ID: orderID},
+		findOrderDetail: func(ctx context.Context, id uuid.UUID) (*OrderDetail, error) {
+			return detail, nil
+		},
+	}
+	svc, _ := NewService(repo, stubTxRunner{}, &stubOutboxPublisher{}, &stubInventoryReleaser{}, &stubInventoryReserver{})
+	err := svc.AgentDeliver(context.Background(), AgentDeliverInput{OrderID: orderID, AgentUserID: uuid.New()})
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if pkgerrors.As(err).Code() != pkgerrors.CodeForbidden {
+		t.Fatalf("unexpected error %v", err)
+	}
+}
+
+func TestAgentDeliverStateConflict(t *testing.T) {
+	orderID := uuid.New()
+	detail := &OrderDetail{
+		Order: &VendorOrderSummary{
+			Status: enums.VendorOrderStatusHold,
+		},
+		ActiveAssignment: &OrderAssignmentSummary{
+			ID:          uuid.New(),
+			AgentUserID: uuid.New(),
+			AssignedAt:  time.Now().UTC(),
+		},
+	}
+	repo := &stubOrdersRepo{
+		order: &models.VendorOrder{ID: orderID},
+		findOrderDetail: func(ctx context.Context, id uuid.UUID) (*OrderDetail, error) {
+			return detail, nil
+		},
+	}
+	svc, _ := NewService(repo, stubTxRunner{}, &stubOutboxPublisher{}, &stubInventoryReleaser{}, &stubInventoryReserver{})
+	err := svc.AgentDeliver(context.Background(), AgentDeliverInput{OrderID: orderID, AgentUserID: detail.ActiveAssignment.AgentUserID})
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if pkgerrors.As(err).Code() != pkgerrors.CodeStateConflict {
+		t.Fatalf("unexpected error %v", err)
+	}
+}
+
+func TestAgentDeliverIdempotent(t *testing.T) {
+	orderID := uuid.New()
+	agentID := uuid.New()
+	now := time.Now().UTC()
+	detail := &OrderDetail{
+		Order: &VendorOrderSummary{
+			Status:         enums.VendorOrderStatusDelivered,
+			ShippingStatus: enums.VendorOrderShippingStatusDelivered,
+			DeliveredAt:    &now,
+		},
+		ActiveAssignment: &OrderAssignmentSummary{
+			ID:           uuid.New(),
+			AgentUserID:  agentID,
+			AssignedAt:   now,
+			DeliveryTime: &now,
+		},
+	}
+	repo := &stubOrdersRepo{
+		order: &models.VendorOrder{ID: orderID},
+		findOrderDetail: func(ctx context.Context, id uuid.UUID) (*OrderDetail, error) {
+			return detail, nil
+		},
+		updateAssignment: func(ctx context.Context, assignmentID uuid.UUID, updates map[string]any) error {
+			return nil
+		},
+	}
+	svc, _ := NewService(repo, stubTxRunner{}, &stubOutboxPublisher{}, &stubInventoryReleaser{}, &stubInventoryReserver{})
+	err := svc.AgentDeliver(context.Background(), AgentDeliverInput{OrderID: orderID, AgentUserID: agentID})
+	if err != nil {
+		t.Fatalf("expected success got %v", err)
+	}
+	if repo.orderUpdates != nil {
+		t.Fatalf("expected no order updates, got %v", repo.orderUpdates)
+	}
+}

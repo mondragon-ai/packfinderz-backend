@@ -44,7 +44,7 @@
 * Atomic inventory reservation (optimistic + retry)
 * Vendor accept/reject at **order and line-item level**
 * Internal agent delivery with **cash-at-delivery**
-* Internal agents authenticate via `users.system_role='agent'`, receive JWTs with `role=agent`, and use `/api/v1/agent/orders` (list/detail) plus `/api/v1/agent/orders/queue` to manage assigned and unassigned pickups.
+* Internal agents authenticate via `users.system_role='agent'`, receive JWTs with `role=agent`, and use `/api/v1/agent/orders` (list/detail) plus `/api/v1/agent/orders/queue` to manage assigned and unassigned pickups. They confirm handoffs (pickup/deliver) through `POST /api/v1/agent/orders/{orderId}/pickup` and `/api/v1/agent/orders/{orderId}/deliver`, which transition the vendor order through `in_transit` → `delivered` while recording the agent’s timestamps.
 * Agents confirm pickups with `POST /api/v1/agent/orders/{orderId}/pickup`, which marks the order as `in_transit` while recording the assignment’s `pickup_time` and rejecting invalid states.
 * Append-only **ledger events**
 * Subscription-gated vendor visibility

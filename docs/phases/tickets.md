@@ -258,20 +258,20 @@
 
 ### 8A) Agent identity + gating
 
-* [ ] Ensure `users.system_role=agent` path works end-to-end (seed agent user + login + middleware)
-* [ ] Add `/api/v1/agent/*` route group controllers/tests
+* [X] Ensure `users.system_role=agent` path works end-to-end (seed agent user + login + middleware)
+* [X] Add `/api/v1/agent/*` route group controllers/tests
 
 ### 8B) Assignment + queues
 
-* [ ] Migration: `order_assignments` (if not already in DB)
-* [ ] Repo/service: create assignment on “ready for dispatch” (random auto-assign MVP)
-* [ ] Endpoint: `GET /api/v1/agent/orders/queue` (unassigned hold orders)
-* [ ] Endpoint: `GET /api/v1/agent/orders` (my active assignments)
+* [X] Migration: `order_assignments` (if not already in DB)
+* [X] Repo/service: create assignment on “ready for dispatch” (random auto-assign MVP)
+* [X] Endpoint: `GET /api/v1/agent/orders/queue` (unassigned hold orders)
+* [X] Endpoint: `GET /api/v1/agent/orders` (my active assignments)
 
 ### 8C) State transitions
 
-* [ ] Endpoint: `POST /api/v1/agent/orders/{orderId}/pickup` → status `in_transit`
-* [ ] Endpoint: `POST /api/v1/agent/orders/{orderId}/deliver` → status `delivered`
+* [X] Endpoint: `POST /api/v1/agent/orders/{orderId}/pickup` → status `in_transit`
+* [X] Endpoint: `POST /api/v1/agent/orders/{orderId}/deliver` → status `delivered`
 * [ ] Endpoint: `POST /api/v1/agent/orders/{orderId}/cash-collected`
 
   * [ ] Create `ledger_events(cash_collected)`
