@@ -20,6 +20,7 @@ import (
 	products "github.com/angelmondragon/packfinderz-backend/internal/products"
 	"github.com/angelmondragon/packfinderz-backend/internal/stores"
 	"github.com/angelmondragon/packfinderz-backend/pkg/auth/session"
+	"github.com/angelmondragon/packfinderz-backend/pkg/bigquery"
 	"github.com/angelmondragon/packfinderz-backend/pkg/config"
 	"github.com/angelmondragon/packfinderz-backend/pkg/db"
 	"github.com/angelmondragon/packfinderz-backend/pkg/logger"
@@ -39,6 +40,7 @@ func NewRouter(
 	dbP db.Pinger,
 	redisClient *redis.Client,
 	gcsClient gcs.Pinger,
+	bigqueryClient bigquery.Pinger,
 	sessionManager sessionManager,
 	authService auth.Service,
 	registerService auth.RegisterService,
@@ -75,7 +77,7 @@ func NewRouter(
 
 	r.Route("/health", func(r chi.Router) {
 		r.Get("/live", controllers.HealthLive(cfg))
-		r.Get("/ready", controllers.HealthReady(cfg, logg, dbP, redisClient, gcsClient))
+		r.Get("/ready", controllers.HealthReady(cfg, logg, dbP, redisClient, gcsClient, bigqueryClient))
 	})
 
 	r.Route("/api/public", func(r chi.Router) {

@@ -292,6 +292,11 @@ Re-running the migration is safe because the statements use `CREATE EXTENSION IF
 * Marketplace events
 * Ad telemetry
 * KPI rollups
+* Environment vars:
+  * `PACKFINDERZ_BIGQUERY_DATASET` (default `packfinderz`)
+  * `PACKFINDERZ_BIGQUERY_MARKETPLACE_TABLE` (default `marketplace_events`)
+  * `PACKFINDERZ_BIGQUERY_AD_TABLE` (default `ad_events`)
+* API and worker startup use `pkg/bigquery.NewClient` to verify the configured dataset and tables before processing so `/health/ready` and the worker dependency ping surface missing BigQuery infrastructure immediately.
 
 ---
 

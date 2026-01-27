@@ -25,6 +25,7 @@ type Config struct {
 	GCS           GCSConfig
 	Media         MediaConfig
 	PubSub        PubSubConfig
+	BigQuery      BigQueryConfig
 	Stripe        StripeConfig
 	Sendgrid      SendgridConfig
 	Outbox        OutboxConfig
@@ -173,6 +174,12 @@ type PubSubConfig struct {
 	BillingSubscription      string `envconfig:"PACKFINDERZ_PUBSUB_BILLING_SUBSCRIPTION" required:"true"`
 	NotificationTopic        string `envconfig:"PACKFINDERZ_PUBSUB_NOTIFICATION_TOPIC" default:"pf-notification-events"`
 	NotificationSubscription string `envconfig:"PACKFINDERZ_PUBSUB_NOTIFICATION_SUBSCRIPTION" required:"true"`
+}
+
+type BigQueryConfig struct {
+	Dataset                string `envconfig:"PACKFINDERZ_BIGQUERY_DATASET" default:"packfinderz"`
+	MarketplaceEventsTable string `envconfig:"PACKFINDERZ_BIGQUERY_MARKETPLACE_TABLE" default:"marketplace_events"`
+	AdEventsTable          string `envconfig:"PACKFINDERZ_BIGQUERY_AD_TABLE" default:"ad_events"`
 }
 
 type OutboxConfig struct {

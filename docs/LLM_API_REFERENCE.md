@@ -7,7 +7,7 @@
 
 ## Health
 - `GET /health/live` – unauthenticated liveliness check, returns `{"status":"live"}` and `X-PackFinderz-Env` (api/controllers/health.go:16-21).
-- `GET /health/ready` – dependency probe; pings Postgres/Redis/GCS, surfaces failures via `pkg/errors.CodeDependency` details (api/controllers/health.go:23-70).
+- `GET /health/ready` – dependency probe; pings Postgres/Redis/GCS/BigQuery (dataset + `marketplace_events`/`ad_events` tables) so `pkg/errors.CodeDependency` details surface missing analytics infra before work starts (api/controllers/health.go:23-70; pkg/bigquery/client.go:27-184).
 
 ## Public
 - `GET /api/public/ping` – no auth, responds `{"scope":"public","status":"ok"}` (api/controllers/ping.go:10-24).

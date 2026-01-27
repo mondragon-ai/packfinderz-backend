@@ -9,6 +9,7 @@ import (
 	"github.com/angelmondragon/packfinderz-backend/internal/media/consumer"
 	"github.com/angelmondragon/packfinderz-backend/internal/notifications"
 	schedulers "github.com/angelmondragon/packfinderz-backend/internal/schedulers/licenses"
+	"github.com/angelmondragon/packfinderz-backend/pkg/bigquery"
 	"github.com/angelmondragon/packfinderz-backend/pkg/config"
 	"github.com/angelmondragon/packfinderz-backend/pkg/db"
 	"github.com/angelmondragon/packfinderz-backend/pkg/logger"
@@ -27,6 +28,7 @@ type ServiceParams struct {
 	LicenseScheduler     *schedulers.Service
 	NotificationConsumer *notifications.Consumer
 	GCS                  *gcs.Client
+	BigQuery             *bigquery.Client
 }
 
 type Service struct {
@@ -38,6 +40,7 @@ type Service struct {
 	consumer             *consumer.Consumer
 	notificationConsumer *notifications.Consumer
 	gcs                  *gcs.Client
+	bigquery             *bigquery.Client
 }
 
 func NewService(params ServiceParams) (*Service, error) {
@@ -65,6 +68,9 @@ func NewService(params ServiceParams) (*Service, error) {
 	if params.GCS == nil {
 		return nil, errors.New("gcs client is required")
 	}
+	if params.BigQuery == nil {
+		return nil, errors.New("bigquery client is required")
+	}
 
 	return &Service{
 		cfg:                  params.Config,
@@ -75,6 +81,7 @@ func NewService(params ServiceParams) (*Service, error) {
 		consumer:             params.MediaConsumer,
 		notificationConsumer: params.NotificationConsumer,
 		gcs:                  params.GCS,
+		bigquery:             params.BigQuery,
 	}, nil
 }
 
@@ -89,6 +96,9 @@ func (s *Service) ensureReadiness(ctx context.Context) error {
 		return err
 	}
 	if err := pingDependency(ctx, s.logg, "gcs", s.gcs.Ping); err != nil {
+		return err
+	}
+	if err := pingDependency(ctx, s.logg, "bigquery", s.bigquery.Ping); err != nil {
 		return err
 	}
 	s.logg.Info(ctx, "all worker dependencies are ready")

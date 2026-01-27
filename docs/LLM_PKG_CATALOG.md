@@ -22,6 +22,12 @@
 ## pkg/storage/gcs
 - `Client` loads credentials (JSON/service account/metadata), keeps a cached token source, pings the bucket, and exposes `SignedURL`, `SignedReadURL`, `DeleteObject`, and bucket helpers that embed service-account signing logic (pkg/storage/gcs/client.go:35-506).
 
+## pkg/bigquery
+- `NewClient(ctx, config.GCPConfig, config.BigQueryConfig, logger)` bootstraps the shared BigQuery client, loads credentials from JSON or `GOOGLE_APPLICATION_CREDENTIALS`, and requires `PACKFINDERZ_BIGQUERY_DATASET` (default `packfinderz`) plus the `PACKFINDERZ_BIGQUERY_MARKETPLACE_TABLE`/`PACKFINDERZ_BIGQUERY_AD_TABLE` names before continuing (`pkg/bigquery/client.go`:27-108; `pkg/config/config.go`:179-187).
+- `Ping(ctx)` reruns the dataset + table metadata check so `/health/ready` and worker readiness fail fast when `marketplace_events`/`ad_events` are missing, avoiding ingestion before the analytics tables exist (`pkg/bigquery/client.go`:111-147).
+- `InsertRows(ctx, table, rows []any)` streams row payloads (maps, `ValueSaver`s, or `bigquery.ValuesSaver`) into the configured dataset table so outbox/analytics consumers can emit events without rehydrating the SDK (`pkg/bigquery/client.go`:149-168).
+- `Query(ctx, sql, params []bigquery.QueryParameter)` returns a `*bigquery.RowIterator` for analytics helpers that need parameterized reads while keeping configuration encapsulated (`pkg/bigquery/client.go`:170-184).
+
 ## pkg/outbox
 - `ActorRef` + `PayloadEnvelope` describe stored envelopes that wrap `DomainEvent.Data` with version, event ID, actor, and timestamps before persistence (pkg/outbox/envelope.go:9-21).
 - `DomainEvent` carries aggregate/type/actor/data metadata and `Service.Emit(ctx, tx, event)` marshals it into `OutboxEvent` rows while logging the queued event (pkg/outbox/service.go:1-98).

@@ -52,4 +52,5 @@
 ## Dependencies & tooling
 - `pkg/pubsub.NewClient` verifies every configured subscription exists before returning publishers/subscribers used by the worker and publisher (pkg/pubsub/client.go:18-202).
 - `pkg/storage/gcs.NewClient` fetches credentials (JSON/service account/metadata), pings the bucket, and exposes `SignedURL`, `SignedReadURL`, and `DeleteObject` used by media/license flows (pkg/storage/gcs/client.go:35-506).
+- `pkg/bigquery.NewClient` boots the shared analytics client, enforces `PACKFINDERZ_BIGQUERY_DATASET` plus `PACKFINDERZ_BIGQUERY_MARKETPLACE_TABLE`/`PACKFINDERZ_BIGQUERY_AD_TABLE`, and exposes `Ping` so `/health/ready` and the worker readiness probes fail fast when `marketplace_events` or `ad_events` are missing before ingestion begins (pkg/bigquery/client.go:27-184; pkg/config/config.go:179-187).
 - `pkg/migrate.MaybeRunDev` auto-runs Goose migrations when `PACKFINDERZ_AUTO_MIGRATE` plus dev env are enabled, keeping service schema in sync (pkg/migrate/autorun.go:12-34).
