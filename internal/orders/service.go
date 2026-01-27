@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/angelmondragon/packfinderz-backend/internal/checkout/reservation"
+	"github.com/angelmondragon/packfinderz-backend/internal/ledger"
 	"github.com/angelmondragon/packfinderz-backend/pkg/db/models"
 	"github.com/angelmondragon/packfinderz-backend/pkg/enums"
 	pkgerrors "github.com/angelmondragon/packfinderz-backend/pkg/errors"
@@ -40,6 +41,7 @@ type Service interface {
 	RetryOrder(ctx context.Context, input BuyerRetryInput) (*BuyerRetryResult, error)
 	AgentPickup(ctx context.Context, input AgentPickupInput) error
 	AgentDeliver(ctx context.Context, input AgentDeliverInput) error
+	ConfirmPayout(ctx context.Context, input ConfirmPayoutInput) error
 }
 
 type service struct {
@@ -48,6 +50,7 @@ type service struct {
 	outbox    outboxPublisher
 	inventory InventoryReleaser
 	reserver  inventoryReserver
+	ledger    ledger.Service
 }
 
 // VendorOrderDecision represents the high-level decision a vendor can take.
@@ -126,6 +129,12 @@ type AgentDeliverInput struct {
 	AgentUserID uuid.UUID
 }
 
+// ConfirmPayoutInput carries the metadata needed to append a vendor payout ledger event.
+type ConfirmPayoutInput struct {
+	OrderID     uuid.UUID
+	ActorUserID uuid.UUID
+}
+
 // OrderDecisionEvent is emitted when a vendor decides an order.
 type OrderDecisionEvent struct {
 	OrderID         uuid.UUID               `json:"order_id"`
@@ -175,7 +184,7 @@ type OrderRetriedEvent struct {
 }
 
 // NewService builds a vendor order service with the required dependencies.
-func NewService(repo Repository, tx txRunner, outbox outboxPublisher, inventory InventoryReleaser, reserver inventoryReserver) (Service, error) {
+func NewService(repo Repository, tx txRunner, outbox outboxPublisher, inventory InventoryReleaser, reserver inventoryReserver, ledgerSvc ledger.Service) (Service, error) {
 	if repo == nil {
 		return nil, fmt.Errorf("orders repository required")
 	}
@@ -191,12 +200,16 @@ func NewService(repo Repository, tx txRunner, outbox outboxPublisher, inventory 
 	if reserver == nil {
 		return nil, fmt.Errorf("inventory reserver required")
 	}
+	if ledgerSvc == nil {
+		return nil, fmt.Errorf("ledger service required")
+	}
 	return &service{
 		repo:      repo,
 		tx:        tx,
 		outbox:    outbox,
 		inventory: inventory,
 		reserver:  reserver,
+		ledger:    ledgerSvc,
 	}, nil
 }
 
@@ -829,6 +842,45 @@ func releaseLineItem(item models.OrderLineItem, releaser InventoryReleaser, ctx 
 		return pkgerrors.Wrap(pkgerrors.CodeDependency, err, "release inventory")
 	}
 	return nil
+}
+
+func (s *service) ConfirmPayout(ctx context.Context, input ConfirmPayoutInput) error {
+	if input.OrderID == uuid.Nil {
+		return pkgerrors.New(pkgerrors.CodeValidation, "order id required")
+	}
+	if input.ActorUserID == uuid.Nil {
+		return pkgerrors.New(pkgerrors.CodeUnauthorized, "actor identity missing")
+	}
+
+	return s.tx.WithTx(ctx, func(tx *gorm.DB) error {
+		repo := s.repo.WithTx(tx)
+		detail, err := repo.FindOrderDetail(ctx, input.OrderID)
+		if err != nil {
+			if err == gorm.ErrRecordNotFound {
+				return pkgerrors.New(pkgerrors.CodeNotFound, "order not found")
+			}
+			return pkgerrors.Wrap(pkgerrors.CodeDependency, err, "load order detail")
+		}
+		if detail == nil || detail.PaymentIntent == nil {
+			return pkgerrors.New(pkgerrors.CodeConflict, "payment intent missing")
+		}
+		if detail.BuyerStore.ID == uuid.Nil || detail.VendorStore.ID == uuid.Nil {
+			return pkgerrors.New(pkgerrors.CodeDependency, "order stores missing")
+		}
+
+		ledgerInput := ledger.RecordLedgerEventInput{
+			OrderID:       input.OrderID,
+			BuyerStoreID:  detail.BuyerStore.ID,
+			VendorStoreID: detail.VendorStore.ID,
+			ActorUserID:   input.ActorUserID,
+			Type:          enums.LedgerEventTypeVendorPayout,
+			AmountCents:   detail.PaymentIntent.AmountCents,
+		}
+		if _, err := s.ledger.RecordEvent(ctx, ledgerInput); err != nil {
+			return pkgerrors.Wrap(pkgerrors.CodeDependency, err, "append ledger event")
+		}
+		return nil
+	})
 }
 
 func isCancelableStatus(status enums.VendorOrderStatus) bool {

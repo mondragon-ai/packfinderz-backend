@@ -3162,6 +3162,7 @@ Indexes
 FKs
 
 * `order_id -> vendor_orders(id) on delete restrict`
+* Ledger rows are produced via `internal/ledger/service.RecordEvent`, so payout confirmation flows can reuse the helper while the database only ever sees inserts.
 
 ---
 
