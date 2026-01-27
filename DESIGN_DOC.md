@@ -2384,10 +2384,10 @@ Headers:
 
 * `POST /api/v1/agent/orders/{orderId}/deliver`
 
-  * Sets order `delivered`.
+  * Agent role + `Idempotency` guard; `internal/orders.Service.AgentDeliver` loads `FindOrderDetail`, enforces the active assignment belongs to the caller, restricts the transition to `in_transit|delivered` (rejects others with `pkg.errors.CodeStateConflict`/HTTP `422`), promotes `vendor_orders.status`/`vendor_orders.shipping_status` to `delivered`, stamps `vendor_orders.delivered_at`, and sets `order_assignments.delivery_time` (only once) so replayed requests no-op after the timestamps exist (api/controllers/agent_assigned_orders.go:151-202; internal/orders/service.go:724-778; pkg/migrate/migrations/20260129000000_add_order_assignment_meta.sql).
   * **Idempotent:** YES (required)
   * Success: `200`
-  * Errors: `401, 403, 404, 409`
+  * Errors: `401, 403, 404, 422`
 
 **Confirm cash collected**
 

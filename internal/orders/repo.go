@@ -678,6 +678,7 @@ func buildVendorOrderSummary(order *models.VendorOrder) *VendorOrderSummary {
 		PaymentStatus:     paymentStatus(order.PaymentIntent),
 		FulfillmentStatus: order.FulfillmentStatus,
 		ShippingStatus:    order.ShippingStatus,
+		DeliveredAt:       order.DeliveredAt,
 	}
 }
 

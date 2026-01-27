@@ -163,6 +163,10 @@ func (s *stubControllerOrdersService) AgentPickup(ctx context.Context, input int
 	return nil
 }
 
+func (s *stubControllerOrdersService) AgentDeliver(ctx context.Context, input internalorders.AgentDeliverInput) error {
+	return nil
+}
+
 func TestListBuyerPerspective(t *testing.T) {
 	storeID := uuid.New()
 	expected := &internalorders.BuyerOrderList{

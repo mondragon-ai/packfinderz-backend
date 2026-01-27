@@ -69,6 +69,7 @@ type VendorOrderSummary struct {
 	FulfillmentStatus enums.VendorOrderFulfillmentStatus `json:"fulfillment_status"`
 	ShippingStatus    enums.VendorOrderShippingStatus    `json:"shipping_status"`
 	Buyer             OrderStoreSummary                  `json:"buyer"`
+	DeliveredAt       *time.Time                         `json:"delivered_at,omitempty"`
 }
 
 // AgentOrderQueueSummary describes the orders exposed to agents on the dispatch queue.

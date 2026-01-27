@@ -39,6 +39,7 @@ type Service interface {
 	NudgeVendor(ctx context.Context, input BuyerNudgeInput) error
 	RetryOrder(ctx context.Context, input BuyerRetryInput) (*BuyerRetryResult, error)
 	AgentPickup(ctx context.Context, input AgentPickupInput) error
+	AgentDeliver(ctx context.Context, input AgentDeliverInput) error
 }
 
 type service struct {
@@ -116,6 +117,11 @@ type BuyerRetryResult struct {
 
 // AgentPickupInput captures the agent and order for pickup confirmation.
 type AgentPickupInput struct {
+	OrderID     uuid.UUID
+	AgentUserID uuid.UUID
+}
+
+type AgentDeliverInput struct {
 	OrderID     uuid.UUID
 	AgentUserID uuid.UUID
 }
@@ -704,6 +710,66 @@ func (s *service) AgentPickup(ctx context.Context, input AgentPickupInput) error
 		assignUpdates := map[string]any{}
 		if detail.ActiveAssignment.PickupTime == nil {
 			assignUpdates["pickup_time"] = now
+		}
+		if len(assignUpdates) > 0 {
+			if err := repo.UpdateOrderAssignment(ctx, detail.ActiveAssignment.ID, assignUpdates); err != nil {
+				return pkgerrors.Wrap(pkgerrors.CodeDependency, err, "update order assignment")
+			}
+		}
+
+		return nil
+	})
+}
+
+func (s *service) AgentDeliver(ctx context.Context, input AgentDeliverInput) error {
+	if input.OrderID == uuid.Nil {
+		return pkgerrors.New(pkgerrors.CodeValidation, "order id required")
+	}
+	if input.AgentUserID == uuid.Nil {
+		return pkgerrors.New(pkgerrors.CodeUnauthorized, "agent identity missing")
+	}
+
+	return s.tx.WithTx(ctx, func(tx *gorm.DB) error {
+		repo := s.repo.WithTx(tx)
+		detail, err := repo.FindOrderDetail(ctx, input.OrderID)
+		if err != nil {
+			if err == gorm.ErrRecordNotFound {
+				return pkgerrors.New(pkgerrors.CodeNotFound, "order not found")
+			}
+			return pkgerrors.Wrap(pkgerrors.CodeDependency, err, "load order detail")
+		}
+		if detail == nil || detail.ActiveAssignment == nil || detail.Order == nil {
+			return pkgerrors.New(pkgerrors.CodeForbidden, "order not assigned to agent")
+		}
+		if detail.ActiveAssignment.AgentUserID != input.AgentUserID {
+			return pkgerrors.New(pkgerrors.CodeForbidden, "order not assigned to agent")
+		}
+
+		status := detail.Order.Status
+		if status != enums.VendorOrderStatusInTransit && status != enums.VendorOrderStatusDelivered {
+			return pkgerrors.New(pkgerrors.CodeStateConflict, "order cannot be delivered in current state")
+		}
+
+		now := time.Now().UTC()
+		orderUpdates := map[string]any{}
+		if status != enums.VendorOrderStatusDelivered {
+			orderUpdates["status"] = enums.VendorOrderStatusDelivered
+		}
+		if detail.Order.ShippingStatus != enums.VendorOrderShippingStatusDelivered {
+			orderUpdates["shipping_status"] = enums.VendorOrderShippingStatusDelivered
+		}
+		if detail.Order.DeliveredAt == nil {
+			orderUpdates["delivered_at"] = now
+		}
+		if len(orderUpdates) > 0 {
+			if err := repo.UpdateVendorOrder(ctx, input.OrderID, orderUpdates); err != nil {
+				return pkgerrors.Wrap(pkgerrors.CodeDependency, err, "update order status")
+			}
+		}
+
+		assignUpdates := map[string]any{}
+		if detail.ActiveAssignment.DeliveryTime == nil {
+			assignUpdates["delivery_time"] = now
 		}
 		if len(assignUpdates) > 0 {
 			if err := repo.UpdateOrderAssignment(ctx, detail.ActiveAssignment.ID, assignUpdates); err != nil {
