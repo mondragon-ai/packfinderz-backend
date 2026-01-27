@@ -3147,10 +3147,12 @@ Fields
 
 * `id uuid pk`
 * `order_id uuid not null`
-* `type text not null` (`cash_collected|vendor_payout|adjustment|refund` future)
+* `type ENUM not null` (`cash_collected|vendor_payout|adjustment|refund` future)
 * `amount_cents int not null`
 * `metadata jsonb null` (**JUSTIFIED JSONB:** small freeform details per event)
 * `created_at timestamptz not null default now()`
+
+**Migration:** defined by `pkg/migrate/migrations/20260130000000_create_ledger_events_table.sql`, which creates the `ledger_event_type_enum` enum, `ledger_events` table, `(order_id, created_at)` and `(type, created_at)` indexes, and ties `order_id` → `vendor_orders(id)` with `ON DELETE RESTRICT`; the down script drops the table and enum to keep rollbacks clean.
 
 Indexes
 
