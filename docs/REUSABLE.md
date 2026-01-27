@@ -489,6 +489,8 @@ All enums implement:
 ### `internal/notifications`
 * `Repository.Create` inserts compliance notifications so the worker can persist alerts after consuming events (internal/notifications/repo.go:1-23).
 * `Consumer` subscribes to `license_status_changed` events, honors `pkg/outbox/idempotency.Manager` TTLs, and writes `NotificationTypeCompliance` rows with the right admin/store link plus rejection details when present, keeping the event tied to the originating store (internal/notifications/consumer.go:18-186; cmd/worker/main.go:83-116).
+* `Repository` now exposes `List`, `MarkRead`, and `MarkAllRead` while staying store-scoped; `List` orders by `(created_at, id) DESC`, honors `UnreadOnly`, and enforces the `pagination.NormalizeLimit` default (25) / max (100) plus `LimitWithBuffer` to surface the next cursor so paginated queries never exceed the caps (internal/notifications/repo.go:34-80; pkg/pagination/pagination.go:12-40).
+* `Service` validates `StoreID`, decodes/encodes cursors with `pagination.ParseCursor`/`EncodeCursor`, and surfaces the `List`, `MarkRead`, and `MarkAllRead` helpers API controllers will consume while keeping store validation and pagination limits centralized (internal/notifications/service.go:1-87; pkg/pagination/pagination.go:12-40).
 
 ### `internal/cart`
 * `Repository` secures `CartRecord` + `CartItem` persistence by scoping every operation to the owning `buyer_store_id`.
