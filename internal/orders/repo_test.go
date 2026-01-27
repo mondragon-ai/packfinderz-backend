@@ -201,6 +201,67 @@ func createLineItem(t *testing.T, db *gorm.DB, order *models.VendorOrder, qty in
 	require.NoError(t, db.Create(item).Error)
 }
 
+func TestRepository_ListPayoutOrders(t *testing.T) {
+	db := setupOrdersTestDB(t)
+	repo := NewRepository(db)
+
+	buyer := newStore(t, db, "Buyer", enums.StoreTypeBuyer)
+	vendor := newStore(t, db, "Vendor", enums.StoreTypeVendor)
+	now := time.Now().UTC()
+
+	delivered := now.Add(-time.Minute)
+	order := createOrder(t, db, buyer, vendor, 1, now, 1, enums.PaymentStatusSettled, enums.VendorOrderStatusDelivered, enums.VendorOrderFulfillmentStatusFulfilled, enums.VendorOrderShippingStatusDelivered)
+	order.DeliveredAt = &delivered
+	require.NoError(t, db.Save(order).Error)
+
+	createOrder(t, db, buyer, vendor, 2, now.Add(time.Hour), 1, enums.PaymentStatusSettled, enums.VendorOrderStatusCreatedPending, enums.VendorOrderFulfillmentStatusPending, enums.VendorOrderShippingStatusPending)
+
+	list, err := repo.ListPayoutOrders(context.Background(), pagination.Params{Limit: 10})
+	require.NoError(t, err)
+	require.Len(t, list.Orders, 1)
+	assert.Equal(t, order.ID, list.Orders[0].OrderID)
+	assert.Equal(t, vendor.ID, list.Orders[0].VendorStoreID)
+	assert.Equal(t, delivered, list.Orders[0].DeliveredAt)
+	assert.Equal(t, order.TotalCents, list.Orders[0].AmountCents)
+	assert.Empty(t, list.NextCursor)
+}
+
+func TestRepository_ListPayoutOrders_Pagination(t *testing.T) {
+	db := setupOrdersTestDB(t)
+	repo := NewRepository(db)
+
+	buyer := newStore(t, db, "Buyer", enums.StoreTypeBuyer)
+	vendor := newStore(t, db, "Vendor", enums.StoreTypeVendor)
+	now := time.Now().UTC()
+
+	firstDelivered := now.Add(-2 * time.Hour)
+	secondDelivered := now.Add(-time.Hour)
+
+	first := createOrder(t, db, buyer, vendor, 1, now, 1, enums.PaymentStatusSettled, enums.VendorOrderStatusDelivered, enums.VendorOrderFulfillmentStatusFulfilled, enums.VendorOrderShippingStatusDelivered)
+	first.DeliveredAt = &firstDelivered
+	require.NoError(t, db.Save(first).Error)
+
+	second := createOrder(t, db, buyer, vendor, 2, now, 1, enums.PaymentStatusSettled, enums.VendorOrderStatusDelivered, enums.VendorOrderFulfillmentStatusFulfilled, enums.VendorOrderShippingStatusDelivered)
+	second.DeliveredAt = &secondDelivered
+	require.NoError(t, db.Save(second).Error)
+
+	list, err := repo.ListPayoutOrders(context.Background(), pagination.Params{Limit: 1})
+	require.NoError(t, err)
+	require.Len(t, list.Orders, 1)
+	require.NotEmpty(t, list.NextCursor)
+	if !list.Orders[0].DeliveredAt.Equal(firstDelivered) {
+		t.Fatalf("expected first page to include earliest delivered order got %v", list.Orders[0].DeliveredAt)
+	}
+
+	next, err := repo.ListPayoutOrders(context.Background(), pagination.Params{Limit: 1, Cursor: list.NextCursor})
+	require.NoError(t, err)
+	require.Len(t, next.Orders, 1)
+	if !list.Orders[0].DeliveredAt.Before(next.Orders[0].DeliveredAt) {
+		t.Fatalf("expected delivered order timestamps to ascend got %v -> %v", list.Orders[0].DeliveredAt, next.Orders[0].DeliveredAt)
+	}
+	assert.Empty(t, next.NextCursor)
+}
+
 func assignOrder(t *testing.T, db *gorm.DB, orderID, agentID, assignedBy uuid.UUID) {
 	t.Helper()
 

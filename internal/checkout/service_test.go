@@ -305,6 +305,10 @@ func (s *stubOrdersRepo) ListVendorOrders(ctx context.Context, vendorStoreID uui
 	return &orders.VendorOrderList{}, nil
 }
 
+func (s *stubOrdersRepo) ListPayoutOrders(ctx context.Context, params pagination.Params) (*orders.PayoutOrderList, error) {
+	return &orders.PayoutOrderList{}, nil
+}
+
 func (s *stubOrdersRepo) FindOrderDetail(ctx context.Context, orderID uuid.UUID) (*orders.OrderDetail, error) {
 	return &orders.OrderDetail{}, nil
 }

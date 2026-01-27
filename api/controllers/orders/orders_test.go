@@ -22,6 +22,7 @@ import (
 type stubControllerOrdersRepo struct {
 	listBuyer  func(ctx context.Context, buyerStoreID uuid.UUID, params pagination.Params, filters internalorders.BuyerOrderFilters) (*internalorders.BuyerOrderList, error)
 	listVendor func(ctx context.Context, vendorStoreID uuid.UUID, params pagination.Params, filters internalorders.VendorOrderFilters) (*internalorders.VendorOrderList, error)
+	payoutList func(ctx context.Context, params pagination.Params) (*internalorders.PayoutOrderList, error)
 	detail     func(ctx context.Context, orderID uuid.UUID) (*internalorders.OrderDetail, error)
 }
 
@@ -99,6 +100,13 @@ func (s *stubControllerOrdersRepo) ListVendorOrders(ctx context.Context, vendorS
 		return s.listVendor(ctx, vendorStoreID, params, filters)
 	}
 	return nil, nil
+}
+
+func (s *stubControllerOrdersRepo) ListPayoutOrders(ctx context.Context, params pagination.Params) (*internalorders.PayoutOrderList, error) {
+	if s.payoutList != nil {
+		return s.payoutList(ctx, params)
+	}
+	return &internalorders.PayoutOrderList{}, nil
 }
 
 func (s *stubControllerOrdersRepo) FindOrderDetail(ctx context.Context, orderID uuid.UUID) (*internalorders.OrderDetail, error) {

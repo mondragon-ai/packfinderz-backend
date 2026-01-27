@@ -2412,11 +2412,17 @@ Headers:
 
 **Orders pending payout**
 
-* `GET /api/v1/admin/orders/payout-queue`
+* `GET /api/v1/admin/orders/payouts`
 
-  * Returns delivered+settled orders awaiting payout confirmation.
+  * Returns delivered + settled + unpaid `vendor_orders` (joined to `payment_intents`) ordered by `delivered_at ASC` so oldest deliveries surface first, paginated via `limit` + `cursor` (internal/orders/repo.go:561-620; api/controllers/admin_orders.go:17-46). Response includes `orderId`, `vendorStoreId`, `amountCents`, and `deliveredAt`.
   * Success: `200`
   * Errors: `401, 403`
+
+* `GET /api/v1/admin/orders/payouts/{orderId}`
+
+  * Loads `internal/orders.Repository.FindOrderDetail`, enforces `status=delivered` + `payment_intents.status=settled`, and rejects other states with `pkg.errors.CodeStateConflict` so admins can inspect line items, assignments, and payment details before approving payout (api/controllers/admin_orders.go:57-100; internal/orders/repo.go:553-596).
+  * Success: `200`
+  * Errors: `401, 403, 404, 422`
 
 **Confirm payout**
 

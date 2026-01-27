@@ -451,6 +451,7 @@ All enums implement:
 * `internal/ledger/service.RecordEvent` is the canonical helper and is already wired into payout confirmation flows so that only inserts ever touch `ledger_events`.
 * `internal/ledger.Repository` only exposes `Create`/`ListByOrderID`, `internal/ledger.Service.RecordEvent` validates the enum, and no UPDATE/DELETE paths exist so the ledger remains append-only by construction (internal/ledger/service.go:22-64; internal/ledger/repo.go:12-38).
 * `internal/orders.Service.ConfirmPayout` calls `ledger.Service.RecordEvent` inside the payout transaction so each vendor payout appends a ledger row without supporting updates/deletes (internal/orders/service.go:847-889; internal/ledger/service.go:22-64).
+* `AdminPayoutOrders`/`AdminPayoutOrderDetail` surface the delivered + settled + unpaid queue so admins can review ready payouts before confirming (api/controllers/admin_orders.go:17-100; internal/orders/repo.go:561-620).
 
 ### `NotificationType`
 
