@@ -91,56 +91,59 @@ func NewRouter(
 
 	r.Route("/api", func(r chi.Router) {
 		r.Use(middleware.Auth(cfg.JWT, sessionManager, logg))
-		r.Use(middleware.StoreContext(logg))
 		r.Use(middleware.Idempotency(redisClient, logg))
 		r.Use(middleware.RateLimit())
-		r.Get("/ping", controllers.PrivatePing())
 
-		r.Route("/v1/vendor", func(r chi.Router) {
-			r.Post("/products", controllers.VendorCreateProduct(productService, logg))
-			r.Patch("/products/{productId}", controllers.VendorUpdateProduct(productService, logg))
-			r.Delete("/products/{productId}", controllers.VendorDeleteProduct(productService, logg))
-			r.Post("/orders/{orderId}/decision", ordercontrollers.VendorOrderDecision(ordersSvc, logg))
-			r.Post("/orders/{orderId}/line-items/decision", ordercontrollers.VendorLineItemDecision(ordersSvc, logg))
-		})
+		r.Group(func(r chi.Router) {
+			r.Use(middleware.StoreContext(logg))
+			r.Get("/ping", controllers.PrivatePing())
 
-		r.Route("/v1/stores", func(r chi.Router) {
-			r.Get("/me", controllers.StoreProfile(storeService, logg))
-			r.Put("/me", controllers.StoreUpdate(storeService, logg))
-			r.Get("/me/users", controllers.StoreUsers(storeService, logg))
-			r.Post("/me/users/invite", controllers.StoreInvite(storeService, logg))
-			r.Delete("/me/users/{userId}", controllers.StoreRemoveUser(storeService, logg))
-		})
-		r.Route("/v1/media", func(r chi.Router) {
-			r.Get("/", controllers.MediaList(mediaService, logg))
-			r.Post("/presign", controllers.MediaPresign(mediaService, logg))
-			r.Delete("/{mediaId}", controllers.MediaDelete(mediaService, logg))
-		})
-		r.Route("/v1/licenses", func(r chi.Router) {
-			r.Get("/", controllers.LicenseList(licenseService, logg))
-			r.Post("/", controllers.LicenseCreate(licenseService, logg))
-			r.Delete("/{licenseId}", controllers.LicenseDelete(licenseService, logg))
-		})
+			r.Route("/v1/vendor", func(r chi.Router) {
+				r.Post("/products", controllers.VendorCreateProduct(productService, logg))
+				r.Patch("/products/{productId}", controllers.VendorUpdateProduct(productService, logg))
+				r.Delete("/products/{productId}", controllers.VendorDeleteProduct(productService, logg))
+				r.Post("/orders/{orderId}/decision", ordercontrollers.VendorOrderDecision(ordersSvc, logg))
+				r.Post("/orders/{orderId}/line-items/decision", ordercontrollers.VendorLineItemDecision(ordersSvc, logg))
+			})
 
-		r.Route("/v1/cart", func(r chi.Router) {
-			r.Get("/", controllers.CartFetch(cartService, logg))
-			r.Put("/", controllers.CartUpsert(cartService, logg))
+			r.Route("/v1/stores", func(r chi.Router) {
+				r.Get("/me", controllers.StoreProfile(storeService, logg))
+				r.Put("/me", controllers.StoreUpdate(storeService, logg))
+				r.Get("/me/users", controllers.StoreUsers(storeService, logg))
+				r.Post("/me/users/invite", controllers.StoreInvite(storeService, logg))
+				r.Delete("/me/users/{userId}", controllers.StoreRemoveUser(storeService, logg))
+			})
+			r.Route("/v1/media", func(r chi.Router) {
+				r.Get("/", controllers.MediaList(mediaService, logg))
+				r.Post("/presign", controllers.MediaPresign(mediaService, logg))
+				r.Delete("/{mediaId}", controllers.MediaDelete(mediaService, logg))
+			})
+			r.Route("/v1/licenses", func(r chi.Router) {
+				r.Get("/", controllers.LicenseList(licenseService, logg))
+				r.Post("/", controllers.LicenseCreate(licenseService, logg))
+				r.Delete("/{licenseId}", controllers.LicenseDelete(licenseService, logg))
+			})
+
+			r.Route("/v1/cart", func(r chi.Router) {
+				r.Get("/", controllers.CartFetch(cartService, logg))
+				r.Put("/", controllers.CartUpsert(cartService, logg))
+			})
+			r.Route("/v1/orders", func(r chi.Router) {
+				r.Get("/", ordercontrollers.List(ordersRepo, logg))
+				r.Get("/{orderId}", ordercontrollers.Detail(ordersRepo, logg))
+				r.Post("/{orderId}/cancel", ordercontrollers.CancelOrder(ordersSvc, logg))
+				r.Post("/{orderId}/nudge", ordercontrollers.NudgeVendor(ordersSvc, logg))
+				r.Post("/{orderId}/retry", ordercontrollers.RetryOrder(ordersSvc, logg))
+			})
+			r.Post("/v1/checkout", controllers.Checkout(checkoutService, storeService, logg))
 		})
-		r.Route("/v1/orders", func(r chi.Router) {
-			r.Get("/", ordercontrollers.List(ordersRepo, logg))
-			r.Get("/{orderId}", ordercontrollers.Detail(ordersRepo, logg))
-			r.Post("/{orderId}/cancel", ordercontrollers.CancelOrder(ordersSvc, logg))
-			r.Post("/{orderId}/nudge", ordercontrollers.NudgeVendor(ordersSvc, logg))
-			r.Post("/{orderId}/retry", ordercontrollers.RetryOrder(ordersSvc, logg))
-		})
-		r.Post("/v1/checkout", controllers.Checkout(checkoutService, storeService, logg))
 
 		r.Route("/v1/agent", func(r chi.Router) {
-			r.Use(middleware.Auth(cfg.JWT, sessionManager, logg))
 			r.Use(middleware.RequireRole("agent", logg))
-			r.Use(middleware.Idempotency(redisClient, logg))
-			r.Use(middleware.RateLimit())
 			r.Get("/ping", controllers.AgentPing())
+			r.Route("/orders", func(r chi.Router) {
+				r.Get("/queue", controllers.AgentOrderQueue(ordersRepo, logg))
+			})
 		})
 	})
 
@@ -154,6 +157,14 @@ func NewRouter(
 		r.Route("/v1/licenses", func(r chi.Router) {
 			r.Post("/{licenseId}/verify", controllers.AdminLicenseVerify(licenseService, logg))
 		})
+	})
+
+	r.Route("/api/agent", func(r chi.Router) {
+		r.Use(middleware.Auth(cfg.JWT, sessionManager, logg))
+		r.Use(middleware.RequireRole("agent", logg))
+		r.Use(middleware.Idempotency(redisClient, logg))
+		r.Use(middleware.RateLimit())
+		r.Get("/ping", controllers.AgentPing())
 	})
 
 	return r

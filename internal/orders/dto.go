@@ -70,6 +70,27 @@ type VendorOrderSummary struct {
 	Buyer             OrderStoreSummary                  `json:"buyer"`
 }
 
+// AgentOrderQueueSummary describes the orders exposed to agents on the dispatch queue.
+type AgentOrderQueueSummary struct {
+	OrderID           uuid.UUID                          `json:"order_id"`
+	OrderNumber       int64                              `json:"order_number"`
+	CreatedAt         time.Time                          `json:"created_at"`
+	TotalCents        int                                `json:"total_cents"`
+	DiscountCents     int                                `json:"discount_cents"`
+	TotalItems        int                                `json:"total_items"`
+	PaymentStatus     enums.PaymentStatus                `json:"payment_status"`
+	FulfillmentStatus enums.VendorOrderFulfillmentStatus `json:"fulfillment_status"`
+	ShippingStatus    enums.VendorOrderShippingStatus    `json:"shipping_status"`
+	Buyer             OrderStoreSummary                  `json:"buyer"`
+	Vendor            OrderStoreSummary                  `json:"vendor"`
+}
+
+// AgentOrderQueueList wraps paginated dispatch queue rows.
+type AgentOrderQueueList struct {
+	Orders     []AgentOrderQueueSummary `json:"orders"`
+	NextCursor string                   `json:"next_cursor,omitempty"`
+}
+
 // VendorOrderList wraps paginated vendor orders plus the next cursor.
 type VendorOrderList struct {
 	Orders     []VendorOrderSummary `json:"orders"`

@@ -609,6 +609,7 @@ Redis-backed refresh sessions.
 * `/api/*` (auth)
 * `/api/admin/*`
 * `/api/v1/agent/*`
+* `/api/v1/agent/orders/queue`
 
 ---
 
