@@ -2428,10 +2428,10 @@ Headers:
 
 * `POST /api/v1/admin/orders/{orderId}/confirm-payout`
 
-  * Creates `LedgerEvent(vendor_payout)` + sets payment `paid` + order `closed`.
-  * **Idempotent:** YES (required)
+  * Requires an `Idempotency-Key`. Validates the order is `delivered` and the attached payment intent is `settled` before, inside a single transaction, updating `payment_intents.status=paid` + `vendor_paid_at`, closing `vendor_orders.status=closed`, recording a `ledger_events.type=vendor_payout` row, and emitting the `order_paid` outbox event so downstream consumers see the final payout.
+  * **Idempotent:** YES (repeat calls short-circuit once the order is closed)
   * Success: `200`
-  * Errors: `401, 403, 404, 409`
+  * Errors: `401, 403, 404, 422, 409`
 
 **Override agent assignment**
 

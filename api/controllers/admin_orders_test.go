@@ -14,6 +14,8 @@ import (
 	internalorders "github.com/angelmondragon/packfinderz-backend/internal/orders"
 	"github.com/angelmondragon/packfinderz-backend/pkg/enums"
 	"github.com/angelmondragon/packfinderz-backend/pkg/pagination"
+
+	"github.com/angelmondragon/packfinderz-backend/api/middleware"
 )
 
 type stubPayoutRepo struct {
@@ -33,6 +35,18 @@ func (s stubPayoutRepo) FindOrderDetail(ctx context.Context, orderID uuid.UUID) 
 		return s.detailFn(ctx, orderID)
 	}
 	return nil, nil
+}
+
+type stubConfirmService struct {
+	input  internalorders.ConfirmPayoutInput
+	err    error
+	called bool
+}
+
+func (s *stubConfirmService) ConfirmPayout(ctx context.Context, input internalorders.ConfirmPayoutInput) error {
+	s.called = true
+	s.input = input
+	return s.err
 }
 
 func TestAdminPayoutOrdersList(t *testing.T) {
@@ -165,8 +179,83 @@ func TestAdminPayoutOrderDetail_PaymentNotSettled(t *testing.T) {
 	}
 }
 
+func TestAdminConfirmPayoutSuccess(t *testing.T) {
+	orderID := uuid.New()
+	userID := uuid.New()
+	storeID := uuid.New()
+	service := &stubConfirmService{}
+
+	handler := AdminConfirmPayout(service, nil)
+	req := withOrderID(httptest.NewRequest(http.MethodPost, "/", nil), orderID)
+	req = req.WithContext(middleware.WithUserID(req.Context(), userID.String()))
+	req = req.WithContext(middleware.WithStoreID(req.Context(), storeID.String()))
+
+	resp := httptest.NewRecorder()
+	handler.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusOK {
+		t.Fatalf("expected 200 got %d", resp.Code)
+	}
+	if !service.called {
+		t.Fatal("expected service called")
+	}
+	if service.input.OrderID != orderID {
+		t.Fatalf("unexpected order id %v", service.input.OrderID)
+	}
+	if service.input.ActorUserID != userID {
+		t.Fatalf("unexpected user id %v", service.input.ActorUserID)
+	}
+	if service.input.ActorStoreID != storeID {
+		t.Fatalf("unexpected store id %v", service.input.ActorStoreID)
+	}
+}
+
+func TestAdminConfirmPayoutInvalidOrderID(t *testing.T) {
+	service := &stubConfirmService{}
+
+	handler := AdminConfirmPayout(service, nil)
+	req := withOrderParamValue(httptest.NewRequest(http.MethodPost, "/", nil), "invalid-uuid")
+	req = req.WithContext(middleware.WithUserID(req.Context(), uuid.New().String()))
+	req = req.WithContext(middleware.WithStoreID(req.Context(), uuid.New().String()))
+
+	resp := httptest.NewRecorder()
+	handler.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 got %d", resp.Code)
+	}
+	if service.called {
+		t.Fatal("expected service not called")
+	}
+}
+
+func TestAdminConfirmPayoutUnauthorized(t *testing.T) {
+	orderID := uuid.New()
+	service := &stubConfirmService{}
+
+	handler := AdminConfirmPayout(service, nil)
+	req := withOrderID(httptest.NewRequest(http.MethodPost, "/", nil), orderID)
+	req = req.WithContext(middleware.WithStoreID(req.Context(), uuid.New().String()))
+
+	resp := httptest.NewRecorder()
+	handler.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401 got %d", resp.Code)
+	}
+	if service.called {
+		t.Fatal("expected service not called")
+	}
+}
+
 func withOrderID(req *http.Request, orderID uuid.UUID) *http.Request {
 	ctx := chi.NewRouteContext()
 	ctx.URLParams.Add("orderId", orderID.String())
+	return req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, ctx))
+}
+
+func withOrderParamValue(req *http.Request, value string) *http.Request {
+	ctx := chi.NewRouteContext()
+	ctx.URLParams.Add("orderId", value)
 	return req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, ctx))
 }

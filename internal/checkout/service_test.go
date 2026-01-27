@@ -218,6 +218,10 @@ func (s *stubOrdersRepo) UpdateVendorOrder(ctx context.Context, orderID uuid.UUI
 	panic("unimplemented")
 }
 
+func (s *stubOrdersRepo) UpdatePaymentIntent(ctx context.Context, orderID uuid.UUID, updates map[string]any) error {
+	panic("unimplemented")
+}
+
 func (s *stubOrdersRepo) UpdateOrderAssignment(ctx context.Context, assignmentID uuid.UUID, updates map[string]any) error {
 	panic("unimplemented")
 }

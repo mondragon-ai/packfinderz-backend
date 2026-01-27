@@ -131,8 +131,10 @@ type AgentDeliverInput struct {
 
 // ConfirmPayoutInput carries the metadata needed to append a vendor payout ledger event.
 type ConfirmPayoutInput struct {
-	OrderID     uuid.UUID
-	ActorUserID uuid.UUID
+	OrderID      uuid.UUID
+	ActorUserID  uuid.UUID
+	ActorStoreID uuid.UUID
+	ActorRole    string
 }
 
 // OrderDecisionEvent is emitted when a vendor decides an order.
@@ -181,6 +183,16 @@ type OrderRetriedEvent struct {
 	CheckoutGroupID uuid.UUID `json:"checkout_group_id"`
 	BuyerStoreID    uuid.UUID `json:"buyer_store_id"`
 	VendorStoreID   uuid.UUID `json:"vendor_store_id"`
+}
+
+// OrderPaidEvent is emitted when admin confirms payout and the vendor has been paid.
+type OrderPaidEvent struct {
+	OrderID         uuid.UUID `json:"order_id"`
+	BuyerStoreID    uuid.UUID `json:"buyer_store_id"`
+	VendorStoreID   uuid.UUID `json:"vendor_store_id"`
+	PaymentIntentID uuid.UUID `json:"payment_intent_id"`
+	AmountCents     int       `json:"amount_cents"`
+	VendorPaidAt    time.Time `json:"vendor_paid_at"`
 }
 
 // NewService builds a vendor order service with the required dependencies.
@@ -861,11 +873,39 @@ func (s *service) ConfirmPayout(ctx context.Context, input ConfirmPayoutInput) e
 			}
 			return pkgerrors.Wrap(pkgerrors.CodeDependency, err, "load order detail")
 		}
-		if detail == nil || detail.PaymentIntent == nil {
+		if detail == nil || detail.Order == nil {
+			return pkgerrors.New(pkgerrors.CodeDependency, "order missing")
+		}
+		if detail.PaymentIntent == nil {
 			return pkgerrors.New(pkgerrors.CodeConflict, "payment intent missing")
 		}
 		if detail.BuyerStore.ID == uuid.Nil || detail.VendorStore.ID == uuid.Nil {
 			return pkgerrors.New(pkgerrors.CodeDependency, "order stores missing")
+		}
+
+		if detail.Order.Status == enums.VendorOrderStatusClosed {
+			return nil
+		}
+		if detail.Order.Status != enums.VendorOrderStatusDelivered {
+			return pkgerrors.New(pkgerrors.CodeStateConflict, "order not eligible for payout")
+		}
+		if detail.PaymentIntent.Status != string(enums.PaymentStatusSettled) {
+			return pkgerrors.New(pkgerrors.CodeStateConflict, "payment not settled")
+		}
+
+		now := time.Now().UTC()
+		paymentUpdates := map[string]any{
+			"status":         enums.PaymentStatusPaid,
+			"vendor_paid_at": now,
+		}
+		if err := repo.UpdatePaymentIntent(ctx, input.OrderID, paymentUpdates); err != nil {
+			return pkgerrors.Wrap(pkgerrors.CodeDependency, err, "update payment intent")
+		}
+
+		if err := repo.UpdateVendorOrder(ctx, input.OrderID, map[string]any{
+			"status": enums.VendorOrderStatusClosed,
+		}); err != nil {
+			return pkgerrors.Wrap(pkgerrors.CodeDependency, err, "close order")
 		}
 
 		ledgerInput := ledger.RecordLedgerEventInput{
@@ -879,6 +919,26 @@ func (s *service) ConfirmPayout(ctx context.Context, input ConfirmPayoutInput) e
 		if _, err := s.ledger.RecordEvent(ctx, ledgerInput); err != nil {
 			return pkgerrors.Wrap(pkgerrors.CodeDependency, err, "append ledger event")
 		}
+
+		event := outbox.DomainEvent{
+			EventType:     enums.EventOrderPaid,
+			AggregateType: enums.AggregateVendorOrder,
+			AggregateID:   input.OrderID,
+			Version:       1,
+			Actor:         buildActor(input.ActorUserID, input.ActorStoreID, input.ActorRole),
+			Data: OrderPaidEvent{
+				OrderID:         input.OrderID,
+				BuyerStoreID:    detail.BuyerStore.ID,
+				VendorStoreID:   detail.VendorStore.ID,
+				PaymentIntentID: detail.PaymentIntent.ID,
+				AmountCents:     detail.PaymentIntent.AmountCents,
+				VendorPaidAt:    now,
+			},
+		}
+		if err := s.outbox.Emit(ctx, tx, event); err != nil {
+			return pkgerrors.Wrap(pkgerrors.CodeDependency, err, "emit payout event")
+		}
+
 		return nil
 	})
 }

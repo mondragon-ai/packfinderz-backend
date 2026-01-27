@@ -16,6 +16,7 @@ import (
 	"github.com/angelmondragon/packfinderz-backend/pkg/logger"
 	"github.com/angelmondragon/packfinderz-backend/pkg/pagination"
 
+	"github.com/angelmondragon/packfinderz-backend/api/middleware"
 	"github.com/angelmondragon/packfinderz-backend/api/responses"
 	"github.com/angelmondragon/packfinderz-backend/api/validators"
 )
@@ -23,6 +24,10 @@ import (
 type payoutRepository interface {
 	ListPayoutOrders(ctx context.Context, params pagination.Params) (*internalorders.PayoutOrderList, error)
 	FindOrderDetail(ctx context.Context, orderID uuid.UUID) (*internalorders.OrderDetail, error)
+}
+
+type payoutConfirmService interface {
+	ConfirmPayout(ctx context.Context, input internalorders.ConfirmPayoutInput) error
 }
 
 // AdminPayoutOrders returns a paginated list of orders eligible for payout.
@@ -93,5 +98,61 @@ func AdminPayoutOrderDetail(repo payoutRepository, logg *logger.Logger) http.Han
 		}
 
 		responses.WriteSuccess(w, detail)
+	}
+}
+
+// AdminConfirmPayout lets admins finalize cash payouts for delivered orders.
+func AdminConfirmPayout(svc payoutConfirmService, logg *logger.Logger) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if svc == nil {
+			responses.WriteError(r.Context(), logg, w, pkgerrors.New(pkgerrors.CodeInternal, "orders service unavailable"))
+			return
+		}
+
+		rawOrderID := strings.TrimSpace(chi.URLParam(r, "orderId"))
+		if rawOrderID == "" {
+			responses.WriteError(r.Context(), logg, w, pkgerrors.New(pkgerrors.CodeValidation, "order id is required"))
+			return
+		}
+		orderID, err := uuid.Parse(rawOrderID)
+		if err != nil {
+			responses.WriteError(r.Context(), logg, w, pkgerrors.Wrap(pkgerrors.CodeValidation, err, "invalid order id"))
+			return
+		}
+
+		userIDRaw := strings.TrimSpace(middleware.UserIDFromContext(r.Context()))
+		if userIDRaw == "" {
+			responses.WriteError(r.Context(), logg, w, pkgerrors.New(pkgerrors.CodeUnauthorized, "user identity missing"))
+			return
+		}
+		actorID, err := uuid.Parse(userIDRaw)
+		if err != nil {
+			responses.WriteError(r.Context(), logg, w, pkgerrors.Wrap(pkgerrors.CodeValidation, err, "invalid user id"))
+			return
+		}
+
+		storeIDRaw := strings.TrimSpace(middleware.StoreIDFromContext(r.Context()))
+		var storeID uuid.UUID
+		if storeIDRaw != "" {
+			storeID, err = uuid.Parse(storeIDRaw)
+			if err != nil {
+				responses.WriteError(r.Context(), logg, w, pkgerrors.Wrap(pkgerrors.CodeValidation, err, "invalid store id"))
+				return
+			}
+		}
+
+		role := middleware.RoleFromContext(r.Context())
+
+		if err := svc.ConfirmPayout(r.Context(), internalorders.ConfirmPayoutInput{
+			OrderID:      orderID,
+			ActorUserID:  actorID,
+			ActorStoreID: storeID,
+			ActorRole:    role,
+		}); err != nil {
+			responses.WriteError(r.Context(), logg, w, err)
+			return
+		}
+
+		responses.WriteSuccess(w, nil)
 	}
 }

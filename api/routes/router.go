@@ -166,6 +166,7 @@ func NewRouter(
 				r.Get("/", controllers.AdminPayoutOrders(ordersRepo, logg))
 				r.Get("/{orderId}", controllers.AdminPayoutOrderDetail(ordersRepo, logg))
 			})
+			r.Post("/{orderId}/confirm-payout", controllers.AdminConfirmPayout(ordersSvc, logg))
 		})
 	})
 

@@ -21,6 +21,7 @@ type stubOrdersRepo struct {
 	updatedStatus        enums.VendorOrderStatus
 	lineItems            map[uuid.UUID]*models.OrderLineItem
 	orderUpdates         map[string]any
+	paymentUpdates       map[string]any
 	createCheckoutGroup  func(ctx context.Context, group *models.CheckoutGroup) (*models.CheckoutGroup, error)
 	createVendorOrder    func(ctx context.Context, order *models.VendorOrder) (*models.VendorOrder, error)
 	createOrderLineItems func(ctx context.Context, items []models.OrderLineItem) error
@@ -28,6 +29,7 @@ type stubOrdersRepo struct {
 	findPaymentIntent    func(ctx context.Context, orderID uuid.UUID) (*models.PaymentIntent, error)
 	findOrderDetail      func(ctx context.Context, orderID uuid.UUID) (*OrderDetail, error)
 	updateAssignment     func(ctx context.Context, assignmentID uuid.UUID, updates map[string]any) error
+	updatePaymentIntent  func(ctx context.Context, orderID uuid.UUID, updates map[string]any) error
 }
 
 func (s *stubOrdersRepo) WithTx(tx *gorm.DB) Repository {
@@ -198,6 +200,14 @@ func (s *stubOrdersRepo) UpdateVendorOrder(ctx context.Context, orderID uuid.UUI
 			}
 		}
 	}
+	return nil
+}
+
+func (s *stubOrdersRepo) UpdatePaymentIntent(ctx context.Context, orderID uuid.UUID, updates map[string]any) error {
+	if s.updatePaymentIntent != nil {
+		return s.updatePaymentIntent(ctx, orderID, updates)
+	}
+	s.paymentUpdates = updates
 	return nil
 }
 
@@ -1015,14 +1025,17 @@ func TestAgentDeliverIdempotent(t *testing.T) {
 	}
 }
 
-func TestService_ConfirmPayout_AppendsLedgerEvent(t *testing.T) {
+func TestService_ConfirmPayoutFinalizesOrder(t *testing.T) {
 	orderID := uuid.New()
 	buyerID := uuid.New()
 	vendorID := uuid.New()
 	actorID := uuid.New()
+	actorStoreID := uuid.New()
 
 	detail := &OrderDetail{
-		Order:       &VendorOrderSummary{},
+		Order: &VendorOrderSummary{
+			Status: enums.VendorOrderStatusDelivered,
+		},
 		BuyerStore:  OrderStoreSummary{ID: buyerID},
 		VendorStore: OrderStoreSummary{ID: vendorID},
 		PaymentIntent: &PaymentIntentDetail{
@@ -1047,14 +1060,35 @@ func TestService_ConfirmPayout_AppendsLedgerEvent(t *testing.T) {
 		return &models.LedgerEvent{ID: uuid.New()}, nil
 	})
 
-	svc, err := NewService(repo, stubTxRunner{}, &stubOutboxPublisher{}, &stubInventoryReleaser{}, &stubInventoryReserver{}, ledgerSvc)
+	outbox := &stubOutboxPublisher{}
+	svc, err := NewService(repo, stubTxRunner{}, outbox, &stubInventoryReleaser{}, &stubInventoryReserver{}, ledgerSvc)
 	if err != nil {
 		t.Fatalf("failed to create service: %v", err)
 	}
 
-	if err := svc.ConfirmPayout(context.Background(), ConfirmPayoutInput{OrderID: orderID, ActorUserID: actorID}); err != nil {
+	if err := svc.ConfirmPayout(context.Background(), ConfirmPayoutInput{
+		OrderID:      orderID,
+		ActorUserID:  actorID,
+		ActorStoreID: actorStoreID,
+		ActorRole:    "admin",
+	}); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
+
+	if repo.orderUpdates == nil || repo.orderUpdates["status"] != enums.VendorOrderStatusClosed {
+		t.Fatalf("order not closed, updates %v", repo.orderUpdates)
+	}
+	if repo.paymentUpdates == nil {
+		t.Fatal("payment intent not updated")
+	}
+	if repo.paymentUpdates["status"] != enums.PaymentStatusPaid {
+		t.Fatalf("unexpected payment status %v", repo.paymentUpdates["status"])
+	}
+	vendorPaidAt, ok := repo.paymentUpdates["vendor_paid_at"].(time.Time)
+	if !ok || vendorPaidAt.IsZero() {
+		t.Fatalf("vendor_paid_at not set %v", repo.paymentUpdates["vendor_paid_at"])
+	}
+
 	if recorded.OrderID != orderID {
 		t.Fatalf("ledger recorded wrong order %v", recorded.OrderID)
 	}
@@ -1069,6 +1103,80 @@ func TestService_ConfirmPayout_AppendsLedgerEvent(t *testing.T) {
 	}
 	if recorded.Type != enums.LedgerEventTypeVendorPayout {
 		t.Fatalf("unexpected ledger type %s", recorded.Type)
+	}
+
+	if !outbox.called || outbox.event.EventType != enums.EventOrderPaid {
+		t.Fatalf("expected order_paid event, got %v", outbox.event.EventType)
+	}
+	event, ok := outbox.event.Data.(OrderPaidEvent)
+	if !ok {
+		t.Fatalf("unexpected event payload %T", outbox.event.Data)
+	}
+	if event.OrderID != orderID {
+		t.Fatalf("unexpected order id in event %v", event.OrderID)
+	}
+	if event.AmountCents != detail.PaymentIntent.AmountCents {
+		t.Fatalf("unexpected amount %d", event.AmountCents)
+	}
+	if event.BuyerStoreID != buyerID || event.VendorStoreID != vendorID {
+		t.Fatalf("unexpected stores in event %+v", event)
+	}
+	if event.PaymentIntentID != detail.PaymentIntent.ID {
+		t.Fatalf("unexpected payment intent id %v", event.PaymentIntentID)
+	}
+	if event.VendorPaidAt.IsZero() {
+		t.Fatalf("vendor paid timestamp missing")
+	}
+}
+
+func TestService_ConfirmPayoutIdempotent(t *testing.T) {
+	orderID := uuid.New()
+	detail := &OrderDetail{
+		Order: &VendorOrderSummary{
+			Status: enums.VendorOrderStatusClosed,
+		},
+		BuyerStore:  OrderStoreSummary{ID: uuid.New()},
+		VendorStore: OrderStoreSummary{ID: uuid.New()},
+		PaymentIntent: &PaymentIntentDetail{
+			ID:     uuid.New(),
+			Status: string(enums.PaymentStatusPaid),
+		},
+	}
+	repo := &stubOrdersRepo{
+		order: &models.VendorOrder{ID: orderID},
+		findOrderDetail: func(ctx context.Context, id uuid.UUID) (*OrderDetail, error) {
+			return detail, nil
+		},
+	}
+
+	ledgerCalled := false
+	ledgerSvc := newStubLedgerService(func(ctx context.Context, input ledger.RecordLedgerEventInput) (*models.LedgerEvent, error) {
+		ledgerCalled = true
+		return &models.LedgerEvent{ID: uuid.New()}, nil
+	})
+
+	outbox := &stubOutboxPublisher{}
+	svc, _ := NewService(repo, stubTxRunner{}, outbox, &stubInventoryReleaser{}, &stubInventoryReserver{}, ledgerSvc)
+	err := svc.ConfirmPayout(context.Background(), ConfirmPayoutInput{
+		OrderID:      orderID,
+		ActorUserID:  uuid.New(),
+		ActorStoreID: uuid.New(),
+		ActorRole:    "admin",
+	})
+	if err != nil {
+		t.Fatalf("expected success got %v", err)
+	}
+	if ledgerCalled {
+		t.Fatal("expected ledger not to be called")
+	}
+	if outbox.called {
+		t.Fatal("expected outbox not to be called")
+	}
+	if repo.orderUpdates != nil {
+		t.Fatalf("expected no order update, got %v", repo.orderUpdates)
+	}
+	if repo.paymentUpdates != nil {
+		t.Fatalf("expected no payment update, got %v", repo.paymentUpdates)
 	}
 }
 
