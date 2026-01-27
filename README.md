@@ -44,8 +44,7 @@
 * Atomic inventory reservation (optimistic + retry)
 * Vendor accept/reject at **order and line-item level**
 * Internal agent delivery with **cash-at-delivery**
-* Internal agents authenticate via `users.system_role='agent'`, receive JWTs with `role=agent`, and are restricted to `/api/v1/agent/*` endpoints.
-* Agents query unassigned hold orders via `GET /api/v1/agent/orders/queue` before pickup.
+* Internal agents authenticate via `users.system_role='agent'`, receive JWTs with `role=agent`, and use `/api/v1/agent/orders` (list/detail) plus `/api/v1/agent/orders/queue` to manage assigned and unassigned pickups.
 * Append-only **ledger events**
 * Subscription-gated vendor visibility
 * Ads with **last-click attribution**

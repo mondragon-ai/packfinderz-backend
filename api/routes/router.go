@@ -142,7 +142,9 @@ func NewRouter(
 			r.Use(middleware.RequireRole("agent", logg))
 			r.Get("/ping", controllers.AgentPing())
 			r.Route("/orders", func(r chi.Router) {
+				r.Get("/", controllers.AgentAssignedOrders(ordersRepo, logg))
 				r.Get("/queue", controllers.AgentOrderQueue(ordersRepo, logg))
+				r.Get("/{orderId}", controllers.AgentAssignedOrderDetail(ordersRepo, logg))
 			})
 		})
 	})

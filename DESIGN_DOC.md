@@ -2362,8 +2362,15 @@ Headers:
 
 * `GET /api/v1/agent/orders`
 
+  * Returns cursor-paginated vendor orders that join `order_assignments` to `vendor_orders`, filtered by the agent's user ID so the response lists only the agent’s active assignments (api/controllers/agent_assigned_orders.go:9-58; internal/orders/repo.go:225-312).
   * Success: `200`
   * Errors: `401, 403`
+
+* `GET /api/v1/agent/orders/{orderId}`
+
+  * Loads the shared `OrderDetail`, but rejects requests if the active `order_assignments` row lacks the agent’s user ID; mostly mirrors `/api/v1/orders/{orderId}` but without store context (api/controllers/agent_assigned_orders.go:60-109; internal/orders/repo.go:143-222).
+  * Success: `200`
+  * Errors: `401, 403, 404`
 
 **Confirm pickup**
 

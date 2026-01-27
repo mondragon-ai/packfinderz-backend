@@ -91,6 +91,8 @@ type AgentOrderQueueList struct {
 	NextCursor string                   `json:"next_cursor,omitempty"`
 }
 
+// AgentOrderDetail includes the full order detail exposed to agents (reuse OrderDetail).
+
 // VendorOrderList wraps paginated vendor orders plus the next cursor.
 type VendorOrderList struct {
 	Orders     []VendorOrderSummary `json:"orders"`

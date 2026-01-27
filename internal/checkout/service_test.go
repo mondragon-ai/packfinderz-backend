@@ -193,6 +193,11 @@ type stubOrdersRepo struct {
 	paymentIntents map[uuid.UUID]*models.PaymentIntent
 }
 
+// ListAssignedOrders implements [orders.Repository].
+func (s *stubOrdersRepo) ListAssignedOrders(ctx context.Context, agentID uuid.UUID, params pagination.Params) (*orders.AgentOrderQueueList, error) {
+	panic("unimplemented")
+}
+
 // ListUnassignedHoldOrders implements [orders.Repository].
 func (s *stubOrdersRepo) ListUnassignedHoldOrders(ctx context.Context, params pagination.Params) (*orders.AgentOrderQueueList, error) {
 	panic("unimplemented")
