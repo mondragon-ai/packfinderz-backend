@@ -169,10 +169,11 @@ func (s stubCartService) GetActiveCart(ctx context.Context, buyerStoreID uuid.UU
 }
 
 type stubOrdersRepo struct {
-	listBuyer  func(ctx context.Context, buyerStoreID uuid.UUID, params pagination.Params, filters ordersrepo.BuyerOrderFilters) (*ordersrepo.BuyerOrderList, error)
-	listVendor func(ctx context.Context, vendorStoreID uuid.UUID, params pagination.Params, filters ordersrepo.VendorOrderFilters) (*ordersrepo.VendorOrderList, error)
-	queue      func(ctx context.Context, params pagination.Params) (*ordersrepo.AgentOrderQueueList, error)
-	detail     func(ctx context.Context, orderID uuid.UUID) (*ordersrepo.OrderDetail, error)
+	listBuyer     func(ctx context.Context, buyerStoreID uuid.UUID, params pagination.Params, filters ordersrepo.BuyerOrderFilters) (*ordersrepo.BuyerOrderList, error)
+	listVendor    func(ctx context.Context, vendorStoreID uuid.UUID, params pagination.Params, filters ordersrepo.VendorOrderFilters) (*ordersrepo.VendorOrderList, error)
+	queue         func(ctx context.Context, params pagination.Params) (*ordersrepo.AgentOrderQueueList, error)
+	assignedQueue func(ctx context.Context, agentID uuid.UUID, params pagination.Params) (*ordersrepo.AgentOrderQueueList, error)
+	detail        func(ctx context.Context, orderID uuid.UUID) (*ordersrepo.OrderDetail, error)
 }
 
 // FindOrderLineItem implements [orders.Repository].
@@ -243,6 +244,13 @@ func (s *stubOrdersRepo) ListVendorOrders(ctx context.Context, vendorStoreID uui
 func (s *stubOrdersRepo) ListUnassignedHoldOrders(ctx context.Context, params pagination.Params) (*ordersrepo.AgentOrderQueueList, error) {
 	if s.queue != nil {
 		return s.queue(ctx, params)
+	}
+	return &ordersrepo.AgentOrderQueueList{}, nil
+}
+
+func (s *stubOrdersRepo) ListAssignedOrders(ctx context.Context, agentID uuid.UUID, params pagination.Params) (*ordersrepo.AgentOrderQueueList, error) {
+	if s.assignedQueue != nil {
+		return s.assignedQueue(ctx, agentID, params)
 	}
 	return &ordersrepo.AgentOrderQueueList{}, nil
 }
@@ -420,6 +428,103 @@ func TestPrivateGroupSucceedsWithJWT(t *testing.T) {
 	}
 }
 
+func TestAgentAssignedOrdersRequiresAgentRole(t *testing.T) {
+	cfg := testConfig()
+	repo := &stubOrdersRepo{
+		assignedQueue: func(ctx context.Context, agentID uuid.UUID, params pagination.Params) (*ordersrepo.AgentOrderQueueList, error) {
+			return &ordersrepo.AgentOrderQueueList{
+				Orders: []ordersrepo.AgentOrderQueueSummary{
+					{OrderID: uuid.New(), OrderNumber: 101},
+				},
+			}, nil
+		},
+	}
+	logg := logger.New(logger.Options{ServiceName: "test", Level: logger.ParseLevel("debug"), Output: io.Discard})
+	router := NewRouter(
+		cfg,
+		logg,
+		stubPinger{},
+		(*redis.Client)(nil),
+		stubPinger{},
+		stubSessionManager{},
+		stubAuthService{},
+		stubRegisterService{},
+		stubSwitchService{},
+		stubStoreService{},
+		stubMediaService{},
+		stubLicensesService{},
+		stubProductService{},
+		stubCheckoutService{},
+		stubCartService{},
+		repo,
+		stubOrdersService{},
+	)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/agent/orders", nil)
+	resp := httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+	if resp.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401 when missing token got %d", resp.Code)
+	}
+
+	nonAgent := httptest.NewRequest(http.MethodGet, "/api/v1/agent/orders", nil)
+	nonAgent.Header.Set("Authorization", "Bearer "+buildToken(t, cfg, enums.MemberRoleViewer))
+	resp = httptest.NewRecorder()
+	router.ServeHTTP(resp, nonAgent)
+	if resp.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 for non-agent orders got %d", resp.Code)
+	}
+
+	agent := httptest.NewRequest(http.MethodGet, "/api/v1/agent/orders", nil)
+	agent.Header.Set("Authorization", "Bearer "+buildToken(t, cfg, enums.MemberRoleAgent))
+	resp = httptest.NewRecorder()
+	router.ServeHTTP(resp, agent)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("expected 200 for agent assigned orders got %d", resp.Code)
+	}
+}
+
+func TestAgentAssignedOrderDetailRequiresAgentRole(t *testing.T) {
+	cfg := testConfig()
+	expectedAgent := uuid.New()
+	repo := &stubOrdersRepo{
+		detail: func(ctx context.Context, orderID uuid.UUID) (*ordersrepo.OrderDetail, error) {
+			return &ordersrepo.OrderDetail{
+				ActiveAssignment: &ordersrepo.OrderAssignmentSummary{
+					AgentUserID: expectedAgent,
+				},
+			}, nil
+		},
+	}
+	logg := logger.New(logger.Options{ServiceName: "test", Level: logger.ParseLevel("debug"), Output: io.Discard})
+	router := NewRouter(
+		cfg,
+		logg,
+		stubPinger{},
+		(*redis.Client)(nil),
+		stubPinger{},
+		stubSessionManager{},
+		stubAuthService{},
+		stubRegisterService{},
+		stubSwitchService{},
+		stubStoreService{},
+		stubMediaService{},
+		stubLicensesService{},
+		stubProductService{},
+		stubCheckoutService{},
+		stubCartService{},
+		repo,
+		stubOrdersService{},
+	)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/agent/orders/"+uuid.NewString(), nil)
+	req.Header.Set("Authorization", "Bearer "+buildTokenWithUserID(t, cfg, enums.MemberRoleAgent, expectedAgent))
+	resp := httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("expected 200 for assigned order detail got %d", resp.Code)
+	}
+}
 func TestPublicValidateRejectsBadJSON(t *testing.T) {
 	router := newTestRouter(testConfig())
 	req := httptest.NewRequest(http.MethodPost, "/api/public/validate", strings.NewReader("{"))
@@ -450,6 +555,24 @@ func buildToken(t *testing.T, cfg *config.Config, role enums.MemberRole) string 
 	storeType := enums.StoreTypeBuyer
 	token, err := pkgAuth.MintAccessToken(cfg.JWT, time.Now(), pkgAuth.AccessTokenPayload{
 		UserID:        uuid.New(),
+		ActiveStoreID: &storeID,
+		Role:          role,
+		StoreType:     &storeType,
+		JTI:           accessID,
+	})
+	if err != nil {
+		t.Fatalf("mint token: %v", err)
+	}
+	return token
+}
+
+func buildTokenWithUserID(t *testing.T, cfg *config.Config, role enums.MemberRole, userID uuid.UUID) string {
+	t.Helper()
+	storeID := uuid.New()
+	accessID := session.NewAccessID()
+	storeType := enums.StoreTypeBuyer
+	token, err := pkgAuth.MintAccessToken(cfg.JWT, time.Now(), pkgAuth.AccessTokenPayload{
+		UserID:        userID,
 		ActiveStoreID: &storeID,
 		Role:          role,
 		StoreType:     &storeType,

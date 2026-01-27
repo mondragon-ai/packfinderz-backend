@@ -114,6 +114,10 @@ func (s *stubOrdersRepo) ListUnassignedHoldOrders(ctx context.Context, params pa
 	return &AgentOrderQueueList{}, nil
 }
 
+func (s *stubOrdersRepo) ListAssignedOrders(ctx context.Context, agentID uuid.UUID, params pagination.Params) (*AgentOrderQueueList, error) {
+	return &AgentOrderQueueList{}, nil
+}
+
 func (s *stubOrdersRepo) FindOrderDetail(ctx context.Context, orderID uuid.UUID) (*OrderDetail, error) {
 	panic("not implemented")
 }
