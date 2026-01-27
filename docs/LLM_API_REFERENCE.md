@@ -69,3 +69,4 @@
 
 ## Agent
 - `GET /api/v1/agent/ping` – requires Authorization + role `agent`, similar to admin ping. The `/api/v1/agent` group (mounted under `/api`) omits `StoreContext` (api/routes/router.go:83-101) so system agents seeded purely by `users.system_role='agent'` can run without an `activeStoreId`, and `RequireRole("agent")` (api/middleware/roles.go:1-27) rejects non-agent tokens.
+- `GET /api/v1/agent/orders/queue` – requires Authorization + role `agent`, returns paginated `status=hold` vendor orders that currently lack an `active` `order_assignments` record so agents can inspect the global pickup queue. The handler accepts optional `limit`/`cursor` query params (`pagination.Params`) and the repository (internal/orders/repo.go:376-433) left joins `order_assignments` to ensure `oa.order_id IS NULL`, orders by `created_at DESC, id DESC`, and applies buffer-based cursor pagination with `LimitWithBuffer` before returning `AgentOrderQueueList`.

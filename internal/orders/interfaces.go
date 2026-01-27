@@ -24,6 +24,7 @@ type Repository interface {
 	FindPaymentIntentByOrder(ctx context.Context, orderID uuid.UUID) (*models.PaymentIntent, error)
 	ListBuyerOrders(ctx context.Context, buyerStoreID uuid.UUID, params pagination.Params, filters BuyerOrderFilters) (*BuyerOrderList, error)
 	ListVendorOrders(ctx context.Context, vendorStoreID uuid.UUID, params pagination.Params, filters VendorOrderFilters) (*VendorOrderList, error)
+	ListUnassignedHoldOrders(ctx context.Context, params pagination.Params) (*AgentOrderQueueList, error)
 	FindOrderDetail(ctx context.Context, orderID uuid.UUID) (*OrderDetail, error)
 	FindVendorOrder(ctx context.Context, orderID uuid.UUID) (*models.VendorOrder, error)
 	UpdateVendorOrderStatus(ctx context.Context, orderID uuid.UUID, status enums.VendorOrderStatus) error

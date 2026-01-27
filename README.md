@@ -45,6 +45,7 @@
 * Vendor accept/reject at **order and line-item level**
 * Internal agent delivery with **cash-at-delivery**
 * Internal agents authenticate via `users.system_role='agent'`, receive JWTs with `role=agent`, and are restricted to `/api/v1/agent/*` endpoints.
+* Agents query unassigned hold orders via `GET /api/v1/agent/orders/queue` before pickup.
 * Append-only **ledger events**
 * Subscription-gated vendor visibility
 * Ads with **last-click attribution**

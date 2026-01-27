@@ -171,6 +171,7 @@ func (s stubCartService) GetActiveCart(ctx context.Context, buyerStoreID uuid.UU
 type stubOrdersRepo struct {
 	listBuyer  func(ctx context.Context, buyerStoreID uuid.UUID, params pagination.Params, filters ordersrepo.BuyerOrderFilters) (*ordersrepo.BuyerOrderList, error)
 	listVendor func(ctx context.Context, vendorStoreID uuid.UUID, params pagination.Params, filters ordersrepo.VendorOrderFilters) (*ordersrepo.VendorOrderList, error)
+	queue      func(ctx context.Context, params pagination.Params) (*ordersrepo.AgentOrderQueueList, error)
 	detail     func(ctx context.Context, orderID uuid.UUID) (*ordersrepo.OrderDetail, error)
 }
 
@@ -237,6 +238,13 @@ func (s *stubOrdersRepo) ListVendorOrders(ctx context.Context, vendorStoreID uui
 		return s.listVendor(ctx, vendorStoreID, params, filters)
 	}
 	return nil, nil
+}
+
+func (s *stubOrdersRepo) ListUnassignedHoldOrders(ctx context.Context, params pagination.Params) (*ordersrepo.AgentOrderQueueList, error) {
+	if s.queue != nil {
+		return s.queue(ctx, params)
+	}
+	return &ordersrepo.AgentOrderQueueList{}, nil
 }
 
 func (s *stubOrdersRepo) FindOrderDetail(ctx context.Context, orderID uuid.UUID) (*ordersrepo.OrderDetail, error) {
@@ -376,6 +384,27 @@ func TestAgentGroupRequiresAgentRole(t *testing.T) {
 	router.ServeHTTP(resp, agent)
 	if resp.Code != http.StatusOK {
 		t.Fatalf("expected 200 for agent got %d", resp.Code)
+	}
+}
+
+func TestAgentOrderQueueRequiresAgentRole(t *testing.T) {
+	cfg := testConfig()
+	router := newTestRouter(cfg)
+
+	nonAgent := httptest.NewRequest(http.MethodGet, "/api/v1/agent/orders/queue", nil)
+	nonAgent.Header.Set("Authorization", "Bearer "+buildToken(t, cfg, enums.MemberRoleViewer))
+	resp := httptest.NewRecorder()
+	router.ServeHTTP(resp, nonAgent)
+	if resp.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 for non-agent queue got %d", resp.Code)
+	}
+
+	agent := httptest.NewRequest(http.MethodGet, "/api/v1/agent/orders/queue", nil)
+	agent.Header.Set("Authorization", "Bearer "+buildToken(t, cfg, enums.MemberRoleAgent))
+	resp = httptest.NewRecorder()
+	router.ServeHTTP(resp, agent)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("expected 200 for agent queue got %d", resp.Code)
 	}
 }
 

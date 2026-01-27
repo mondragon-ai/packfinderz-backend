@@ -2353,7 +2353,8 @@ Headers:
 
 * `GET /api/v1/agent/orders/queue`
 
-  * Orders waiting for pickup assignment.
+  * Orders in `status = hold` with no active `order_assignments` row (left join + `oa.order_id IS NULL`), sorted by `created_at DESC`.
+  * Pagination uses `limit` + optional `cursor` query params backed by `pagination.Params`, `LimitWithBuffer`, and cursor encoding/decoding so clients page through the global queue without duplicates (api/controllers/agent_orders.go:13-34; internal/orders/repo.go:376-433).
   * Success: `200`
   * Errors: `401, 403`
 

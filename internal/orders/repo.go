@@ -373,6 +373,95 @@ func (r *repository) ListVendorOrders(ctx context.Context, vendorStoreID uuid.UU
 	}, nil
 }
 
+func (r *repository) ListUnassignedHoldOrders(ctx context.Context, params pagination.Params) (*AgentOrderQueueList, error) {
+	pageSize := pagination.NormalizeLimit(params.Limit)
+	limitWithBuffer := pagination.LimitWithBuffer(params.Limit)
+	if limitWithBuffer <= pageSize {
+		limitWithBuffer = pageSize + 1
+	}
+
+	cursor, err := pagination.ParseCursor(params.Cursor)
+	if err != nil {
+		return nil, err
+	}
+
+	qb := r.db.WithContext(ctx).Table("vendor_orders AS vo").
+		Select(`vo.id,
+			vo.created_at,
+			vo.order_number,
+			vo.total_cents,
+			vo.discount_cents,
+			vo.fulfillment_status,
+			vo.shipping_status,
+			pi.status AS payment_status,
+			bs.id AS buyer_store_id,
+			bs.company_name AS buyer_company_name,
+			bs.dba_name AS buyer_dba_name,
+			bs.logo_url AS buyer_logo_url,
+			vs.id AS vendor_store_id,
+			vs.company_name AS vendor_company_name,
+			vs.dba_name AS vendor_dba_name,
+			vs.logo_url AS vendor_logo_url,
+			(SELECT COALESCE(SUM(qty), 0) FROM order_line_items WHERE order_id = vo.id) AS total_items`).
+		Joins("JOIN payment_intents pi ON pi.order_id = vo.id").
+		Joins("JOIN stores bs ON bs.id = vo.buyer_store_id").
+		Joins("JOIN stores vs ON vs.id = vo.vendor_store_id").
+		Joins("LEFT JOIN order_assignments oa ON oa.order_id = vo.id AND oa.active = true").
+		Where("vo.status = ?", enums.VendorOrderStatusHold).
+		Where("oa.order_id IS NULL")
+
+	if cursor != nil {
+		qb = qb.Where("(vo.created_at < ?) OR (vo.created_at = ? AND vo.id < ?)", cursor.CreatedAt, cursor.CreatedAt, cursor.ID)
+	}
+
+	qb = qb.Order("vo.created_at DESC").Order("vo.id DESC").Limit(limitWithBuffer)
+
+	var records []agentOrderQueueRecord
+	if err := qb.Scan(&records).Error; err != nil {
+		return nil, err
+	}
+
+	resultRows := records
+	nextCursor := ""
+	if len(records) > pageSize {
+		resultRows = records[:pageSize]
+		last := resultRows[len(resultRows)-1]
+		nextCursor = pagination.EncodeCursor(pagination.Cursor{CreatedAt: last.CreatedAt, ID: last.ID})
+	}
+
+	orders := make([]AgentOrderQueueSummary, 0, len(resultRows))
+	for _, record := range resultRows {
+		orders = append(orders, AgentOrderQueueSummary{
+			OrderID:           record.ID,
+			OrderNumber:       record.OrderNumber,
+			CreatedAt:         record.CreatedAt,
+			TotalCents:        record.TotalCents,
+			DiscountCents:     record.DiscountCents,
+			TotalItems:        record.TotalItems,
+			PaymentStatus:     record.PaymentStatus,
+			FulfillmentStatus: record.FulfillmentStatus,
+			ShippingStatus:    record.ShippingStatus,
+			Buyer: OrderStoreSummary{
+				ID:          record.BuyerStoreID,
+				CompanyName: record.BuyerCompanyName,
+				DBAName:     record.BuyerDBAName,
+				LogoURL:     record.BuyerLogoURL,
+			},
+			Vendor: OrderStoreSummary{
+				ID:          record.VendorStoreID,
+				CompanyName: record.VendorCompanyName,
+				DBAName:     record.VendorDBAName,
+				LogoURL:     record.VendorLogoURL,
+			},
+		})
+	}
+
+	return &AgentOrderQueueList{
+		Orders:     orders,
+		NextCursor: nextCursor,
+	}, nil
+}
+
 func (r *repository) FindOrderDetail(ctx context.Context, orderID uuid.UUID) (*OrderDetail, error) {
 	var order models.VendorOrder
 	err := r.db.WithContext(ctx).
@@ -464,6 +553,26 @@ type vendorOrderRecord struct {
 	BuyerCompanyName  string
 	BuyerDBAName      *string
 	BuyerLogoURL      *string
+	TotalItems        int
+}
+
+type agentOrderQueueRecord struct {
+	ID                uuid.UUID
+	CreatedAt         time.Time
+	OrderNumber       int64
+	TotalCents        int
+	DiscountCents     int
+	FulfillmentStatus enums.VendorOrderFulfillmentStatus
+	ShippingStatus    enums.VendorOrderShippingStatus
+	PaymentStatus     enums.PaymentStatus
+	BuyerStoreID      uuid.UUID
+	BuyerCompanyName  string
+	BuyerDBAName      *string
+	BuyerLogoURL      *string
+	VendorStoreID     uuid.UUID
+	VendorCompanyName string
+	VendorDBAName     *string
+	VendorLogoURL     *string
 	TotalItems        int
 }
 

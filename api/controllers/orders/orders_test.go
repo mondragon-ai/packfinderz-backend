@@ -25,6 +25,11 @@ type stubControllerOrdersRepo struct {
 	detail     func(ctx context.Context, orderID uuid.UUID) (*internalorders.OrderDetail, error)
 }
 
+// ListUnassignedHoldOrders implements [orders.Repository].
+func (s *stubControllerOrdersRepo) ListUnassignedHoldOrders(ctx context.Context, params pagination.Params) (*internalorders.AgentOrderQueueList, error) {
+	panic("unimplemented")
+}
+
 func (s *stubControllerOrdersRepo) WithTx(tx *gorm.DB) internalorders.Repository {
 	return s
 }
