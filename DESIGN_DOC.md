@@ -428,7 +428,7 @@ Manifest approach (MVP):
 
 ## 17) HTTP Routing & Validation
 
-* The API boots `api/routes.NewRouter` (chi) with route groups for `/health`, `/api/public`, `/api`, `/api/admin`, and `/api/agent`, each wired with the middleware chain (recoverer → request_id → logging → auth/store context → role guard → idempotency → rate-limit placeholders).
+* The API boots `api/routes.NewRouter` (chi) with route groups for `/health`, `/api/public`, `/api`, `/api/admin`, and `/api/agent`. Most groups share the middleware chain (recoverer → request_id → logging → auth/store context → role guard → idempotency → rate-limit placeholders), while `/api/agent` skips the `StoreContext` guard so system-only agents can run without an `activeStoreId`.
 * Controllers under `api/controllers` get validated inputs from `api/validators` (e.g., `DecodeJSONBody`, `ParseQueryInt`, `SanitizeString`) before any business logic runs; validation failures surface as `pkg/errors.CodeValidation`.
 * Validation errors (malformed JSON, missing required fields, query params out of bounds) map to the canonical error envelope so clients always receive `400` + `{ "error": { "details": {...} } }`.
 * Each route group enforces its own auth/role requirements and should be covered by tests for 401/403, plus validation tests that assert the 400 envelope contains field-level messages.
@@ -454,7 +454,7 @@ Manifest approach (MVP):
 
 **Auth & session endpoints**
 
-* `POST /api/v1/auth/login` – returns `auth.LoginResponse` plus `X-PF-Token`, letting clients boot authenticated sessions with bearer tokens from `auth.Service.Login` (api/controllers/auth.go:13-36; internal/auth/service.go:24-153).
+* `POST /api/v1/auth/login` – returns `auth.LoginResponse` plus `X-PF-Token`, letting clients boot authenticated sessions with bearer tokens from `auth.Service.Login`. The service now normalizes `users.system_role` against `enums.MemberRole`, uses that value (or the primary membership) to set the JWT `role` claim, and still issues tokens when `system_role=agent|admin` even if no store membership exists; `middleware.Auth` hydrates that claim into context so `RequireRole("agent")`/`RequireRole("admin")` can gate their respective groups (api/controllers/auth.go:13-36; internal/auth/service.go:24-153; api/middleware/auth.go:19-80; api/middleware/roles.go:1-27).
 * `POST /api/v1/auth/register` – requires `Idempotency-Key`, creates user + store, auto-logins, and returns tokens + `X-PF-Token` (api/controllers/register.go:13-41; internal/auth/register.go:21-133).
 * `POST /api/v1/auth/logout` – revokes the Redis session via `session.Manager.Revoke` and responds `{"status":"logged_out"}` (api/controllers/session.go:47-79).
 * `POST /api/v1/auth/refresh` – rotates the Redis session, issues fresh access/refresh tokens, and mirrors them via `X-PF-Token` for convenience (api/controllers/session.go:81-143).
@@ -477,7 +477,7 @@ Manifest approach (MVP):
 **Admin/Agent probes**
 
 * `GET /api/admin/ping` – admin role required, shares store context if present, and is exempt from Idempotency checks even though middleware is mounted (api/routes/router.go:64-81; api/controllers/ping.go:26-43).
-* `GET /api/agent/ping` – agent role required, same context behavior as admin ping (api/routes/router.go:83-101; api/controllers/ping.go:36-43).
+* `GET /api/agent/ping` – agent role required, same context behavior as admin ping; the `/api/agent` group skips `StoreContext` so system agents seeded solely by `users.system_role='agent'` can call it without `activeStoreId`, while `RequireRole("agent")` rejects other roles (api/routes/router.go:83-101; api/controllers/ping.go:36-43; api/middleware/roles.go:1-27).
 
 **Idempotency guards**
 
