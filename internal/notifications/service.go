@@ -48,9 +48,10 @@ func (s *service) List(ctx context.Context, params ListParams) (*ListResult, err
 		return nil, pkgerrors.New(pkgerrors.CodeValidation, "active store id required")
 	}
 
+	limit := pagination.NormalizeLimit(params.Limit)
 	query := listNotificationsParams{
 		StoreID:    params.StoreID,
-		Limit:      pagination.LimitWithBuffer(params.Limit),
+		Limit:      limit,
 		UnreadOnly: params.UnreadOnly,
 	}
 	if params.Cursor != "" {

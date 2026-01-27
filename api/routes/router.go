@@ -15,6 +15,7 @@ import (
 	checkoutsvc "github.com/angelmondragon/packfinderz-backend/internal/checkout"
 	"github.com/angelmondragon/packfinderz-backend/internal/licenses"
 	"github.com/angelmondragon/packfinderz-backend/internal/media"
+	"github.com/angelmondragon/packfinderz-backend/internal/notifications"
 	"github.com/angelmondragon/packfinderz-backend/internal/orders"
 	products "github.com/angelmondragon/packfinderz-backend/internal/products"
 	"github.com/angelmondragon/packfinderz-backend/internal/stores"
@@ -48,6 +49,7 @@ func NewRouter(
 	productService products.Service,
 	checkoutService checkoutsvc.Service,
 	cartService cart.Service,
+	notificationsService notifications.Service,
 	ordersRepo orders.Repository,
 	ordersSvc orders.Service,
 ) http.Handler {
@@ -122,6 +124,10 @@ func NewRouter(
 				r.Get("/", controllers.LicenseList(licenseService, logg))
 				r.Post("/", controllers.LicenseCreate(licenseService, logg))
 				r.Delete("/{licenseId}", controllers.LicenseDelete(licenseService, logg))
+			})
+
+			r.Route("/v1/notifications", func(r chi.Router) {
+				r.Get("/", controllers.ListNotifications(notificationsService, logg))
 			})
 
 			r.Route("/v1/cart", func(r chi.Router) {

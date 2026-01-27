@@ -16,6 +16,7 @@ import (
 	"github.com/angelmondragon/packfinderz-backend/internal/licenses"
 	"github.com/angelmondragon/packfinderz-backend/internal/media"
 	"github.com/angelmondragon/packfinderz-backend/internal/memberships"
+	"github.com/angelmondragon/packfinderz-backend/internal/notifications"
 	ordersrepo "github.com/angelmondragon/packfinderz-backend/internal/orders"
 	product "github.com/angelmondragon/packfinderz-backend/internal/products"
 	"github.com/angelmondragon/packfinderz-backend/internal/stores"
@@ -137,6 +138,25 @@ func (s stubLicensesService) DeleteLicense(ctx context.Context, userID uuid.UUID
 // VerifyLicense implements [licenses.Service].
 func (s stubLicensesService) VerifyLicense(ctx context.Context, licenseID uuid.UUID, decision enums.LicenseStatus, reason string) (*models.License, error) {
 	panic("unimplemented")
+}
+
+type stubNotificationsService struct {
+	listFn func(ctx context.Context, params notifications.ListParams) (*notifications.ListResult, error)
+}
+
+func (s stubNotificationsService) List(ctx context.Context, params notifications.ListParams) (*notifications.ListResult, error) {
+	if s.listFn != nil {
+		return s.listFn(ctx, params)
+	}
+	return &notifications.ListResult{}, nil
+}
+
+func (stubNotificationsService) MarkRead(ctx context.Context, storeID, notificationID uuid.UUID) error {
+	return nil
+}
+
+func (stubNotificationsService) MarkAllRead(ctx context.Context, storeID uuid.UUID) (int64, error) {
+	return 0, nil
 }
 
 type stubProductService struct{}
@@ -374,6 +394,7 @@ func newTestRouter(cfg *config.Config) http.Handler {
 		stubProductService{},
 		stubCheckoutService{},
 		stubCartService{},
+		stubNotificationsService{},
 		&stubOrdersRepo{},
 		stubOrdersService{},
 	)
@@ -492,6 +513,7 @@ func TestAgentAssignedOrdersRequiresAgentRole(t *testing.T) {
 		stubProductService{},
 		stubCheckoutService{},
 		stubCartService{},
+		stubNotificationsService{},
 		repo,
 		stubOrdersService{},
 	)
@@ -549,6 +571,7 @@ func TestAgentAssignedOrderDetailRequiresAgentRole(t *testing.T) {
 		stubProductService{},
 		stubCheckoutService{},
 		stubCartService{},
+		stubNotificationsService{},
 		repo,
 		stubOrdersService{},
 	)
@@ -582,6 +605,7 @@ func TestAgentPickupRequiresAgentRole(t *testing.T) {
 		stubProductService{},
 		stubCheckoutService{},
 		stubCartService{},
+		stubNotificationsService{},
 		repo,
 		stubOrdersService{},
 	)
@@ -630,6 +654,7 @@ func TestAgentDeliverRequiresAgentRole(t *testing.T) {
 		stubProductService{},
 		stubCheckoutService{},
 		stubCartService{},
+		stubNotificationsService{},
 		repo,
 		stubOrdersService{},
 	)
