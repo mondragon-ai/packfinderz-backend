@@ -161,6 +161,12 @@ func NewRouter(
 		r.Route("/v1/licenses", func(r chi.Router) {
 			r.Post("/{licenseId}/verify", controllers.AdminLicenseVerify(licenseService, logg))
 		})
+		r.Route("/v1/orders", func(r chi.Router) {
+			r.Route("/payouts", func(r chi.Router) {
+				r.Get("/", controllers.AdminPayoutOrders(ordersRepo, logg))
+				r.Get("/{orderId}", controllers.AdminPayoutOrderDetail(ordersRepo, logg))
+			})
+		})
 	})
 
 	r.Route("/api/agent", func(r chi.Router) {

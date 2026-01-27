@@ -93,6 +93,21 @@ type AgentOrderQueueList struct {
 	NextCursor string                   `json:"next_cursor,omitempty"`
 }
 
+// PayoutOrderSummary exposes payout-eligible orders to admins.
+type PayoutOrderSummary struct {
+	OrderID       uuid.UUID `json:"order_id"`
+	VendorStoreID uuid.UUID `json:"vendor_store_id"`
+	OrderNumber   int64     `json:"order_number"`
+	AmountCents   int       `json:"amount_cents"`
+	DeliveredAt   time.Time `json:"delivered_at"`
+}
+
+// PayoutOrderList wraps paginated payout summaries.
+type PayoutOrderList struct {
+	Orders     []PayoutOrderSummary `json:"orders"`
+	NextCursor string               `json:"next_cursor,omitempty"`
+}
+
 // AgentOrderDetail includes the full order detail exposed to agents (reuse OrderDetail).
 
 // VendorOrderList wraps paginated vendor orders plus the next cursor.

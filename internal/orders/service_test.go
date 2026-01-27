@@ -114,6 +114,10 @@ func (s *stubOrdersRepo) ListVendorOrders(ctx context.Context, vendorStoreID uui
 	panic("not implemented")
 }
 
+func (s *stubOrdersRepo) ListPayoutOrders(ctx context.Context, params pagination.Params) (*PayoutOrderList, error) {
+	return &PayoutOrderList{}, nil
+}
+
 func (s *stubOrdersRepo) ListUnassignedHoldOrders(ctx context.Context, params pagination.Params) (*AgentOrderQueueList, error) {
 	return &AgentOrderQueueList{}, nil
 }

@@ -550,6 +550,59 @@ func (r *repository) ListUnassignedHoldOrders(ctx context.Context, params pagina
 	}, nil
 }
 
+type payoutOrderRecord struct {
+	ID            uuid.UUID
+	OrderNumber   int64
+	VendorStoreID uuid.UUID
+	DeliveredAt   time.Time
+	AmountCents   int
+}
+
+func (r *repository) ListPayoutOrders(ctx context.Context, params pagination.Params) (*PayoutOrderList, error) {
+	limitWithBuffer := pagination.LimitWithBuffer(params.Limit)
+	cursor, err := pagination.ParseCursor(strings.TrimSpace(params.Cursor))
+	if err != nil {
+		return nil, err
+	}
+
+	var records []payoutOrderRecord
+	qb := r.db.WithContext(ctx).Table("vendor_orders vo").
+		Select("vo.id, vo.order_number, vo.vendor_store_id, vo.delivered_at, pi.amount_cents").
+		Joins("JOIN payment_intents pi ON pi.order_id = vo.id").
+		Where("vo.status = ?", enums.VendorOrderStatusDelivered).
+		Where("pi.status = ?", enums.PaymentStatusSettled)
+
+	if cursor != nil {
+		qb = qb.Where("(vo.delivered_at > ?) OR (vo.delivered_at = ? AND vo.id > ?)", cursor.CreatedAt, cursor.CreatedAt, cursor.ID)
+	}
+
+	if err := qb.Order("vo.delivered_at ASC").Order("vo.id ASC").Limit(limitWithBuffer).Scan(&records).Error; err != nil {
+		return nil, err
+	}
+
+	nextCursor := ""
+	if len(records) == limitWithBuffer {
+		last := records[len(records)-1]
+		nextCursor = pagination.EncodeCursor(pagination.Cursor{CreatedAt: last.DeliveredAt, ID: last.ID})
+		records = records[:len(records)-1]
+	}
+
+	list := &PayoutOrderList{
+		Orders: make([]PayoutOrderSummary, 0, len(records)),
+	}
+	for _, rec := range records {
+		list.Orders = append(list.Orders, PayoutOrderSummary{
+			OrderID:       rec.ID,
+			VendorStoreID: rec.VendorStoreID,
+			OrderNumber:   rec.OrderNumber,
+			AmountCents:   rec.AmountCents,
+			DeliveredAt:   rec.DeliveredAt,
+		})
+	}
+	list.NextCursor = nextCursor
+	return list, nil
+}
+
 func (r *repository) FindOrderDetail(ctx context.Context, orderID uuid.UUID) (*OrderDetail, error) {
 	var order models.VendorOrder
 	err := r.db.WithContext(ctx).

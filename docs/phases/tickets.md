@@ -284,15 +284,15 @@
 
 **Goal:** Append-only finance correctness + admin payout confirmation
 
-* [ ] Migration: `ledger_events` (append-only) + required indexes
-* [ ] Repo/service: append ledger event helpers (no updates)
-* [ ] Admin endpoint: `GET /api/v1/admin/orders/payout-queue` (delivered + settled, unpaid)
-* [ ] Admin endpoint: `POST /api/v1/admin/orders/{orderId}/confirm-payout`
+* [X] Migration: `ledger_events` (append-only) + required indexes
+* [X] Repo/service: append ledger event helpers (no updates)
+* [X] Admin endpoint: `GET /api/v1/admin/orders/payouts` & `GET /api/v1/admin/orders/payouts/{orderID}` (delivered + settled, unpaid)
+* [X] Admin endpoint: `POST /api/v1/admin/orders/{orderId}/confirm-payout`
 
-  * [ ] Create `ledger_events(vendor_payout)`
-  * [ ] Set `payment_intents.status=paid` + `vendor_paid_at`
-  * [ ] Set order status `closed`
-  * [ ] Emit outbox: `order_paid`
+  * [X] Create `ledger_events(vendor_payout)`
+  * [X] Set `payment_intents.status=paid` + `vendor_paid_at`
+  * [X] Set order status `closed`
+  * [X] Emit outbox: `order_paid`
 * [ ] Optional secondary endpoint: vendor “confirm paid” (audited, doesn’t flip truth)
 
 ---
@@ -333,11 +333,38 @@
 
 ---
 
-## Phase 12 — Ads & Attribution
+
+## Phase 12 — Subscriptions & Billing (Stripe CC)
+
+**Goal:** Vendor subscription gating + billing history
+
+### 12A) Stripe integration
+
+* [ ] Stripe client bootstrap + config/secrets
+* [ ] Migrations: `subscriptions`, `payment_methods`, `charges`, `usage_charges` (if not already applied)
+
+### 12B) Subscription flows
+
+* [ ] `POST /api/v1/vendor/subscriptions` (create subscription, idempotent)
+* [ ] `POST /api/v1/vendor/subscriptions/cancel` (idempotent)
+* [ ] `GET /api/v1/vendor/subscriptions/active`
+* [ ] Webhook consumer (Stripe) updates subscription state + mirrors `stores.subscription_active`
+
+### 12C) Billing history
+
+* [ ] `GET /api/v1/vendor/billing/charges` (ads + subscriptions)
+* [ ] Enforce gating everywhere:
+
+  * [ ] browse/search hides vendor listings if `subscription_active=false`
+  * [ ] ads/analytics blocked if inactive
+
+---
+
+## Phase 13 — Ads & Attribution
 
 **Goal:** Monetization: ad CRUD + tracking + last-click attribution + rollups
 
-### 12A) Core ads
+### 13A) Core ads
 
 * [ ] Migrations: `ads`, `ad_creatives`, `ad_clicks`, `ad_events` + indexes
 * [ ] Vendor CRUD endpoints:
@@ -349,7 +376,7 @@
   * [ ] `DELETE /api/v1/vendor/ads/{adId}`
 * [ ] Eligibility enforcement: license verified + subscription active + ad status active + budget remaining
 
-### 12B) Tracking + attribution
+### 13B) Tracking + attribution
 
 * [ ] Impression endpoint (or middleware hook) increments Redis counters + writes `ad_events(impression)`
 * [ ] Click endpoint writes:
@@ -358,36 +385,10 @@
   * [ ] `ad_events(click)`
 * [ ] Checkout integration: attach last eligible click to `checkout_groups.attributed_ad_click_id` and propagate to vendor orders
 
-### 12C) Rollups + analytics
+### 13C) Rollups + analytics
 
 * [ ] Daily rollup scheduler: compute per-ad spend and write `usage_charges(ad_spend_daily)`
 * [ ] Ad analytics endpoint: vendor view (CTR, impressions, clicks, ROAS via attributed orders)
-
----
-
-## Phase 13 — Subscriptions & Billing (Stripe CC)
-
-**Goal:** Vendor subscription gating + billing history
-
-### 13A) Stripe integration
-
-* [ ] Stripe client bootstrap + config/secrets
-* [ ] Migrations: `subscriptions`, `payment_methods`, `charges`, `usage_charges` (if not already applied)
-
-### 13B) Subscription flows
-
-* [ ] `POST /api/v1/vendor/subscriptions` (create subscription, idempotent)
-* [ ] `POST /api/v1/vendor/subscriptions/cancel` (idempotent)
-* [ ] `GET /api/v1/vendor/subscriptions/active`
-* [ ] Webhook consumer (Stripe) updates subscription state + mirrors `stores.subscription_active`
-
-### 13C) Billing history
-
-* [ ] `GET /api/v1/vendor/billing/charges` (ads + subscriptions)
-* [ ] Enforce gating everywhere:
-
-  * [ ] browse/search hides vendor listings if `subscription_active=false`
-  * [ ] ads/analytics blocked if inactive
 
 ---
 
