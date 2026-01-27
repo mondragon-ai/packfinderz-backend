@@ -135,6 +135,13 @@ func NewRouter(
 		})
 		r.Post("/v1/checkout", controllers.Checkout(checkoutService, storeService, logg))
 
+		r.Route("/v1/agent", func(r chi.Router) {
+			r.Use(middleware.Auth(cfg.JWT, sessionManager, logg))
+			r.Use(middleware.RequireRole("agent", logg))
+			r.Use(middleware.Idempotency(redisClient, logg))
+			r.Use(middleware.RateLimit())
+			r.Get("/ping", controllers.AgentPing())
+		})
 	})
 
 	r.Route("/api/admin", func(r chi.Router) {
@@ -147,14 +154,6 @@ func NewRouter(
 		r.Route("/v1/licenses", func(r chi.Router) {
 			r.Post("/{licenseId}/verify", controllers.AdminLicenseVerify(licenseService, logg))
 		})
-	})
-
-	r.Route("/api/agent", func(r chi.Router) {
-		r.Use(middleware.Auth(cfg.JWT, sessionManager, logg))
-		r.Use(middleware.RequireRole("agent", logg))
-		r.Use(middleware.Idempotency(redisClient, logg))
-		r.Use(middleware.RateLimit())
-		r.Get("/ping", controllers.AgentPing())
 	})
 
 	return r

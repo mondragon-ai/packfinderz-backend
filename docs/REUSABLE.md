@@ -489,7 +489,7 @@ All enums implement:
 * `Repository` (internal/orders/interfaces.go:1-29) persists `checkout_groups`, `vendor_orders`, `order_line_items`, and `payment_intents` plus `ListBuyerOrders`/`ListVendorOrders`, keeping each call scoped to the requesting buyer or vendor.
 * `ListBuyerOrders` (internal/orders/repo.go:109-211) queries `vendor_orders AS vo`, joins `payment_intents` for payment status and `stores` for buyer/vendor metadata, selects `order_number`, totals, `payment_status`, `fulfillment_status`, `shipping_status`, vendor summary, and `total_items`, filters on `order_status`, fulfillment/shipping/payment statuses, `created_at` range, and a case-insensitive `Query` over both buyer/vendor names, orders by `created_at DESC`, `id DESC`, and paginates via `pkg/pagination.NormalizeLimit`, `LimitWithBuffer`, and the cursor helpers (`pkg/pagination/pagination.go:12-80`).
 * `ListVendorOrders` (internal/orders/repo.go:214-326) mirrors the buyer query but scopes to `vendor_store_id`, joins `payment_intents`, selects buyer summary data, supports `fulfillment_status`, `shipping_status`, `payment_status`, actionable status lists, dates, and the same `Query` filter, and orders/paginates by the same cursor helpers so the vendor dashboard can scroll deterministically through `created_at DESC` results.
-* `FindOrderDetail` (internal/orders/repo.go:322-347) loads one `vendor_orders` row preloading `order_line_items`, `payment_intent`, buyer/vendor `stores`, and the single `active` `order_assignments` record so services can render the detail view without extra joins; the DTO (internal/orders/dto.go:78-115) exposes `OrderDetail`, `LineItemDetail`, `PaymentIntentDetail`, and `OrderAssignmentSummary`.
+* `FindOrderDetail` (internal/orders/repo.go:322-347) loads one `vendor_orders` row preloading `order_line_items`, `payment_intent`, buyer/vendor `stores`, and the single `active` `order_assignments` record so services can render the detail view without extra joins; the DTO (internal/orders/dto.go:78-115) exposes `OrderDetail`, `LineItemDetail`, `PaymentIntentDetail`, and `OrderAssignmentSummary`. The `order_assignments` schema (with `active` defaults, foreign keys, and unique active-order index) is defined by `pkg/migrate/migrations/20260128000000_create_order_assignments_table.sql`, whose down script drops the indexes/table for reversibility.
 * `api/controllers/orders.List`/`Detail` wire `GET /api/v1/orders` and `GET /api/v1/orders/{orderId}` to the buyer/vendor helpers, enforcing `activeStoreId`/`StoreType` via `middleware.StoreIDFromContext`/`StoreTypeFromContext` so buyers/vendors only see their perspective, and mapping validation errors (pagination, filters, UUID) plus 403/404 cases around ownership (`api/controllers/orders/orders.go`:13-221).
 * `BuyerOrderFilters`, `VendorOrderFilters`, `BuyerOrderSummary`, `VendorOrderSummary`, `BuyerOrderList`, `VendorOrderList`, and `OrderStoreSummary` (internal/orders/dto.go:10-75) define the inputs/outputs: optional status/date filters plus `Query`, and responses contain sequential `order_number`, totals, status enums, `total_items`, and store summaries (vendor rows omit logos per the MVP assumption).
 * The `VendorOrder` model (pkg/db/models/vendor_order.go:12-37) records `fulfillment_status`, `shipping_status`, and `order_number`; `pkg/migrate/migrations/20260126000001_add_vendor_order_fields.sql:4-51` introduces the enum types, `vendor_order_number_seq`, the `order_number` column, and `ux_vendor_orders_order_number` which backs the incremental identifier.
@@ -593,7 +593,7 @@ Redis-backed refresh sessions.
 
 ### `internal/auth`
 
-* `internal/auth.Service.Login` pairs membership data with `users.system_role`, lets system agents mint tokens with `role=agent` even without store records, and keeps `/api/agent/*` guarded by `RequireRole("agent")` (internal/auth/service.go).
+* `internal/auth.Service.Login` pairs membership data with `users.system_role`, lets system agents mint tokens with `role=agent` even without store records, and keeps `/api/v1/agent/*` guarded by `RequireRole("agent")` (internal/auth/service.go).
 * `api/middleware.Auth` parses the JWT via `pkg/auth.ParseAccessToken`, verifies the refresh session via `session.AccessSessionChecker.HasSession`, and seeds context with `user_id`, `role`, plus optional `store_id`/`store_type` so `middleware.RequireRole("agent")`/`("admin")` can block unauthorized routes even when `activeStoreId` is nil (api/middleware/auth.go:23-80; api/middleware/roles.go:1-27).
 
 
@@ -608,7 +608,7 @@ Redis-backed refresh sessions.
 * `/api/public/*`
 * `/api/*` (auth)
 * `/api/admin/*`
-* `/api/agent/*`
+* `/api/v1/agent/*`
 
 ---
 

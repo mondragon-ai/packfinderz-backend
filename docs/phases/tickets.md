@@ -55,7 +55,7 @@
 
 * [ ] Remove/retire deprecated token parser (`api/validators/token.go`) everywhere (per doc note)
 * [ ] Add auth middleware tests: missing/expired token, revoked session, missing activeStoreId
-* [ ] Add RBAC guard tests for `/api/admin/*` and `/api/agent/*`
+* [ ] Add RBAC guard tests for `/api/admin/*` and `/api/v1/agent/*`
 
 ---
 
@@ -259,7 +259,7 @@
 ### 8A) Agent identity + gating
 
 * [ ] Ensure `users.system_role=agent` path works end-to-end (seed agent user + login + middleware)
-* [ ] Add `/api/agent/*` route group controllers/tests
+* [ ] Add `/api/v1/agent/*` route group controllers/tests
 
 ### 8B) Assignment + queues
 
