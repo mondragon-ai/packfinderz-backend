@@ -63,6 +63,7 @@ const (
 	EventOrderExpired          OutboxEventType = "order_expired"
 	EventOrderCanceled         OutboxEventType = "order_canceled"
 	EventOrderRetried          OutboxEventType = "order_retried"
+	EventOrderPaid             OutboxEventType = "order_paid"
 	EventOrderDecided          OutboxEventType = "order_decided"
 	EventOrderFulfilled        OutboxEventType = "order_fulfilled"
 	EventReservationReleased   OutboxEventType = "reservation_released"
@@ -87,6 +88,7 @@ var validOutboxEventTypes = []OutboxEventType{
 	EventOrderExpired,
 	EventOrderCanceled,
 	EventOrderRetried,
+	EventOrderPaid,
 	EventOrderDecided,
 	EventOrderFulfilled,
 	EventReservationReleased,

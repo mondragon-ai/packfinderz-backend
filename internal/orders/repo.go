@@ -160,6 +160,16 @@ func (r *repository) UpdateVendorOrder(ctx context.Context, orderID uuid.UUID, u
 		Updates(updates).Error
 }
 
+func (r *repository) UpdatePaymentIntent(ctx context.Context, orderID uuid.UUID, updates map[string]any) error {
+	if len(updates) == 0 {
+		return nil
+	}
+	return r.db.WithContext(ctx).
+		Model(&models.PaymentIntent{}).
+		Where("order_id = ?", orderID).
+		Updates(updates).Error
+}
+
 func (r *repository) ListBuyerOrders(ctx context.Context, buyerStoreID uuid.UUID, params pagination.Params, filters BuyerOrderFilters) (*BuyerOrderList, error) {
 	pageSize := pagination.NormalizeLimit(params.Limit)
 	limitWithBuffer := pagination.LimitWithBuffer(params.Limit)

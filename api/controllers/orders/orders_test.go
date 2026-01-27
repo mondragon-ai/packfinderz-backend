@@ -80,6 +80,10 @@ func (s *stubControllerOrdersRepo) UpdateVendorOrder(ctx context.Context, orderI
 	return nil
 }
 
+func (s *stubControllerOrdersRepo) UpdatePaymentIntent(ctx context.Context, orderID uuid.UUID, updates map[string]any) error {
+	return nil
+}
+
 func (s *stubControllerOrdersRepo) UpdateOrderAssignment(ctx context.Context, assignmentID uuid.UUID, updates map[string]any) error {
 	return nil
 }
