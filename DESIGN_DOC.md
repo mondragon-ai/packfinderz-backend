@@ -428,13 +428,13 @@ Manifest approach (MVP):
 
 ## 17) HTTP Routing & Validation
 
-* The API boots `api/routes.NewRouter` (chi) with route groups for `/health`, `/api/public`, `/api`, `/api/admin`, and `/api/agent`. Most groups share the middleware chain (recoverer → request_id → logging → auth/store context → role guard → idempotency → rate-limit placeholders), while `/api/agent` skips the `StoreContext` guard so system-only agents can run without an `activeStoreId`.
+* The API boots `api/routes.NewRouter` (chi) with route groups for `/health`, `/api/public`, `/api`, `/api/admin`, and `/api/v1/agent`. Most groups share the middleware chain (recoverer → request_id → logging → auth/store context → role guard → idempotency → rate-limit placeholders), while `/api/v1/agent` (mounted under `/api`) omits the `StoreContext` guard so system-only agents can run without an `activeStoreId`.
 * Controllers under `api/controllers` get validated inputs from `api/validators` (e.g., `DecodeJSONBody`, `ParseQueryInt`, `SanitizeString`) before any business logic runs; validation failures surface as `pkg/errors.CodeValidation`.
 * Validation errors (malformed JSON, missing required fields, query params out of bounds) map to the canonical error envelope so clients always receive `400` + `{ "error": { "details": {...} } }`.
 * Each route group enforces its own auth/role requirements and should be covered by tests for 401/403, plus validation tests that assert the 400 envelope contains field-level messages.
 * `middleware.StoreContext` rejects `/api` requests that lack an `activeStoreId` or reference a store the user no longer belongs to before the controller runs (api/middleware/store.go:6-16).
 * `middleware.Idempotency` hashes request bodies, enforces `Idempotency-Key` for guarded routes, stores responses via `redis.IdempotencyStore.SetNX`, and replays them on retries while honoring TTLs defined in `api/middleware/idempotency.go:37-208`.
-* `middleware.RequireRole("admin")` / `RequireRole("agent")` block the `/api/admin` and `/api/agent` groups, letting the shared router mount role-specific handlers safely (api/middleware/roles.go:1-27).
+* `middleware.RequireRole("admin")` / `RequireRole("agent")` block the `/api/admin` and `/api/v1/agent` groups, letting the shared router mount role-specific handlers safely (api/middleware/roles.go:1-27).
 
 **Auth middleware (updated semantics)**
 
@@ -477,7 +477,7 @@ Manifest approach (MVP):
 **Admin/Agent probes**
 
 * `GET /api/admin/ping` – admin role required, shares store context if present, and is exempt from Idempotency checks even though middleware is mounted (api/routes/router.go:64-81; api/controllers/ping.go:26-43).
-* `GET /api/agent/ping` – agent role required, same context behavior as admin ping; the `/api/agent` group skips `StoreContext` so system agents seeded solely by `users.system_role='agent'` can call it without `activeStoreId`, while `RequireRole("agent")` rejects other roles (api/routes/router.go:83-101; api/controllers/ping.go:36-43; api/middleware/roles.go:1-27).
+* `GET /api/v1/agent/ping` – agent role required, same context behavior as admin ping; the `/api/v1/agent` group (mounted inside `/api`) omits `StoreContext` so system agents seeded solely by `users.system_role='agent'` can call it without `activeStoreId`, while `RequireRole("agent")` rejects other roles (api/routes/router.go:83-101; api/controllers/ping.go:36-43; api/middleware/roles.go:1-27).
 
 **Idempotency guards**
 

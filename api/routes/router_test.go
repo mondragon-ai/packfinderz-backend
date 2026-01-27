@@ -361,10 +361,19 @@ func TestAdminGroupRequiresAdminRole(t *testing.T) {
 func TestAgentGroupRequiresAgentRole(t *testing.T) {
 	cfg := testConfig()
 	router := newTestRouter(cfg)
-	req := httptest.NewRequest(http.MethodGet, "/api/agent/ping", nil)
-	req.Header.Set("Authorization", "Bearer "+buildToken(t, cfg, enums.MemberRoleAgent))
+
+	nonAgent := httptest.NewRequest(http.MethodGet, "/api/v1/agent/ping", nil)
+	nonAgent.Header.Set("Authorization", "Bearer "+buildToken(t, cfg, enums.MemberRoleViewer))
 	resp := httptest.NewRecorder()
-	router.ServeHTTP(resp, req)
+	router.ServeHTTP(resp, nonAgent)
+	if resp.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 for non-agent got %d", resp.Code)
+	}
+
+	agent := httptest.NewRequest(http.MethodGet, "/api/v1/agent/ping", nil)
+	agent.Header.Set("Authorization", "Bearer "+buildToken(t, cfg, enums.MemberRoleAgent))
+	resp = httptest.NewRecorder()
+	router.ServeHTTP(resp, agent)
 	if resp.Code != http.StatusOK {
 		t.Fatalf("expected 200 for agent got %d", resp.Code)
 	}
