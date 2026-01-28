@@ -1,4 +1,3 @@
-// api/routes/router.go
 package routes
 
 import (
@@ -8,8 +7,8 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/angelmondragon/packfinderz-backend/api/controllers"
-	billingcontrollers "github.com/angelmondragon/packfinderz-backend/api/controllers/billing"
 	analysiscontrollers "github.com/angelmondragon/packfinderz-backend/api/controllers/analytics"
+	billingcontrollers "github.com/angelmondragon/packfinderz-backend/api/controllers/billing"
 	ordercontrollers "github.com/angelmondragon/packfinderz-backend/api/controllers/orders"
 	subscriptionControllers "github.com/angelmondragon/packfinderz-backend/api/controllers/subscriptions"
 	webhookcontrollers "github.com/angelmondragon/packfinderz-backend/api/controllers/webhooks"
@@ -125,12 +124,12 @@ func NewRouter(
 			r.Get("/ping", controllers.PrivatePing())
 
 			r.Route("/v1/vendor", func(r chi.Router) {
-			r.Post("/products", controllers.VendorCreateProduct(productService, logg))
-			r.Patch("/products/{productId}", controllers.VendorUpdateProduct(productService, logg))
-			r.Delete("/products/{productId}", controllers.VendorDeleteProduct(productService, logg))
-			r.Get("/analytics", analysiscontrollers.VendorAnalytics(analyticsService, logg))
-			r.Get("/billing/charges", billingcontrollers.VendorBillingCharges(billingService, logg))
-			r.Post("/orders/{orderId}/decision", ordercontrollers.VendorOrderDecision(ordersSvc, logg))
+				r.Post("/products", controllers.VendorCreateProduct(productService, logg))
+				r.Patch("/products/{productId}", controllers.VendorUpdateProduct(productService, logg))
+				r.Delete("/products/{productId}", controllers.VendorDeleteProduct(productService, logg))
+				r.Get("/analytics", analysiscontrollers.VendorAnalytics(analyticsService, logg))
+				r.Get("/billing/charges", billingcontrollers.VendorBillingCharges(billingService, logg))
+				r.Post("/orders/{orderId}/decision", ordercontrollers.VendorOrderDecision(ordersSvc, logg))
 				r.Post("/orders/{orderId}/line-items/decision", ordercontrollers.VendorLineItemDecision(ordersSvc, logg))
 				r.Route("/subscriptions", func(r chi.Router) {
 					r.Post("/", subscriptionControllers.VendorSubscriptionCreate(subscriptionsService, logg))

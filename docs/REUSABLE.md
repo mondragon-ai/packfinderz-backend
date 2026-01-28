@@ -228,6 +228,7 @@ Canonical helpers for cart/checkout validation.
 **Helpers**
 
 * `ValidateMOQ([]MOQValidationInput)` returns `nil` when every line item meets its product's MOQ and otherwise builds a `pkgerrors.CodeStateConflict` error so the API can reply with HTTP `422`.
+* `ValidateVendorStore(*stores.StoreDTO, buyerState string)` now delegates to `pkg/visibility.EnsureVendorVisible`, so cart upserts and checkout use the same subscription/state gating before hitting the DB.
 
 **Types**
 

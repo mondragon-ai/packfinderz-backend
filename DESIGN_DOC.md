@@ -1910,8 +1910,9 @@ Headers:
 
 * `GET /api/v1/products`
 
-  * Filters: `state` (required), `query`, `category`, `strain`, `priceMin/Max`, `vendorStoreId`, pagination.
-  * Enforces vendor visibility via `pkg/visibility.EnsureVendorVisible`: vendor stores must be `kyc_status=verified`, `subscription_active=true`, and their `address.state` must match the requested `state` (and the buyer's store state when provided); violations produce `422` (state mismatch) or `404` (hidden vendors).
+* Filters: `state` (required), `query`, `category`, `strain`, `priceMin/Max`, `vendorStoreId`, pagination.
+* Enforces vendor visibility via `pkg/visibility.EnsureVendorVisible`: vendor stores must be `kyc_status=verified`, `subscription_active=true`, and their `address.state` must match the requested `state` (and the buyer's store state when provided); violations produce `422` (state mismatch) or `404` (hidden vendors). PF-118 verified every browse/search helper still calls `EnsureVendorVisible` so `stores.subscription_active=false` vendors remain hidden while paid stores stay discoverable (`api/controllers/products.go:8-244`; `pkg/visibility/visibility.go:11-46`).
+  * `internal/cart.Service` and checkout now reuse `internal/checkout/helpers.ValidateVendorStore`, which delegates to `EnsureVendorVisible`, so the same gating applies when buyers add products to the cart or reach checkout, preventing unpaid vendors from appearing anywhere in the marketplace flow (internal/cart/service.go:109-180; internal/checkout/helpers/validation.go:1-57).
   * Success: `200`
   * Errors: `401, 422`
 
