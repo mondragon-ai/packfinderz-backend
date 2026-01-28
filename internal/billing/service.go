@@ -5,6 +5,9 @@ import (
 	"errors"
 
 	"github.com/angelmondragon/packfinderz-backend/pkg/db/models"
+	"github.com/angelmondragon/packfinderz-backend/pkg/enums"
+	pkgerrors "github.com/angelmondragon/packfinderz-backend/pkg/errors"
+	"github.com/angelmondragon/packfinderz-backend/pkg/pagination"
 	"github.com/google/uuid"
 )
 
@@ -50,8 +53,53 @@ func (s *Service) CreateCharge(ctx context.Context, charge *models.Charge) error
 	return s.repo.CreateCharge(ctx, charge)
 }
 
-func (s *Service) ListCharges(ctx context.Context, storeID uuid.UUID) ([]models.Charge, error) {
-	return s.repo.ListChargesByStore(ctx, storeID)
+// ListChargesParams configures the vendor billing history request.
+type ListChargesParams struct {
+	StoreID uuid.UUID
+	Limit   int
+	Cursor  string
+	Type    *enums.ChargeType
+	Status  *enums.ChargeStatus
+}
+
+// ListChargesResult wraps the returned charges and cursor metadata.
+type ListChargesResult struct {
+	Items  []models.Charge `json:"items"`
+	Cursor string          `json:"cursor"`
+}
+
+func (s *Service) ListCharges(ctx context.Context, params ListChargesParams) (*ListChargesResult, error) {
+	if params.StoreID == uuid.Nil {
+		return nil, pkgerrors.New(pkgerrors.CodeValidation, "store id is required")
+	}
+
+	query := ListChargesQuery{
+		StoreID: params.StoreID,
+		Limit:   pagination.NormalizeLimit(params.Limit),
+		Type:    params.Type,
+		Status:  params.Status,
+	}
+
+	if params.Cursor != "" {
+		cursor, err := pagination.ParseCursor(params.Cursor)
+		if err != nil {
+			return nil, pkgerrors.Wrap(pkgerrors.CodeValidation, err, "invalid cursor")
+		}
+		query.Cursor = cursor
+	}
+
+	charges, next, err := s.repo.ListCharges(ctx, query)
+	if err != nil {
+		return nil, pkgerrors.Wrap(pkgerrors.CodeDependency, err, "list charges")
+	}
+
+	result := &ListChargesResult{
+		Items: charges,
+	}
+	if next != nil {
+		result.Cursor = pagination.EncodeCursor(*next)
+	}
+	return result, nil
 }
 
 func (s *Service) CreateUsageCharge(ctx context.Context, usage *models.UsageCharge) error {

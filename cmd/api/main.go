@@ -162,6 +162,14 @@ func main() {
 	}
 
 	billingRepo := billing.NewRepository(dbClient.DB())
+	billingService, err := billing.NewService(billing.ServiceParams{
+		Repo: billingRepo,
+	})
+	if err != nil {
+		logg.Error(context.Background(), "failed to create billing service", err)
+		os.Exit(1)
+	}
+
 	subscriptionsService, err := subscriptions.NewService(subscriptions.ServiceParams{
 		BillingRepo:       billingRepo,
 		StoreRepo:         storeRepo,
@@ -317,6 +325,7 @@ func main() {
 			ordersRepo,
 			ordersService,
 			subscriptionsService,
+			billingService,
 			stripeClient,
 			stripeWebhookService,
 			stripeWebhookGuard,

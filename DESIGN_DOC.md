@@ -2330,7 +2330,8 @@ Creation/cancellation requests require an `Idempotency-Key` and must provide `st
 * `GET /api/v1/vendor/billing/charges`
 
   * Ads/subscriptions only. Payouts live in ledger/order views.
-  * Success: `200`
+  * Accepts `limit` (positive integer, defaults to 25, capped at 100), `cursor` (base64 `created_at|id`), `type` (`subscription`|`ad_spend`|`other`), and `status` (`pending`|`succeeded`|`failed`|`refunded`) filters so clients can page through the vendor’s `charges` rows without hitting Stripe again.
+  * Returns `200` with `charges[]` (each row includes `id`, `amount_cents`, `currency`, `type`, `status`, `description`, `created_at`, `billed_at`) plus the `cursor` for the next page.
   * Errors: `401, 403`
 
 ---

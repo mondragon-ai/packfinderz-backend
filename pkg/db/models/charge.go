@@ -13,6 +13,7 @@ import (
 type Charge struct {
 	ID              uuid.UUID          `gorm:"type:uuid;default:gen_random_uuid();primaryKey"`
 	StoreID         uuid.UUID          `gorm:"column:store_id;type:uuid;not null;index"`
+	Type            enums.ChargeType   `gorm:"column:type;type:charge_type;not null;default:'subscription'"`
 	SubscriptionID  *uuid.UUID         `gorm:"column:subscription_id;type:uuid"`
 	PaymentMethodID *uuid.UUID         `gorm:"column:payment_method_id;type:uuid"`
 	StripeChargeID  string             `gorm:"column:stripe_charge_id;not null;unique"`

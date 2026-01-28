@@ -7,6 +7,7 @@ import (
 	"github.com/angelmondragon/packfinderz-backend/internal/billing"
 	"github.com/angelmondragon/packfinderz-backend/pkg/db/models"
 	"github.com/angelmondragon/packfinderz-backend/pkg/enums"
+	"github.com/angelmondragon/packfinderz-backend/pkg/pagination"
 	"github.com/google/uuid"
 	"github.com/stripe/stripe-go/v84"
 	"gorm.io/gorm"
@@ -247,8 +248,8 @@ func (s *stubBillingRepo) CreateCharge(ctx context.Context, charge *models.Charg
 	return nil
 }
 
-func (s *stubBillingRepo) ListChargesByStore(ctx context.Context, storeID uuid.UUID) ([]models.Charge, error) {
-	return nil, nil
+func (s *stubBillingRepo) ListCharges(ctx context.Context, params billing.ListChargesQuery) ([]models.Charge, *pagination.Cursor, error) {
+	return nil, nil, nil
 }
 
 func (s *stubBillingRepo) CreateUsageCharge(ctx context.Context, usage *models.UsageCharge) error {

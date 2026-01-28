@@ -4,6 +4,8 @@ import (
 	"context"
 
 	"github.com/angelmondragon/packfinderz-backend/pkg/db/models"
+	"github.com/angelmondragon/packfinderz-backend/pkg/enums"
+	"github.com/angelmondragon/packfinderz-backend/pkg/pagination"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
@@ -19,7 +21,7 @@ type Repository interface {
 	CreatePaymentMethod(ctx context.Context, method *models.PaymentMethod) error
 	ListPaymentMethodsByStore(ctx context.Context, storeID uuid.UUID) ([]models.PaymentMethod, error)
 	CreateCharge(ctx context.Context, charge *models.Charge) error
-	ListChargesByStore(ctx context.Context, storeID uuid.UUID) ([]models.Charge, error)
+	ListCharges(ctx context.Context, params ListChargesQuery) ([]models.Charge, *pagination.Cursor, error)
 	CreateUsageCharge(ctx context.Context, usage *models.UsageCharge) error
 	ListUsageChargesByStore(ctx context.Context, storeID uuid.UUID) ([]models.UsageCharge, error)
 }
@@ -108,15 +110,42 @@ func (r *repository) CreateCharge(ctx context.Context, charge *models.Charge) er
 	return r.db.WithContext(ctx).Create(charge).Error
 }
 
-func (r *repository) ListChargesByStore(ctx context.Context, storeID uuid.UUID) ([]models.Charge, error) {
-	var charges []models.Charge
-	if err := r.db.WithContext(ctx).
-		Where("store_id = ?", storeID).
-		Order("created_at DESC").
-		Find(&charges).Error; err != nil {
-		return nil, err
+type ListChargesQuery struct {
+	StoreID uuid.UUID
+	Limit   int
+	Cursor  *pagination.Cursor
+	Type    *enums.ChargeType
+	Status  *enums.ChargeStatus
+}
+
+func (r *repository) ListCharges(ctx context.Context, params ListChargesQuery) ([]models.Charge, *pagination.Cursor, error) {
+	limit := pagination.NormalizeLimit(params.Limit)
+	query := r.db.WithContext(ctx).Model(&models.Charge{}).Where("store_id = ?", params.StoreID)
+	if params.Type != nil {
+		query = query.Where("type = ?", *params.Type)
 	}
-	return charges, nil
+	if params.Status != nil {
+		query = query.Where("status = ?", *params.Status)
+	}
+	if params.Cursor != nil {
+		query = query.Where("(created_at, id) < (?, ?)", params.Cursor.CreatedAt, params.Cursor.ID)
+	}
+
+	var charges []models.Charge
+	if err := query.Order("created_at DESC, id DESC").Limit(pagination.LimitWithBuffer(limit)).Find(&charges).Error; err != nil {
+		return nil, nil, err
+	}
+
+	if len(charges) > limit {
+		next := charges[limit]
+		charges = charges[:limit]
+		return charges, &pagination.Cursor{
+			CreatedAt: next.CreatedAt,
+			ID:        next.ID,
+		}, nil
+	}
+
+	return charges, nil, nil
 }
 
 func (r *repository) CreateUsageCharge(ctx context.Context, usage *models.UsageCharge) error {
