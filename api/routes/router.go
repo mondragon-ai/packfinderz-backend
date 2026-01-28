@@ -11,6 +11,7 @@ import (
 	analysiscontrollers "github.com/angelmondragon/packfinderz-backend/api/controllers/analytics"
 	ordercontrollers "github.com/angelmondragon/packfinderz-backend/api/controllers/orders"
 	subscriptionControllers "github.com/angelmondragon/packfinderz-backend/api/controllers/subscriptions"
+	webhookcontrollers "github.com/angelmondragon/packfinderz-backend/api/controllers/webhooks"
 	"github.com/angelmondragon/packfinderz-backend/api/middleware"
 	"github.com/angelmondragon/packfinderz-backend/internal/analytics"
 	"github.com/angelmondragon/packfinderz-backend/internal/auth"
@@ -23,6 +24,7 @@ import (
 	products "github.com/angelmondragon/packfinderz-backend/internal/products"
 	"github.com/angelmondragon/packfinderz-backend/internal/stores"
 	subscriptionsvc "github.com/angelmondragon/packfinderz-backend/internal/subscriptions"
+	stripewebhook "github.com/angelmondragon/packfinderz-backend/internal/webhooks/stripe"
 	"github.com/angelmondragon/packfinderz-backend/pkg/auth/session"
 	"github.com/angelmondragon/packfinderz-backend/pkg/bigquery"
 	"github.com/angelmondragon/packfinderz-backend/pkg/config"
@@ -62,6 +64,8 @@ func NewRouter(
 	ordersSvc orders.Service,
 	subscriptionsService subscriptionsvc.Service,
 	stripeClient *stripe.Client,
+	stripeWebhookService *stripewebhook.Service,
+	stripeWebhookGuard *stripewebhook.IdempotencyGuard,
 ) http.Handler {
 	r := chi.NewRouter()
 	if stripeClient != nil && logg != nil {
@@ -95,6 +99,10 @@ func NewRouter(
 	r.Route("/api/public", func(r chi.Router) {
 		r.Get("/ping", controllers.PublicPing())
 		r.Post("/validate", controllers.PublicValidate(logg))
+	})
+
+	r.Route("/api/v1/webhooks", func(r chi.Router) {
+		r.Post("/stripe", webhookcontrollers.StripeWebhook(stripeWebhookService, stripeClient, stripeWebhookGuard, logg))
 	})
 
 	r.Route("/api/v1/auth", func(r chi.Router) {

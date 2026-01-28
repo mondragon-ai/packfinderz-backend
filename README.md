@@ -469,6 +469,10 @@ These endpoints rely on `activeStoreId` and enforce owner/manager access for mut
 * Signed READ URLs for `uploaded`/`ready` media are generated via the media service helper and expire according to `PACKFINDERZ_GCS_DOWNLOAD_URL_EXPIRY`.
 * `DELETE /api/v1/media/{mediaId}` – removes media whose status is `uploaded`/`ready`, deletes the GCS object (ignores missing objects), and marks the row as `deleted`; rejects mismatched stores or invalid states with `403`/`409`.
 
+### Stripe Webhooks
+
+* `POST /api/v1/webhooks/stripe` – consumes `customer.subscription.created/updated/deleted` and `invoice.paid/payment_failed` events from Stripe. The handler verifies the `Stripe-Signature` header using `PACKFINDERZ_STRIPE_SECRET`, deduplicates deliveries via a Redis guard keyed by `event.id` (TTL=`PACKFINDERZ_EVENTING_IDEMPOTENCY_TTL`), and keeps `subscriptions.status` plus `stores.subscription_active` aligned with Stripe truth.
+
 ### Error Contract
 
 ```json

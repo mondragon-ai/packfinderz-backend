@@ -38,6 +38,7 @@ Central config via `envconfig`.
 * Loads `PACKFINDERZ_STRIPE_API_KEY`, `PACKFINDERZ_STRIPE_SECRET`, and `PACKFINDERZ_STRIPE_ENV` (default `test`).
 * `cfg.Environment()` normalizes to `test|live`, and `pkg/stripe.NewClient` enforces the matching `sk_*`/`rk_*` prefix so misconfigured keys fail fast.
 * The signing secret stays available for webhook verification while the API key bootstraps the Stripe client used by both the API and worker binaries.
+* `internal/webhooks/stripe.Service` consumes `/api/v1/webhooks/stripe`, verifies the `Stripe-Signature` header, deduplicates deliveries via a Redis guard (key pattern `pf:idempotency:stripe-webhook:<event_id>` with TTL `PACKFINDERZ_EVENTING_IDEMPOTENCY_TTL`), and mirrors `customer.subscription.*`/`invoice.paid|invoice.payment_failed` events into `subscriptions.status` plus `stores.subscription_active`.
 * `cmd/api/main.go` and `cmd/worker/main.go` both call `pkg/stripe.NewClient` during startup and exit immediately when the client returns an error, ensuring missing or invalid Stripe keys block API/worker bootstrapping (`cmd/api/main.go:55-65`; `cmd/worker/main.go:51-70`).
 
 ---
