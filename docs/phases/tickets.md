@@ -340,23 +340,26 @@
 
 ### 12A) Stripe integration
 
-* [ ] Stripe client bootstrap + config/secrets
-* [ ] Migrations: `subscriptions`, `payment_methods`, `charges`, `usage_charges` (if not already applied)
+* [X] Stripe client bootstrap + config/secrets
+* [X] Migrations: `subscriptions`, `payment_methods`, `charges`, `usage_charges` (if not already applied) (models, repos, enums & services)
 
 ### 12B) Subscription flows
 
-* [ ] `POST /api/v1/vendor/subscriptions` (create subscription, idempotent)
-* [ ] `POST /api/v1/vendor/subscriptions/cancel` (idempotent)
-* [ ] `GET /api/v1/vendor/subscriptions/active`
-* [ ] Webhook consumer (Stripe) updates subscription state + mirrors `stores.subscription_active`
+Combine these:
+* [X] `POST /api/v1/vendor/subscriptions` (create subscription, idempotent)
+* [X] `POST /api/v1/vendor/subscriptions/cancel` (idempotent)
+* [X] `GET /api/v1/vendor/subscriptions` -> there should be a one to 0 or a one to one relationship (only return the single active sub)
+
+seperate webhook endpoint we can link or subscribe to 
+* [X] Webhook consumer (Stripe) updates subscription state + mirrors `stores.subscription_active`
 
 ### 12C) Billing history
 
-* [ ] `GET /api/v1/vendor/billing/charges` (ads + subscriptions)
-* [ ] Enforce gating everywhere:
+* [X] `GET /api/v1/vendor/billing/charges` (ads + subscriptions)
 
-  * [ ] browse/search hides vendor listings if `subscription_active=false`
-  * [ ] ads/analytics blocked if inactive
+* [X] Enforce gating everywhere:
+  * [X] browse/search hides vendor listings if `subscription_active=false` (should be done already but verify)
+
 
 ---
 

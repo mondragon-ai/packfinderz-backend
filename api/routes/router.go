@@ -28,6 +28,7 @@ import (
 	"github.com/angelmondragon/packfinderz-backend/pkg/logger"
 	"github.com/angelmondragon/packfinderz-backend/pkg/redis"
 	"github.com/angelmondragon/packfinderz-backend/pkg/storage/gcs"
+	"github.com/angelmondragon/packfinderz-backend/pkg/stripe"
 )
 
 type sessionManager interface {
@@ -57,8 +58,13 @@ func NewRouter(
 	notificationsService notifications.Service,
 	ordersRepo orders.Repository,
 	ordersSvc orders.Service,
+	stripeClient *stripe.Client,
 ) http.Handler {
 	r := chi.NewRouter()
+	if stripeClient != nil && logg != nil {
+		ctx := logg.WithField(context.Background(), "stripe_env", stripeClient.Environment())
+		logg.Info(ctx, "stripe client wired to API routes")
+	}
 	r.Use(
 		middleware.Recoverer(logg),
 		middleware.RequestID(logg),

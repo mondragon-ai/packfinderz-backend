@@ -40,6 +40,7 @@ require (
 	github.com/lib/pq v1.10.0
 	github.com/pressly/goose/v3 v3.26.0
 	github.com/stretchr/testify v1.11.0
+	github.com/stripe/stripe-go/v84 v84.2.0
 	google.golang.org/api v0.250.0
 	google.golang.org/grpc v1.75.1
 )

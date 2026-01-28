@@ -506,6 +506,12 @@ PACKFINDERZ_EVENTING_IDEMPOTENCY_TTL=720h
 
 `PACKFINDERZ_EVENTING_IDEMPOTENCY_TTL` (default `720h`) controls how long the Redis key `pf:evt:processed:<consumer>:<event_id>` stays locked after a consumer first handles an Outbox event. Workers should wire `pkg/eventing/idempotency.Manager` with this TTL so retries do not re-run side effects.
 
+### Stripe
+
+* `PACKFINDERZ_STRIPE_API_KEY` (required) – the Stripe secret key (`sk_*`/`rk_*`) for the current environment.
+* `PACKFINDERZ_STRIPE_SECRET` (required) – the webhook signing secret used for event verification.
+* `PACKFINDERZ_STRIPE_ENV` (default `test`) – switches between the test and live Stripe environments; using `test` requires a `sk_test`/`rk_test` key and `live` requires `sk_live`/`rk_live`. The API and worker binaries fail fast when keys are missing or contain the wrong prefix so misconfigured envs surface immediately.
+
 ### Outbox Publisher Tuning
 
 These knobs control the publisher worker that reads `outbox_events` and pushes domain envelopes to Pub/Sub (see `docs/outbox.md`).

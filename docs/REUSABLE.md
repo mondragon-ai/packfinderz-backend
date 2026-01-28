@@ -33,6 +33,13 @@ Central config via `envconfig`.
 
   * Synthesizes legacy vars → `PACKFINDERZ_DB_DSN` if missing.
 
+**StripeConfig**
+
+* Loads `PACKFINDERZ_STRIPE_API_KEY`, `PACKFINDERZ_STRIPE_SECRET`, and `PACKFINDERZ_STRIPE_ENV` (default `test`).
+* `cfg.Environment()` normalizes to `test|live`, and `pkg/stripe.NewClient` enforces the matching `sk_*`/`rk_*` prefix so misconfigured keys fail fast.
+* The signing secret stays available for webhook verification while the API key bootstraps the Stripe client used by both the API and worker binaries.
+* `cmd/api/main.go` and `cmd/worker/main.go` both call `pkg/stripe.NewClient` during startup and exit immediately when the client returns an error, ensuring missing or invalid Stripe keys block API/worker bootstrapping (`cmd/api/main.go:55-65`; `cmd/worker/main.go:51-70`).
+
 ---
 
 ### `db`

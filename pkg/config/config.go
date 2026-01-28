@@ -189,13 +189,23 @@ type OutboxConfig struct {
 }
 
 type StripeConfig struct {
-	APIKey        string `envconfig:"PACKFINDERZ_STRIPE_API_KEY"`
-	WebhookSecret string `envconfig:"PACKFINDERZ_STRIPE_WEBHOOK_SECRET"`
+	APIKey string `envconfig:"PACKFINDERZ_STRIPE_API_KEY"`
+	Secret string `envconfig:"PACKFINDERZ_STRIPE_SECRET"`
+	Env    string `envconfig:"PACKFINDERZ_STRIPE_ENV" default:"test"`
 }
 
 type SendgridConfig struct {
 	APIKey      string `envconfig:"PACKFINDERZ_SENDGRID_API_KEY"`
 	DefaultFrom string `envconfig:"PACKFINDERZ_SENDGRID_FROM_EMAIL"`
+}
+
+// Environment returns the normalized Stripe environment (test/live).
+func (s StripeConfig) Environment() string {
+	env := strings.TrimSpace(strings.ToLower(s.Env))
+	if env == "" {
+		return "test"
+	}
+	return env
 }
 
 func (db *DBConfig) ensureDSN() error {

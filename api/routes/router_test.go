@@ -420,6 +420,7 @@ func newTestRouter(cfg *config.Config) http.Handler {
 		stubNotificationsService{},
 		&stubOrdersRepo{},
 		stubOrdersService{},
+		nil,
 	)
 }
 
@@ -541,6 +542,7 @@ func TestAgentAssignedOrdersRequiresAgentRole(t *testing.T) {
 		stubNotificationsService{},
 		repo,
 		stubOrdersService{},
+		nil,
 	)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/agent/orders", nil)
@@ -601,6 +603,7 @@ func TestAgentAssignedOrderDetailRequiresAgentRole(t *testing.T) {
 		stubNotificationsService{},
 		repo,
 		stubOrdersService{},
+		nil,
 	)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/agent/orders/"+uuid.NewString(), nil)
@@ -637,6 +640,7 @@ func TestAgentPickupRequiresAgentRole(t *testing.T) {
 		stubNotificationsService{},
 		repo,
 		stubOrdersService{},
+		nil,
 	)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/agent/orders/"+uuid.NewString()+"/pickup", nil)
@@ -688,6 +692,7 @@ func TestAgentDeliverRequiresAgentRole(t *testing.T) {
 		stubNotificationsService{},
 		repo,
 		stubOrdersService{},
+		nil,
 	)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/agent/orders/"+uuid.NewString()+"/deliver", nil)
