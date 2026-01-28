@@ -12,6 +12,7 @@ import (
 type StripeSubscriptionClient interface {
 	Create(ctx context.Context, params *stripe.SubscriptionParams) (*stripe.Subscription, error)
 	Cancel(ctx context.Context, id string, params *stripe.SubscriptionCancelParams) (*stripe.Subscription, error)
+	Get(ctx context.Context, id string, params *stripe.SubscriptionParams) (*stripe.Subscription, error)
 }
 
 type stripeClientWrapper struct{}
@@ -36,4 +37,11 @@ func (w *stripeClientWrapper) Cancel(ctx context.Context, id string, params *str
 		params.Context = ctx
 	}
 	return subscription.Cancel(id, params)
+}
+
+func (w *stripeClientWrapper) Get(ctx context.Context, id string, params *stripe.SubscriptionParams) (*stripe.Subscription, error) {
+	if params != nil {
+		params.Context = ctx
+	}
+	return subscription.Get(id, params)
 }

@@ -228,6 +228,13 @@ func (s *stubBillingRepo) FindSubscription(ctx context.Context, storeID uuid.UUI
 	return nil, nil
 }
 
+func (s *stubBillingRepo) FindSubscriptionByStripeID(ctx context.Context, stripeSubscriptionID string) (*models.Subscription, error) {
+	if s.existing != nil && s.existing.StripeSubscriptionID == stripeSubscriptionID {
+		return s.existing, nil
+	}
+	return nil, nil
+}
+
 func (s *stubBillingRepo) CreatePaymentMethod(ctx context.Context, method *models.PaymentMethod) error {
 	return nil
 }
@@ -278,8 +285,10 @@ func (s *stubTxRunner) WithTx(ctx context.Context, fn func(tx *gorm.DB) error) e
 type stubStripeClient struct {
 	createResp   *stripe.Subscription
 	cancelResp   *stripe.Subscription
+	getResp      *stripe.Subscription
 	createErr    error
 	cancelErr    error
+	getErr       error
 	calledCreate bool
 	calledCancel bool
 }
@@ -292,4 +301,8 @@ func (s *stubStripeClient) Create(ctx context.Context, params *stripe.Subscripti
 func (s *stubStripeClient) Cancel(ctx context.Context, id string, params *stripe.SubscriptionCancelParams) (*stripe.Subscription, error) {
 	s.calledCancel = true
 	return s.cancelResp, s.cancelErr
+}
+
+func (s *stubStripeClient) Get(ctx context.Context, id string, params *stripe.SubscriptionParams) (*stripe.Subscription, error) {
+	return s.getResp, s.getErr
 }

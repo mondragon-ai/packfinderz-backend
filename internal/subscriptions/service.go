@@ -2,14 +2,11 @@ package subscriptions
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/angelmondragon/packfinderz-backend/internal/billing"
 	"github.com/angelmondragon/packfinderz-backend/pkg/db/models"
-	"github.com/angelmondragon/packfinderz-backend/pkg/enums"
 	pkgerrors "github.com/angelmondragon/packfinderz-backend/pkg/errors"
 	"github.com/google/uuid"
 	"github.com/stripe/stripe-go/v84"
@@ -144,7 +141,7 @@ func (s *service) Create(ctx context.Context, storeID uuid.UUID, input CreateSub
 			return nil
 		}
 
-		sub, err := buildSubscriptionModel(stripeSub, storeID, priceID, customerID, paymentMethodID)
+		sub, err := BuildSubscriptionFromStripe(stripeSub, storeID, priceID, customerID, paymentMethodID)
 		if err != nil {
 			return err
 		}
@@ -161,7 +158,7 @@ func (s *service) Create(ctx context.Context, storeID uuid.UUID, input CreateSub
 			return pkgerrors.Wrap(pkgerrors.CodeDependency, err, "load store")
 		}
 
-		store.SubscriptionActive = isActiveStatus(sub.Status)
+		store.SubscriptionActive = IsActiveStatus(sub.Status)
 		if err := s.storeRepo.UpdateWithTx(tx, store); err != nil {
 			return pkgerrors.Wrap(pkgerrors.CodeDependency, err, "update store subscription flag")
 		}
@@ -218,7 +215,7 @@ func (s *service) Cancel(ctx context.Context, storeID uuid.UUID) error {
 			return pkgerrors.New(pkgerrors.CodeNotFound, "subscription not found")
 		}
 
-		if err := applyStripeUpdates(stored, stripeSub, stored.PriceID); err != nil {
+		if err := UpdateSubscriptionFromStripe(stored, stripeSub, stored.PriceID); err != nil {
 			return err
 		}
 		if err := txRepo.UpdateSubscription(ctx, stored); err != nil {
@@ -257,7 +254,7 @@ func (s *service) findActive(ctx context.Context, storeID uuid.UUID) (*models.Su
 	if err != nil {
 		return nil, pkgerrors.Wrap(pkgerrors.CodeDependency, err, "lookup subscription")
 	}
-	if sub == nil || !isActiveStatus(sub.Status) {
+	if sub == nil || !IsActiveStatus(sub.Status) {
 		return nil, nil
 	}
 	return sub, nil
@@ -268,7 +265,7 @@ func (s *service) findActiveWithTx(ctx context.Context, repo billing.Repository,
 	if err != nil {
 		return nil, pkgerrors.Wrap(pkgerrors.CodeDependency, err, "lookup subscription")
 	}
-	if sub == nil || !isActiveStatus(sub.Status) {
+	if sub == nil || !IsActiveStatus(sub.Status) {
 		return nil, nil
 	}
 	return sub, nil
@@ -289,107 +286,6 @@ func (s *service) ensureStoreFlag(ctx context.Context, storeID uuid.UUID, active
 		store.SubscriptionActive = active
 		return s.storeRepo.UpdateWithTx(tx, store)
 	})
-}
-
-func buildSubscriptionModel(stripeSub *stripe.Subscription, storeID uuid.UUID, priceID, customerID, paymentMethodID string) (*models.Subscription, error) {
-	status := enums.SubscriptionStatus(stripeSub.Status)
-	if !status.IsValid() {
-		return nil, pkgerrors.New(pkgerrors.CodeDependency, "invalid stripe subscription status")
-	}
-
-	meta, err := mergeMetadata(stripeSub.Metadata, map[string]string{
-		"stripe_customer_id":       customerID,
-		"stripe_payment_method_id": paymentMethodID,
-	})
-	if err != nil {
-		return nil, pkgerrors.Wrap(pkgerrors.CodeDependency, err, "marshal metadata")
-	}
-
-	startTS, endTS := periodFromSubscription(stripeSub)
-	return &models.Subscription{
-		StoreID:              storeID,
-		StripeSubscriptionID: stripeSub.ID,
-		Status:               status,
-		PriceID:              &priceID,
-		CurrentPeriodStart:   toTimePtr(startTS),
-		CurrentPeriodEnd:     toTime(endTS),
-		CancelAtPeriodEnd:    stripeSub.CancelAtPeriodEnd,
-		CanceledAt:           toTimePtr(stripeSub.CanceledAt),
-		Metadata:             meta,
-	}, nil
-}
-
-func applyStripeUpdates(target *models.Subscription, stripeSub *stripe.Subscription, priceID *string) error {
-	status := enums.SubscriptionStatus(stripeSub.Status)
-	if !status.IsValid() {
-		return pkgerrors.New(pkgerrors.CodeDependency, "invalid stripe subscription status")
-	}
-
-	meta, err := mergeMetadata(stripeSub.Metadata, nil)
-	if err != nil {
-		return pkgerrors.Wrap(pkgerrors.CodeDependency, err, "marshal metadata")
-	}
-
-	target.StripeSubscriptionID = stripeSub.ID
-	target.Status = status
-	if priceID != nil {
-		target.PriceID = priceID
-	}
-	startTS, endTS := periodFromSubscription(stripeSub)
-	target.CurrentPeriodStart = toTimePtr(startTS)
-	target.CurrentPeriodEnd = toTime(endTS)
-	target.CancelAtPeriodEnd = stripeSub.CancelAtPeriodEnd
-	target.CanceledAt = toTimePtr(stripeSub.CanceledAt)
-	target.Metadata = meta
-	return nil
-}
-
-func mergeMetadata(base map[string]string, extras map[string]string) (json.RawMessage, error) {
-	if len(base) == 0 && len(extras) == 0 {
-		return json.RawMessage("{}"), nil
-	}
-	merged := make(map[string]string, len(base)+len(extras))
-	for k, v := range base {
-		merged[k] = v
-	}
-	for k, v := range extras {
-		if v == "" {
-			continue
-		}
-		merged[k] = v
-	}
-	data, err := json.Marshal(merged)
-	if err != nil {
-		return nil, err
-	}
-	return json.RawMessage(data), nil
-}
-
-func toTime(ts int64) time.Time {
-	if ts == 0 {
-		return time.Time{}
-	}
-	return time.Unix(ts, 0).UTC()
-}
-
-func toTimePtr(ts int64) *time.Time {
-	if ts == 0 {
-		return nil
-	}
-	t := time.Unix(ts, 0).UTC()
-	return &t
-}
-
-func isActiveStatus(status enums.SubscriptionStatus) bool {
-	return status != enums.SubscriptionStatusCanceled
-}
-
-func periodFromSubscription(sub *stripe.Subscription) (int64, int64) {
-	if sub == nil || sub.Items == nil || len(sub.Items.Data) == 0 {
-		return 0, 0
-	}
-	item := sub.Items.Data[0]
-	return item.CurrentPeriodStart, item.CurrentPeriodEnd
 }
 
 func (s *service) cancelStripe(ctx context.Context, id string) error {

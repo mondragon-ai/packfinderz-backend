@@ -23,6 +23,7 @@ import (
 	"github.com/angelmondragon/packfinderz-backend/internal/stores"
 	"github.com/angelmondragon/packfinderz-backend/internal/subscriptions"
 	"github.com/angelmondragon/packfinderz-backend/internal/users"
+	stripewebhook "github.com/angelmondragon/packfinderz-backend/internal/webhooks/stripe"
 	"github.com/angelmondragon/packfinderz-backend/pkg/auth/session"
 	"github.com/angelmondragon/packfinderz-backend/pkg/bigquery"
 	"github.com/angelmondragon/packfinderz-backend/pkg/config"
@@ -173,6 +174,23 @@ func main() {
 		os.Exit(1)
 	}
 
+	stripeWebhookService, err := stripewebhook.NewService(stripewebhook.ServiceParams{
+		BillingRepo:       billingRepo,
+		StoreRepo:         storeRepo,
+		StripeClient:      subscriptions.NewStripeClient(stripeClient),
+		TransactionRunner: dbClient,
+	})
+	if err != nil {
+		logg.Error(context.Background(), "failed to create stripe webhook service", err)
+		os.Exit(1)
+	}
+
+	stripeWebhookGuard, err := stripewebhook.NewIdempotencyGuard(redisClient, cfg.Eventing.OutboxIdempotencyTTL, "stripe-webhook")
+	if err != nil {
+		logg.Error(context.Background(), "failed to create stripe webhook guard", err)
+		os.Exit(1)
+	}
+
 	mediaRepo := media.NewRepository(dbClient.DB())
 	mediaService, err := media.NewService(
 		mediaRepo,
@@ -300,6 +318,8 @@ func main() {
 			ordersService,
 			subscriptionsService,
 			stripeClient,
+			stripeWebhookService,
+			stripeWebhookGuard,
 		),
 	}
 
