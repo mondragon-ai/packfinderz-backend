@@ -16,6 +16,7 @@ import (
 	"github.com/angelmondragon/packfinderz-backend/pkg/pubsub"
 	"github.com/angelmondragon/packfinderz-backend/pkg/redis"
 	"github.com/angelmondragon/packfinderz-backend/pkg/storage/gcs"
+	"github.com/angelmondragon/packfinderz-backend/pkg/stripe"
 )
 
 type ServiceParams struct {
@@ -29,6 +30,7 @@ type ServiceParams struct {
 	NotificationConsumer *notifications.Consumer
 	GCS                  *gcs.Client
 	BigQuery             *bigquery.Client
+	Stripe               *stripe.Client
 }
 
 type Service struct {
@@ -41,6 +43,7 @@ type Service struct {
 	notificationConsumer *notifications.Consumer
 	gcs                  *gcs.Client
 	bigquery             *bigquery.Client
+	stripe               *stripe.Client
 }
 
 func NewService(params ServiceParams) (*Service, error) {
@@ -71,6 +74,9 @@ func NewService(params ServiceParams) (*Service, error) {
 	if params.BigQuery == nil {
 		return nil, errors.New("bigquery client is required")
 	}
+	if params.Stripe == nil {
+		return nil, errors.New("stripe client is required")
+	}
 
 	return &Service{
 		cfg:                  params.Config,
@@ -82,6 +88,7 @@ func NewService(params ServiceParams) (*Service, error) {
 		notificationConsumer: params.NotificationConsumer,
 		gcs:                  params.GCS,
 		bigquery:             params.BigQuery,
+		stripe:               params.Stripe,
 	}, nil
 }
 
@@ -101,7 +108,17 @@ func (s *Service) ensureReadiness(ctx context.Context) error {
 	if err := pingDependency(ctx, s.logg, "bigquery", s.bigquery.Ping); err != nil {
 		return err
 	}
+	if err := pingDependency(ctx, s.logg, "stripe", s.pingStripe); err != nil {
+		return err
+	}
 	s.logg.Info(ctx, "all worker dependencies are ready")
+	return nil
+}
+
+func (s *Service) pingStripe(ctx context.Context) error {
+	if s == nil || s.stripe == nil {
+		return errors.New("stripe client not initialized")
+	}
 	return nil
 }
 

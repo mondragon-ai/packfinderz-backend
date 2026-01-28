@@ -24,6 +24,7 @@ import (
 	"github.com/angelmondragon/packfinderz-backend/pkg/pubsub"
 	"github.com/angelmondragon/packfinderz-backend/pkg/redis"
 	"github.com/angelmondragon/packfinderz-backend/pkg/storage/gcs"
+	"github.com/angelmondragon/packfinderz-backend/pkg/stripe"
 )
 
 func main() {
@@ -46,6 +47,12 @@ func main() {
 		Level:       logger.ParseLevel(cfg.App.LogLevel),
 		WarnStack:   cfg.App.LogWarnStack,
 	})
+
+	stripeClient, err := stripe.NewClient(context.Background(), cfg.Stripe, logg)
+	if err != nil {
+		logg.Error(context.Background(), "failed to bootstrap stripe client", err)
+		os.Exit(1)
+	}
 
 	dbClient, err := db.New(context.Background(), cfg.DB, logg)
 	if err != nil {
@@ -154,6 +161,7 @@ func main() {
 		LicenseScheduler:     licenseScheduler,
 		GCS:                  gcsClient,
 		BigQuery:             bqClient,
+		Stripe:               stripeClient,
 	})
 	if err != nil {
 		logg.Error(context.Background(), "failed to create worker service", err)

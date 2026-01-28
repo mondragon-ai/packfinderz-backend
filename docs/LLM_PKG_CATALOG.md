@@ -19,6 +19,10 @@
 ## pkg/pubsub
 - `Client` (`NewClient`, `Subscription`, `MediaSubscription`, `DomainPublisher`, `Ping`) boots a V2 client, verifies the configured subscriptions/topics exist, and exposes publishers/subscribers (pkg/pubsub/client.go:18-202).
 
+## pkg/stripe
+- `NewClient(ctx, cfg config.StripeConfig, logg *logger.Logger)` normalizes `cfg.Environment()` to `test` or `live`, trims the API key and webhook secret loaded from `PACKFINDERZ_STRIPE_API_KEY` / `PACKFINDERZ_STRIPE_SECRET`, validates that the key prefix matches the selected env (`sk_test`/`rk_test` or `sk_live`/`rk_live`), builds `stripe.NewClient`, logs success, and fails fast when secrets are missing or invalid so the API/worker never starts with a misconfigured Stripe surface (`pkg/stripe/client.go:33-119`; `pkg/config/config.go:191-209`).
+- `Client.API()`, `.Environment()`, and `.SigningSecret()` expose the wrapped Stripe SDK client plus the normalized environment and webhook secret metadata needed by subscriptions, billing, and webhook handlers (`pkg/stripe/client.go:67-89`).
+
 ## pkg/storage/gcs
 - `Client` loads credentials (JSON/service account/metadata), keeps a cached token source, pings the bucket, and exposes `SignedURL`, `SignedReadURL`, `DeleteObject`, and bucket helpers that embed service-account signing logic (pkg/storage/gcs/client.go:35-506).
 
