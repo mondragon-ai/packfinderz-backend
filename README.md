@@ -276,7 +276,7 @@ Re-running the migration is safe because the statements use `CREATE EXTENSION IF
 * Inventory (`inventory_items` tracks available/reserved counts per product), orders
 * Cart staging tables (`cart_records`, `cart_items`) persist buyer snapshots at checkout confirmation (status `active|converted`) before creating checkout groups
 * Checkout tables (`checkout_groups`, `vendor_orders`, `order_line_items`, `payment_intents`) capture the per-vendor order state, line items, and payment intent before checkout execution hands off to fulfillment
-* Payments, ledger events
+* Payments, ledger events, and Stripe billing tables (`subscriptions`, `payment_methods`, `charges`, `usage_charges`)
 * Ads, subscriptions
 * Outbox events
 * Audit logs

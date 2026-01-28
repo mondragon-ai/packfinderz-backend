@@ -646,6 +646,12 @@ Redis-backed refresh sessions.
 * `internal/analytics.Service.VendorAnalytics` verifies vendor store context, normalizes either preset (`7d|30d|90d`) or custom `from`/`to` ranges, and returns KPIs + daily series by querying the configured `marketplace_events` table via `pkg/bigquery.Client.Query`.
 * `api/controllers/analytics/vendor` enforces vendor access, resolves the preset/custom range, delegates to `internal/analytics.Service`, and wraps the result in the canonical success envelope so `/api/v1/vendor/analytics` remains read-only and idempotency-key free.
 
+### `internal/billing`
+
+* `Repository` lives next to `pkg/db/models` (`subscription.go`, `payment_method.go`, `charge.go`, `usage_charge.go`) and exposes scoped CRUD helpers for `subscriptions`, `payment_methods`, `charges`, and `usage_charges`. Every call filters by `store_id`, orders by `created_at DESC`, and returns `nil` when no subscription exists so downstream services can gate features by ownership.
+* `Service` composes the repository, guards against `nil` dependencies, and exposes methods like `CreateSubscription`, `ListCharges`, and `CreateUsageCharge`, letting controllers/consumers record Stripe state without replaying SQL.
+* The new tables persist Stripe data per store: `subscriptions` carries the Stripe ID, status, period window timestamps, cancel metadata, and arbitrary metadata; `payment_methods` stores the Stripe payment method ID, `payment_method_type`, fingerprint, card brand/last4/expiry, billing details, and metadata; `charges` records amounts, currency, `charge_status`, optional description, `billed_at`, and nullable relations back to subscriptions/payment methods; `usage_charges` keeps metered quantities/amounts per subscription/charge with billing-period windows (pkg/db/models/subscription.go:12-41; pkg/db/models/payment_method.go:13-36; pkg/db/models/charge.go:13-38; pkg/db/models/usage_charge.go:12-36; pkg/migrate/migrations/20260201000000_create_billing_tables.sql:38-156).
+
 
 ## API
 

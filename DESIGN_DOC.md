@@ -251,6 +251,14 @@ If a **vendor subscription is inactive/canceled**:
 * Ledger tracks buyer/vendor money lifecycle even in cash MVP.
 * Separate billing history for subscriptions/ads.
 
+Stripe-backed billing tables persist the canonical store-level state:
+
+* `subscriptions` stores one row per vendor (foreign key to `stores(id)` with `ON DELETE CASCADE`), tracks the normalized `stripe_subscription_id`, `status` (Stripe enum), optional `price_id`, period window timestamps, `cancel_at_period_end`, `canceled_at`, and metadata so the platform enforces the single active subscription per store before exposing vendor-only features (`pkg/migrate/migrations/20260201000000_create_billing_tables.sql:38-59`; `pkg/db/models/subscription.go:12-41`).
+* `payment_methods` keeps the Stripe payment method ID, `payment_method_type`, fingerprint, card brand/last4/expiry, billing details, and JSON metadata while indexing on `store_id`, letting future charges reference the same instrument without storing raw PAN data (`pkg/migrate/migrations/20260201000000_create_billing_tables.sql:61-92`; `pkg/db/models/payment_method.go:13-36`).
+* `charges` records platform charges (subscriptions today; orders/analytics later) with optional links to `subscriptions`/`payment_methods`, the Stripe charge ID, amount/currency, `charge_status`, descriptions, `billed_at`, and metadata so admins can reconcile billing history without hitting Stripe per request (`pkg/migrate/migrations/20260201000000_create_billing_tables.sql:94-121`; `pkg/db/models/charge.go:13-38`).
+* `usage_charges` ties metered usage (ads/other meters) to subscriptions and charges via nullable FKs, stores Stripe usage IDs, quantities, amounts, billing period windows, and metadata, and keeps every tenant query indexed by `store_id` so ad spend can be summarized before syncing with analytics (`pkg/migrate/migrations/20260201000000_create_billing_tables.sql:123-156`; `pkg/db/models/usage_charge.go:12-36`).
+* `internal/billing.Repository`/`Service` wrap these tables with store-scoped `Create`, `List`, and `Find` helpers so controllers or background consumers can persist subscriptions, charges, payment methods, and usage without re-implementing the SQL/tenant filters (`internal/billing/repo.go:1-158`; `internal/billing/service.go:12-56`).
+
 Ledger event types (MVP):
 
 * `cash_collected`

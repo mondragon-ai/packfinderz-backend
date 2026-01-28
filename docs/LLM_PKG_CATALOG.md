@@ -59,6 +59,10 @@
 ## pkg/types
 - `Address`, `Social`, `GeographyPoint`, and `Ratings` mirror Postgres composite types (`address_t`, `social_t`, geography, JSONB) with `Value`/`Scan` helpers used by GORM models (pkg/types/address.go:10-109; pkg/types/social.go:9-58; pkg/types/geography_point.go:12-117; pkg/types/ratings.go:9-47).
 
+## internal/billing
+- `Repository` (`internal/billing/repo.go:1-121`) scopes every table operation to `store_id`, orders rows by `created_at DESC`, and exposes `Create/List/Find` helpers (plus `WithTx`) for `subscriptions`, `payment_methods`, `charges`, and `usage_charges`, keeping Stripe state per store so services can gate listings, billing history, and usage reporting.
+- `Service` (`internal/billing/service.go:12-56`) validates the repository dependency and forwards the same CRUD primitives, so controllers or consumers can persist subscriptions, payment methods, charges, and metered usage without re-implementing the SQL.
+
 ## internal/auth
 - `Service.Login(ctx, LoginRequest)` returns `LoginResponse` with tokens, user DTO, and `StoreSummary` list after verifying credentials and membership (internal/auth/service.go:24-153; internal/auth/dto.go:9-29).
 - `RegisterService.Register(ctx, RegisterRequest)` builds user/store/membership rows under a transaction, hashing passwords and enforcing TOS/store type validation (internal/auth/register.go:21-133).
