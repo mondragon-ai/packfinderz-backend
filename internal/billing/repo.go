@@ -12,6 +12,7 @@ import (
 type Repository interface {
 	WithTx(tx *gorm.DB) Repository
 	CreateSubscription(ctx context.Context, subscription *models.Subscription) error
+	UpdateSubscription(ctx context.Context, subscription *models.Subscription) error
 	ListSubscriptionsByStore(ctx context.Context, storeID uuid.UUID) ([]models.Subscription, error)
 	FindSubscription(ctx context.Context, storeID uuid.UUID) (*models.Subscription, error)
 	CreatePaymentMethod(ctx context.Context, method *models.PaymentMethod) error
@@ -40,6 +41,10 @@ func (r *repository) WithTx(tx *gorm.DB) Repository {
 
 func (r *repository) CreateSubscription(ctx context.Context, subscription *models.Subscription) error {
 	return r.db.WithContext(ctx).Create(subscription).Error
+}
+
+func (r *repository) UpdateSubscription(ctx context.Context, subscription *models.Subscription) error {
+	return r.db.WithContext(ctx).Save(subscription).Error
 }
 
 func (r *repository) ListSubscriptionsByStore(ctx context.Context, storeID uuid.UUID) ([]models.Subscription, error) {

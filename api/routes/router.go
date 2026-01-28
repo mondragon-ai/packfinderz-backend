@@ -10,6 +10,7 @@ import (
 	"github.com/angelmondragon/packfinderz-backend/api/controllers"
 	analysiscontrollers "github.com/angelmondragon/packfinderz-backend/api/controllers/analytics"
 	ordercontrollers "github.com/angelmondragon/packfinderz-backend/api/controllers/orders"
+	subscriptionControllers "github.com/angelmondragon/packfinderz-backend/api/controllers/subscriptions"
 	"github.com/angelmondragon/packfinderz-backend/api/middleware"
 	"github.com/angelmondragon/packfinderz-backend/internal/analytics"
 	"github.com/angelmondragon/packfinderz-backend/internal/auth"
@@ -21,6 +22,7 @@ import (
 	"github.com/angelmondragon/packfinderz-backend/internal/orders"
 	products "github.com/angelmondragon/packfinderz-backend/internal/products"
 	"github.com/angelmondragon/packfinderz-backend/internal/stores"
+	subscriptionsvc "github.com/angelmondragon/packfinderz-backend/internal/subscriptions"
 	"github.com/angelmondragon/packfinderz-backend/pkg/auth/session"
 	"github.com/angelmondragon/packfinderz-backend/pkg/bigquery"
 	"github.com/angelmondragon/packfinderz-backend/pkg/config"
@@ -58,6 +60,7 @@ func NewRouter(
 	notificationsService notifications.Service,
 	ordersRepo orders.Repository,
 	ordersSvc orders.Service,
+	subscriptionsService subscriptionsvc.Service,
 	stripeClient *stripe.Client,
 ) http.Handler {
 	r := chi.NewRouter()
@@ -118,6 +121,11 @@ func NewRouter(
 				r.Get("/analytics", analysiscontrollers.VendorAnalytics(analyticsService, logg))
 				r.Post("/orders/{orderId}/decision", ordercontrollers.VendorOrderDecision(ordersSvc, logg))
 				r.Post("/orders/{orderId}/line-items/decision", ordercontrollers.VendorLineItemDecision(ordersSvc, logg))
+				r.Route("/subscriptions", func(r chi.Router) {
+					r.Post("/", subscriptionControllers.VendorSubscriptionCreate(subscriptionsService, logg))
+					r.Post("/cancel", subscriptionControllers.VendorSubscriptionCancel(subscriptionsService, logg))
+					r.Get("/", subscriptionControllers.VendorSubscriptionFetch(subscriptionsService, logg))
+				})
 			})
 
 			r.Route("/v1/stores", func(r chi.Router) {

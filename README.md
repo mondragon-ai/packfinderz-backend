@@ -263,6 +263,7 @@ Re-running the migration is safe because the statements use `CREATE EXTENSION IF
 * Last-click attribution (30d)
 * BigQuery used for analytics only
 * Vendors can query KPIs/time-series via `GET /api/v1/vendor/analytics`, which runs parameterized BigQuery queries (presets 7d/30d/90d or custom `from`/`to`) against `marketplace_events` and returns the canonical success envelope scoped to `activeStoreId`.
+* Vendor subscription lifecycle is handled through `POST /api/v1/vendor/subscriptions` (create, idempotent), `POST /api/v1/vendor/subscriptions/cancel` (idempotent), and `GET /api/v1/vendor/subscriptions` (fetch the single active subscription or `null`). The POSTs require an `Idempotency-Key` and Stripe customer/payment method IDs; the API mirrors Stripe state into the local `subscriptions` table and flips `stores.subscription_active`.
 
 ---
 
@@ -511,6 +512,7 @@ PACKFINDERZ_EVENTING_IDEMPOTENCY_TTL=720h
 * `PACKFINDERZ_STRIPE_API_KEY` (required) – the Stripe secret key (`sk_*`/`rk_*`) for the current environment.
 * `PACKFINDERZ_STRIPE_SECRET` (required) – the webhook signing secret used for event verification.
 * `PACKFINDERZ_STRIPE_ENV` (default `test`) – switches between the test and live Stripe environments; using `test` requires a `sk_test`/`rk_test` key and `live` requires `sk_live`/`rk_live`. The API and worker binaries fail fast when keys are missing or contain the wrong prefix so misconfigured envs surface immediately.
+* `PACKFINDERZ_STRIPE_SUBSCRIPTION_PRICE_ID` (required) – the Stripe price ID used when creating vendor subscriptions.
 
 ### Outbox Publisher Tuning
 

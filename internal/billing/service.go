@@ -30,6 +30,10 @@ func (s *Service) CreateSubscription(ctx context.Context, subscription *models.S
 	return s.repo.CreateSubscription(ctx, subscription)
 }
 
+func (s *Service) UpdateSubscription(ctx context.Context, subscription *models.Subscription) error {
+	return s.repo.UpdateSubscription(ctx, subscription)
+}
+
 func (s *Service) ListSubscriptions(ctx context.Context, storeID uuid.UUID) ([]models.Subscription, error) {
 	return s.repo.ListSubscriptionsByStore(ctx, storeID)
 }

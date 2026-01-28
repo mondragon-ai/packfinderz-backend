@@ -52,6 +52,7 @@ func NewClient(ctx context.Context, cfg config.StripeConfig, logg *logger.Logger
 	}
 
 	api := stripe.NewClient(apiKey)
+	stripe.Key = apiKey
 
 	if logg != nil {
 		logg.Info(ctx, fmt.Sprintf("stripe client initialized (%s)", env))

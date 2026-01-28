@@ -21,6 +21,7 @@ import (
 	ordersrepo "github.com/angelmondragon/packfinderz-backend/internal/orders"
 	product "github.com/angelmondragon/packfinderz-backend/internal/products"
 	"github.com/angelmondragon/packfinderz-backend/internal/stores"
+	subscriptionsvc "github.com/angelmondragon/packfinderz-backend/internal/subscriptions"
 	pkgAuth "github.com/angelmondragon/packfinderz-backend/pkg/auth"
 	"github.com/angelmondragon/packfinderz-backend/pkg/auth/session"
 	"github.com/angelmondragon/packfinderz-backend/pkg/config"
@@ -178,6 +179,20 @@ func (stubNotificationsService) MarkRead(ctx context.Context, storeID, notificat
 
 func (stubNotificationsService) MarkAllRead(ctx context.Context, storeID uuid.UUID) (int64, error) {
 	return 0, nil
+}
+
+type stubSubscriptionsService struct{}
+
+func (stubSubscriptionsService) Create(ctx context.Context, storeID uuid.UUID, input subscriptionsvc.CreateSubscriptionInput) (*models.Subscription, bool, error) {
+	return nil, false, nil
+}
+
+func (stubSubscriptionsService) Cancel(ctx context.Context, storeID uuid.UUID) error {
+	return nil
+}
+
+func (stubSubscriptionsService) GetActive(ctx context.Context, storeID uuid.UUID) (*models.Subscription, error) {
+	return nil, nil
 }
 
 type stubProductService struct{}
@@ -420,6 +435,7 @@ func newTestRouter(cfg *config.Config) http.Handler {
 		stubNotificationsService{},
 		&stubOrdersRepo{},
 		stubOrdersService{},
+		stubSubscriptionsService{},
 		nil,
 	)
 }
@@ -542,6 +558,7 @@ func TestAgentAssignedOrdersRequiresAgentRole(t *testing.T) {
 		stubNotificationsService{},
 		repo,
 		stubOrdersService{},
+		stubSubscriptionsService{},
 		nil,
 	)
 
@@ -603,6 +620,7 @@ func TestAgentAssignedOrderDetailRequiresAgentRole(t *testing.T) {
 		stubNotificationsService{},
 		repo,
 		stubOrdersService{},
+		stubSubscriptionsService{},
 		nil,
 	)
 
@@ -640,6 +658,7 @@ func TestAgentPickupRequiresAgentRole(t *testing.T) {
 		stubNotificationsService{},
 		repo,
 		stubOrdersService{},
+		stubSubscriptionsService{},
 		nil,
 	)
 
@@ -692,6 +711,7 @@ func TestAgentDeliverRequiresAgentRole(t *testing.T) {
 		stubNotificationsService{},
 		repo,
 		stubOrdersService{},
+		stubSubscriptionsService{},
 		nil,
 	)
 
