@@ -6,12 +6,11 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/angelmondragon/packfinderz-backend/api/middleware"
+	"github.com/angelmondragon/packfinderz-backend/api/controllers/vendorcontext"
 	"github.com/angelmondragon/packfinderz-backend/api/responses"
 	"github.com/angelmondragon/packfinderz-backend/api/validators"
 	subsvc "github.com/angelmondragon/packfinderz-backend/internal/subscriptions"
 	"github.com/angelmondragon/packfinderz-backend/pkg/db/models"
-	"github.com/angelmondragon/packfinderz-backend/pkg/enums"
 	pkgerrors "github.com/angelmondragon/packfinderz-backend/pkg/errors"
 	"github.com/angelmondragon/packfinderz-backend/pkg/logger"
 )
@@ -40,7 +39,7 @@ func VendorSubscriptionCreate(svc subsvc.Service, logg *logger.Logger) http.Hand
 			return
 		}
 
-		storeID, err := resolveVendorStoreID(r)
+		storeID, err := vendorcontext.ResolveVendorStoreID(r)
 		if err != nil {
 			responses.WriteError(r.Context(), logg, w, err)
 			return
@@ -78,7 +77,7 @@ func VendorSubscriptionCancel(svc subsvc.Service, logg *logger.Logger) http.Hand
 			return
 		}
 
-		storeID, err := resolveVendorStoreID(r)
+		storeID, err := vendorcontext.ResolveVendorStoreID(r)
 		if err != nil {
 			responses.WriteError(r.Context(), logg, w, err)
 			return
@@ -100,7 +99,7 @@ func VendorSubscriptionFetch(svc subsvc.Service, logg *logger.Logger) http.Handl
 			return
 		}
 
-		storeID, err := resolveVendorStoreID(r)
+		storeID, err := vendorcontext.ResolveVendorStoreID(r)
 		if err != nil {
 			responses.WriteError(r.Context(), logg, w, err)
 			return
@@ -118,23 +117,6 @@ func VendorSubscriptionFetch(svc subsvc.Service, logg *logger.Logger) http.Handl
 		}
 		responses.WriteSuccess(w, newVendorSubscriptionResponse(sub))
 	}
-}
-
-func resolveVendorStoreID(r *http.Request) (uuid.UUID, error) {
-	ctx := r.Context()
-	storeID := middleware.StoreIDFromContext(ctx)
-	if storeID == "" {
-		return uuid.Nil, pkgerrors.New(pkgerrors.CodeForbidden, "store context required")
-	}
-	storeType, ok := middleware.StoreTypeFromContext(ctx)
-	if !ok || storeType != enums.StoreTypeVendor {
-		return uuid.Nil, pkgerrors.New(pkgerrors.CodeForbidden, "vendor access required")
-	}
-	id, err := uuid.Parse(storeID)
-	if err != nil {
-		return uuid.Nil, pkgerrors.Wrap(pkgerrors.CodeValidation, err, "invalid store id")
-	}
-	return id, nil
 }
 
 func newVendorSubscriptionResponse(sub *models.Subscription) *vendorSubscriptionResponse {

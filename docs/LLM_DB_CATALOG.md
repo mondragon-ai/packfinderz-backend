@@ -114,6 +114,7 @@
 
 ### charges
 - `id` uuid primary key; `store_id` FK → `stores(id)` cascade; optional `subscription_id` → `subscriptions(id)` / `payment_method_id` → `payment_methods(id)` (both `ON DELETE SET NULL`); `stripe_charge_id` unique text; `amount_cents`, `currency` (default `usd`), `status charge_status`, optional `description`, `billed_at`, `metadata`, and timestamps; `charges_store_idx` indexes `store_id` (pkg/migrate/migrations/20260201000000_create_billing_tables.sql:94-121; pkg/db/models/charge.go:13-38).
+- `type` uses the `charge_type` enum (subscription/ad_spend/other) so the vendor billing history endpoint can filter per line and group platform/usage charges separately (pkg/db/models/charge.go:16-23; pkg/enums/charge_type.go:5-32).
 - Captured charges feed billing history endpoints and ledger events so admins can reconcile platform fees, ad spend, or subscription renewals without hitting Stripe (internal/billing/repo.go:103-122; internal/billing/service.go:30-56).
 
 ### usage_charges
