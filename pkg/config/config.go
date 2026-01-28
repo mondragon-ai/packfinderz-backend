@@ -189,9 +189,10 @@ type OutboxConfig struct {
 }
 
 type StripeConfig struct {
-	APIKey string `envconfig:"PACKFINDERZ_STRIPE_API_KEY"`
-	Secret string `envconfig:"PACKFINDERZ_STRIPE_SECRET"`
-	Env    string `envconfig:"PACKFINDERZ_STRIPE_ENV" default:"test"`
+	APIKey              string `envconfig:"PACKFINDERZ_STRIPE_API_KEY"`
+	Secret              string `envconfig:"PACKFINDERZ_STRIPE_SECRET"`
+	Env                 string `envconfig:"PACKFINDERZ_STRIPE_ENV" default:"test"`
+	SubscriptionPriceID string `envconfig:"PACKFINDERZ_STRIPE_SUBSCRIPTION_PRICE_ID"`
 }
 
 type SendgridConfig struct {

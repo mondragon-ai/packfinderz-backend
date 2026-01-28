@@ -63,6 +63,10 @@
 - `Repository` (`internal/billing/repo.go:1-121`) scopes every table operation to `store_id`, orders rows by `created_at DESC`, and exposes `Create/List/Find` helpers (plus `WithTx`) for `subscriptions`, `payment_methods`, `charges`, and `usage_charges`, keeping Stripe state per store so services can gate listings, billing history, and usage reporting.
 - `Service` (`internal/billing/service.go:12-56`) validates the repository dependency and forwards the same CRUD primitives, so controllers or consumers can persist subscriptions, payment methods, charges, and metered usage without re-implementing the SQL.
 
+## internal/subscriptions
+- `Service` (`internal/subscriptions/service.go:1-230`) composes `internal/billing.Repository`, the Stripe subscription client, the store repository, and a transaction runner so vendor creation/cancellation keeps Stripe and Postgres in sync, enforces the one-active-subscription rule, mirrors Stripe metadata/period windows, and updates `stores.subscription_active` idempotently (including optional overrides for `price_id`/customer/payment details).
+- `api/controllers/subscriptions/vendor.go` wires `POST /api/v1/vendor/subscriptions`, `POST /api/v1/vendor/subscriptions/cancel`, and `GET /api/v1/vendor/subscriptions`, enforces `StoreContext` + `StoreType=vendor`, requires `Idempotency-Key` for the write paths, hydrates the `stripe_customer_id`/`stripe_payment_method_id` payload plus optional `price_id`, and returns either the new subscription (201) or the current active record/`null` so frontend consumer work consistently with the service’s single-row guarantee (api/controllers/subscriptions/vendor.go:19-154; api/middleware/idempotency.go:37-58).
+
 ## internal/auth
 - `Service.Login(ctx, LoginRequest)` returns `LoginResponse` with tokens, user DTO, and `StoreSummary` list after verifying credentials and membership (internal/auth/service.go:24-153; internal/auth/dto.go:9-29).
 - `RegisterService.Register(ctx, RegisterRequest)` builds user/store/membership rows under a transaction, hashing passwords and enforcing TOS/store type validation (internal/auth/register.go:21-133).

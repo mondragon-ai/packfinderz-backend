@@ -2315,10 +2315,13 @@ Headers:
 
 **Get active subscription**
 
-* `GET /api/v1/vendor/subscriptions/active`
+* `GET /api/v1/vendor/subscriptions`
 
   * Success: `200`
-  * Errors: `401, 403, 404`
+  * Errors: `401, 403`
+  * Returns the single active subscription row (or `null` when the store is unsubscribed)
+
+Creation/cancellation requests require an `Idempotency-Key` and must provide `stripe_customer_id` + `stripe_payment_method_id`; the optional `price_id` payload field falls back to the configured `PACKFINDERZ_STRIPE_SUBSCRIPTION_PRICE_ID`. The domain service mirrors Stripe metadata (customer/payment_method IDs, statuses, period windows) into `subscriptions.metadata` and flips `stores.subscription_active` so vendor visibility stays gated.
 
 **Billing history (charges only)**
 
@@ -4147,6 +4150,7 @@ type IdentityProvider interface {
   * Stripe env selector (`PACKFINDERZ_STRIPE_ENV`) so test/live keys can be validated at boot
   * GCS service account keys (prefer workload identity)
 * Stripe config loads `PACKFINDERZ_STRIPE_API_KEY`, `PACKFINDERZ_STRIPE_SECRET`, and `PACKFINDERZ_STRIPE_ENV` (default `test`) via `StripeConfig`, whose `.Environment()` helper lowercases/trim the selector so `pkg/stripe.NewClient` can enforce only `test|live` and validate `sk_*`/`rk_*` prefixes before returning the client (`pkg/config/config.go:191-209`; `pkg/stripe/client.go:33-119`).
+* `PACKFINDERZ_STRIPE_SUBSCRIPTION_PRICE_ID` defines the default Stripe price/plan used when vendors call `/api/v1/vendor/subscriptions`.
 * `cmd/api/main.go` and `cmd/worker/main.go` both call `pkg/stripe.NewClient` during bootstrap, log and exit when it errors, and therefore treat missing keys or env mismatches as fatal startup failures that prevent the API/worker from registering any routes or consumers (`cmd/api/main.go:55-65`; `cmd/worker/main.go:51-70`).
 
 ### 3.2 Config

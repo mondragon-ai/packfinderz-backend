@@ -10,6 +10,7 @@ import (
 	"github.com/angelmondragon/packfinderz-backend/api/routes"
 	"github.com/angelmondragon/packfinderz-backend/internal/analytics"
 	"github.com/angelmondragon/packfinderz-backend/internal/auth"
+	"github.com/angelmondragon/packfinderz-backend/internal/billing"
 	"github.com/angelmondragon/packfinderz-backend/internal/cart"
 	checkoutsvc "github.com/angelmondragon/packfinderz-backend/internal/checkout"
 	"github.com/angelmondragon/packfinderz-backend/internal/ledger"
@@ -20,6 +21,7 @@ import (
 	"github.com/angelmondragon/packfinderz-backend/internal/orders"
 	products "github.com/angelmondragon/packfinderz-backend/internal/products"
 	"github.com/angelmondragon/packfinderz-backend/internal/stores"
+	"github.com/angelmondragon/packfinderz-backend/internal/subscriptions"
 	"github.com/angelmondragon/packfinderz-backend/internal/users"
 	"github.com/angelmondragon/packfinderz-backend/pkg/auth/session"
 	"github.com/angelmondragon/packfinderz-backend/pkg/bigquery"
@@ -158,6 +160,19 @@ func main() {
 		os.Exit(1)
 	}
 
+	billingRepo := billing.NewRepository(dbClient.DB())
+	subscriptionsService, err := subscriptions.NewService(subscriptions.ServiceParams{
+		BillingRepo:       billingRepo,
+		StoreRepo:         storeRepo,
+		StripeClient:      subscriptions.NewStripeClient(stripeClient),
+		DefaultPriceID:    cfg.Stripe.SubscriptionPriceID,
+		TransactionRunner: dbClient,
+	})
+	if err != nil {
+		logg.Error(context.Background(), "failed to create subscription service", err)
+		os.Exit(1)
+	}
+
 	mediaRepo := media.NewRepository(dbClient.DB())
 	mediaService, err := media.NewService(
 		mediaRepo,
@@ -283,6 +298,7 @@ func main() {
 			notificationsService,
 			ordersRepo,
 			ordersService,
+			subscriptionsService,
 			stripeClient,
 		),
 	}
