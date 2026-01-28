@@ -353,6 +353,7 @@ The GitHub Actions workflow (`.github/workflows/ci.yml`) runs gofmt, `golangci-l
 * `PUT /api/v1/cart` – buyer stores use this idempotent endpoint (24h TTL) to persist their cart snapshot once checkout confirmation occurs.
 * Server-side validations re-check buyer/vendor KYC, subscriptions, inventory, MOQ, volume tiers, and computed totals before creating/updating the `cart_record` + `cart_items` rows so the checkout runner always consumes a trusted snapshot.
 * Requires `Idempotency-Key`; returns the stored record with its line items so the UI can recover or retry.
+* Vendor gating now reuses `internal/checkout/helpers.ValidateVendorStore`, which delegates to `pkg/visibility.EnsureVendorVisible`, so any `subscription_active=false` or cross-state vendor is rejected before the cart is saved.
 
 ### Cart Fetch
 

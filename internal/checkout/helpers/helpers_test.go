@@ -137,7 +137,7 @@ func TestValidateVendorStore(t *testing.T) {
 	vendor.SubscriptionActive = false
 	if err := ValidateVendorStore(vendor, "OK"); err == nil {
 		t.Fatal("expected error for inactive subscription")
-	} else if typed := pkgerrors.As(err); typed == nil || typed.Code() != pkgerrors.CodeForbidden {
+	} else if typed := pkgerrors.As(err); typed == nil || typed.Code() != pkgerrors.CodeNotFound {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
@@ -145,7 +145,7 @@ func TestValidateVendorStore(t *testing.T) {
 	vendor.Address.State = "TX"
 	if err := ValidateVendorStore(vendor, "OK"); err == nil {
 		t.Fatal("expected error for state mismatch")
-	} else if typed := pkgerrors.As(err); typed == nil || typed.Code() != pkgerrors.CodeValidation {
+	} else if typed := pkgerrors.As(err); typed == nil || typed.Code() != pkgerrors.CodeNotFound {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }

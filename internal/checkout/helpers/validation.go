@@ -5,8 +5,10 @@ import (
 
 	"github.com/angelmondragon/packfinderz-backend/internal/stores"
 	"github.com/angelmondragon/packfinderz-backend/pkg/checkout"
+	"github.com/angelmondragon/packfinderz-backend/pkg/db/models"
 	"github.com/angelmondragon/packfinderz-backend/pkg/enums"
 	pkgerrors "github.com/angelmondragon/packfinderz-backend/pkg/errors"
+	"github.com/angelmondragon/packfinderz-backend/pkg/visibility"
 )
 
 // ValidateBuyerStore ensures the store is a verified buyer and returns its normalized state.
@@ -32,23 +34,17 @@ func ValidateVendorStore(vendor *stores.StoreDTO, buyerState string) error {
 	if vendor == nil {
 		return pkgerrors.New(pkgerrors.CodeNotFound, "vendor not found")
 	}
-	if vendor.Type != enums.StoreTypeVendor {
-		return pkgerrors.New(pkgerrors.CodeNotFound, "vendor not found")
+	normalizedBuyer := normalizeState(buyerState)
+	if normalizedBuyer == "" {
+		return pkgerrors.New(pkgerrors.CodeValidation, "buyer state is required")
 	}
-	if vendor.KYCStatus != enums.KYCStatusVerified {
-		return pkgerrors.New(pkgerrors.CodeNotFound, "vendor not verified")
-	}
-	if !vendor.SubscriptionActive {
-		return pkgerrors.New(pkgerrors.CodeForbidden, "vendor subscription inactive")
-	}
-	vendorState := normalizeState(vendor.Address.State)
-	if vendorState == "" {
-		return pkgerrors.New(pkgerrors.CodeValidation, "vendor state unavailable")
-	}
-	if buyerState != vendorState {
-		return pkgerrors.New(pkgerrors.CodeValidation, "buyer store and vendor are in different states")
-	}
-	return nil
+
+	storeModel := convertToModel(vendor)
+	return visibility.EnsureVendorVisible(visibility.VendorVisibilityInput{
+		Store:          storeModel,
+		RequestedState: normalizedBuyer,
+		BuyerState:     normalizedBuyer,
+	})
 }
 
 // ValidateMOQ enforces minimum order quantity compliance.
@@ -58,4 +54,18 @@ func ValidateMOQ(items []checkout.MOQValidationInput) error {
 
 func normalizeState(value string) string {
 	return strings.ToUpper(strings.TrimSpace(value))
+}
+
+func convertToModel(dto *stores.StoreDTO) *models.Store {
+	if dto == nil {
+		return nil
+	}
+	return &models.Store{
+		ID:                 dto.ID,
+		Type:               dto.Type,
+		CompanyName:        dto.CompanyName,
+		KYCStatus:          dto.KYCStatus,
+		SubscriptionActive: dto.SubscriptionActive,
+		Address:            dto.Address,
+	}
 }

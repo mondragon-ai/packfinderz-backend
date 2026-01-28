@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	checkouthelpers "github.com/angelmondragon/packfinderz-backend/internal/checkout/helpers"
 	product "github.com/angelmondragon/packfinderz-backend/internal/products"
 	"github.com/angelmondragon/packfinderz-backend/internal/stores"
 	"github.com/angelmondragon/packfinderz-backend/pkg/checkout"
@@ -304,22 +305,8 @@ func (s *service) ensureVendor(ctx context.Context, vendorID uuid.UUID, buyerSta
 		return nil, err
 	}
 
-	if vendor.Type != enums.StoreTypeVendor {
-		return nil, pkgerrors.New(pkgerrors.CodeNotFound, "vendor not found")
-	}
-	if vendor.KYCStatus != enums.KYCStatusVerified {
-		return nil, pkgerrors.New(pkgerrors.CodeNotFound, "vendor not verified")
-	}
-	if !vendor.SubscriptionActive {
-		return nil, pkgerrors.New(pkgerrors.CodeForbidden, "vendor subscription inactive")
-	}
-
-	vendorState := normalizeState(vendor.Address.State)
-	if vendorState == "" {
-		return nil, pkgerrors.New(pkgerrors.CodeNotFound, "vendor state unavailable")
-	}
-	if buyerState != vendorState {
-		return nil, pkgerrors.New(pkgerrors.CodeValidation, fmt.Sprintf("buyer store is in %s and cannot order from %s", buyerState, vendorState))
+	if err := checkouthelpers.ValidateVendorStore(vendor, buyerState); err != nil {
+		return nil, err
 	}
 
 	cache[vendorID] = vendor
