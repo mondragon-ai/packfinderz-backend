@@ -6,6 +6,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/angelmondragon/packfinderz-backend/pkg/db/models"
+	dbtypes "github.com/angelmondragon/packfinderz-backend/pkg/db/types"
 )
 
 // UserDTO is the transport shape that omits sensitive credentials.
@@ -35,7 +36,6 @@ type CreateUserDTO struct {
 	IsActive     *bool
 }
 
-// FromModel maps a DB model to a DTO.
 func FromModel(u *models.User) *UserDTO {
 	if u == nil {
 		return nil
@@ -50,20 +50,24 @@ func FromModel(u *models.User) *UserDTO {
 		IsActive:    u.IsActive,
 		LastLoginAt: u.LastLoginAt,
 		SystemRole:  u.SystemRole,
-		StoreIDs:    append([]uuid.UUID(nil), u.StoreIDs...),
+		StoreIDs:    append([]uuid.UUID(nil), []uuid.UUID(u.StoreIDs)...),
 		CreatedAt:   u.CreatedAt,
 		UpdatedAt:   u.UpdatedAt,
 	}
 }
 
-// ToModel converts the DTO into a DB model; it ensures defaults are satisfied.
 func (c CreateUserDTO) ToModel() *models.User {
 	isActive := true
 	if c.IsActive != nil {
 		isActive = *c.IsActive
 	}
 
-	storeIDs := append([]uuid.UUID(nil), c.StoreIDs...)
+	storeIDs := c.StoreIDs
+	if storeIDs == nil {
+		storeIDs = []uuid.UUID{}
+	} else {
+		storeIDs = append([]uuid.UUID(nil), storeIDs...)
+	}
 
 	return &models.User{
 		Email:        c.Email,
@@ -73,6 +77,6 @@ func (c CreateUserDTO) ToModel() *models.User {
 		Phone:        c.Phone,
 		IsActive:     isActive,
 		SystemRole:   c.SystemRole,
-		StoreIDs:     storeIDs,
+		StoreIDs:     dbtypes.UUIDArray(storeIDs),
 	}
 }

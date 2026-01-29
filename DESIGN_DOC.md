@@ -1916,6 +1916,12 @@ Headers:
   * Success: `200`
   * Errors: `401, 422`
 
+**Ads serving**
+
+* `GET /ads/serve` selects a CPM winner by filtering `status=active` ads, enforcing store gating (subscription + KYC), checking Redis budget counters, using deterministic tie-breakers, and issuing signed tokens (`view_token`/`click_token`) that bind the buyer store, target, event type, and expiry (30d) for later tracking (`docs/AD_ENGINE.md`:30-150).
+* `/ads/impression` and `/ads/click` validate the tokens, dedupe via Redis guard keys, increment `imps:<adId>:<day>`, `clicks:<adId>:<day>`, and `spend:<adId>:<day>`, and either return `204` or redirect so counters remain server-truth; duplicate deliveries do not inflate budgets (`docs/AD_ENGINE.md`:106-170).
+* Nightly schedulers read Redis counters, upsert `ad_daily_rollups`, insert `usage_charges(type=ad_spend, for_date=day)`, emit outbox events, and keep BigQuery/Stripe bridges deterministic while checkout attribution uses the token bag to persist `vendor_orders.attribution` and `vendor_order_line_items.attribution` for per-order/line-item analytics emission (`docs/AD_ENGINE.md`:176-260).
+
 **Buyer: product detail**
 
 * `GET /api/v1/products/{productId}`
