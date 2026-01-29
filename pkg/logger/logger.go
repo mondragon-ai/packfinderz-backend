@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/angelmondragon/packfinderz-backend/pkg/env"
 	"github.com/rs/zerolog"
 )
 
@@ -27,15 +28,37 @@ type Logger struct {
 type ctxKey struct{}
 
 func New(opts Options) *Logger {
-	if opts.Output == nil {
-		opts.Output = os.Stdout
-	}
 	if opts.Level == zerolog.NoLevel {
 		opts.Level = zerolog.InfoLevel
 	}
+
+	var output io.Writer = opts.Output
+	if output == nil {
+		output = os.Stdout
+	}
+	var format = env.Get("LOG_FORMAT", "json")
+	if format == "console" {
+		output = zerolog.ConsoleWriter{
+			Out:        output,
+			TimeFormat: "15:04:05",
+			NoColor:    false,
+		}
+	}
+
 	zerolog.TimeFieldFormat = time.RFC3339Nano
-	logger := zerolog.New(opts.Output).With().Timestamp().Str("service", opts.ServiceName).Logger().Level(opts.Level)
-	return &Logger{base: &logger, warnStack: opts.WarnStack}
+
+	logger := zerolog.
+		New(output).
+		With().
+		Timestamp().
+		Str("service", opts.ServiceName).
+		Logger().
+		Level(opts.Level)
+
+	return &Logger{
+		base:      &logger,
+		warnStack: opts.WarnStack,
+	}
 }
 
 func ParseLevel(value string) zerolog.Level {

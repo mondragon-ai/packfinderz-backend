@@ -7,6 +7,7 @@ GO := go
 API_PKG := ./cmd/api
 WORKER_PKG := ./cmd/worker
 OUTBOX_PKG := ./cmd/outbox-publisher
+INTEGRATION_SCRIPT := ./scripts/integration/run.sh
 
 # Migrations
 MIGRATE_CMD := ./cmd/migrate
@@ -113,3 +114,11 @@ ci-local:
 # 		exit 1; \
 # 	}
 # 	gitleaks detect --no-git
+
+.PHONY: test
+test: ## Run the integration harness (set INTEGRATION_ARGS, e.g. --route login)
+	@if [ -z "$(INTEGRATION_ARGS)" ]; then \
+		echo "INTEGRATION_ARGS is required (example: make test INTEGRATION_ARGS=\"--route login\")"; \
+		exit 1; \
+	fi
+	@$(INTEGRATION_SCRIPT) $(INTEGRATION_ARGS)

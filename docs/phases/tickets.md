@@ -363,67 +363,321 @@ seperate webhook endpoint we can link or subscribe to
 
 ---
 
-## Phase 13 — Ads & Attribution
+## Phase 13 — Integration Test Harness (API-Level, Scripted)
 
-**Goal:** Monetization: ad CRUD + tracking + last-click attribution + rollups
+**Goal:** Deterministic, repeatable, end-to-end validation using *real HTTP calls* (not DB seeding).
 
-### 13A) Core ads
+### 13A) Integration harness foundation (infra only)
 
-* [ ] Migrations: `ads`, `ad_creatives`, `ad_clicks`, `ad_events` + indexes
-* [ ] Vendor CRUD endpoints:
+* [ ] **Ticket:** Create `/scripts/integration/` scaffold
+  *Purpose:* Dedicated integration test entrypoint
+  *Notes:*
 
-  * [ ] `POST /api/v1/vendor/ads` (idempotent)
-  * [ ] `GET /api/v1/vendor/ads`
-  * [ ] `GET /api/v1/vendor/ads/{adId}`
-  * [ ] `PATCH /api/v1/vendor/ads/{adId}`
-  * [ ] `DELETE /api/v1/vendor/ads/{adId}`
-* [ ] Eligibility enforcement: license verified + subscription active + ad status active + budget remaining
+  * Callable via `make integration-test`
+  * Reads `API_BASE_URL`, `[STORE|BUYER|ADMIN|AGENT]_EMAIL`, `[STORE|BUYER|ADMIN|AGENT]_PASSWORD` from env for passowrd where the email could be a var set inside the script
+  * No domain logic yet
+  * Load the env vars to be used in the scripts
 
-### 13B) Tracking + attribution
+* [ ] **Ticket:** Implement shared HTTP client helper
+  *Scope:* one file
+  *Includes:* base URL, retries, timeout, JSON encode/decode, status assertions
 
-* [ ] Impression endpoint (or middleware hook) increments Redis counters + writes `ad_events(impression)`
-* [ ] Click endpoint writes:
-
-  * [ ] `ad_clicks` row (30d TTL semantics)
-  * [ ] `ad_events(click)`
-* [ ] Checkout integration: attach last eligible click to `checkout_groups.attributed_ad_click_id` and propagate to vendor orders
-
-### 13C) Rollups + analytics
-
-* [ ] Daily rollup scheduler: compute per-ad spend and write `usage_charges(ad_spend_daily)`
-* [ ] Ad analytics endpoint: vendor view (CTR, impressions, clicks, ROAS via attributed orders)
+* [ ] **Ticket:** Implement colored JSON console logger
+  *Purpose:* readable stdout for CI + humans
+  *Explicitly:* no business logic, logging only
 
 ---
 
-## Phase 14 — Search & Geo (PostGIS-enabled filters)
+### 13B) Auth flows (script-only, no backend changes)
 
-**Goal:** Buyer-origin geo filtering + vendor delivery radius rules
+* [ ] **Ticket:** Scripted register flow (buyer + vendor flags)
+  *Creates:* buyer store, vendor store
+  *Outputs:* store IDs, user IDs, access token + refresh token
 
-* [ ] PostGIS extension migration + verify in Heroku
-* [ ] Store geocoding integration on create (and admin override only)
-* [ ] Persist `stores.geom` correctly from lat/lng
-* [ ] Directory endpoint: `GET /api/v1/stores/vendors` with:
+* [ ] **Ticket:** Scripted login flow (buyer + vendor flags)
+  *Consumes:* email (inline)/password (env var)
+  *Outputs:* access token + refresh token
 
-  * [ ] `ST_DWithin` filter by delivery radius
-  * [ ] sort by distance
-* [ ] Product browse endpoint improvements:
+* [ ] **Ticket:** In-memory token store helper
+  *Purpose:* persist token across script steps
+  *Explicit:* no file persistence yet store in terminal var to be used echo. 
 
-  * [ ] filter by state + vendor visibility + optional geo gate
-* [ ] Index tuning: `gist(stores.geom)` + composite visibility indexes
+* [ ] **Ticket:** Auth header injection helper
+  *Guarantee:* no script manually sets headers token from the previous ticket
 
 ---
 
-## Phase 15 — Security, Ops, Hardening
+### 13C) Media seeding (pure media pipeline validation)
 
-**Goal:** Production resilience + auditability
+* [ ] **Ticket:** Add static media fixtures
+  *Path:* `fixtures/media/*`
+  *Includes:* image, video, PDF (COA-like) (image for product/ad, video for prodcut/ad, image for avatar, image for logo, image for store banner, PDF for license PDF for coa)
 
-* [ ] Rate limiting expansion to critical endpoints (checkout, decisions, agent cash)
-* [ ] Audit log system:
+* [ ] **Ticket:** Script: request presigned upload URL
+  *Scope:* media create endpoint only
+  *Outputs:* media_id + signed URL -> store that signed URL to be used in the next ticket
 
-  * [ ] Migration `audit_logs`
-  * [ ] Helper to write append-only audit rows
-  * [ ] Emit audit logs for: admin verify license, payouts, order decisions, inventory changes
-* [ ] Metrics (API + workers) + basic dashboards/alerts
-* [ ] Backup/restore runbook (Heroku PG + Redis)
-* [ ] Feature flags (minimal) for risky rollouts (ads/subscription/analytics)
-* [ ] MFA/email verification adapter hooks (no full build until needed)
+* [ ] **Ticket:** Script: stream file upload to GCS
+  *Explicit:* upload via signed URL (PUT)
+  *No polling yet*
+
+* [ ] **Ticket:** Script: poll media status until `uploaded`
+  *Stops at:* timeout or success
+  *Guarantee:* downstream steps only run with valid media IDs
+
+---
+
+### 13D) Domain seeding (linear, dependency-aware)
+
+* [ ] **Ticket:** Script: create license using media_id
+  *Consumes:* media IDs from 13C
+  *Validates:* license is `pending`
+
+* [ ] **Ticket:** Script: admin approve / reject license
+  *Includes:* admin login + decision toggle
+
+* [ ] **Ticket:** Script: create product with gallery + COA + set inventory
+  *Consumes:* multiple media IDs | null
+  *Validates:* product visible after approval
+
+* [ ] **Ticket:** Script: product(s) → cart → checkout → order → agent deliver → payout
+  *Guarantee:* full happy-path money flow works
+
+---
+
+## Phase 14 — Media Attachments (Canonical Linking Layer)
+
+**Goal:** One normalized attachment model with safe delete semantics.
+
+### 14A) Attachment schema & rules (data only)
+
+* [ ] **Ticket:** Finalize `media_attachments` table
+  *Fields:* media_id, entity_type, entity_id, store_id, created_at, gcs_key
+  *Indexes:* entity lookup + media lookup
+
+* [ ] **Ticket:** Define attachment lifecycle rules (code comments + docs)
+  *Explicit:*
+
+  * One attachment row per usage
+  * Media delete requires zero “protected” attachments (licenses)
+
+---
+
+### 14B) Domain integrations (split intentionally)
+
+> These are intentionally **separate tickets** to avoid cross-domain edits.
+
+* [ ] **Ticket:** License ↔ media attachment wiring
+* [ ] **Ticket:** Product ↔ media attachment wiring (gallery + COA)
+* [ ] **Ticket:** Store ↔ media attachment wiring (logo/banner)
+* [ ] **Ticket:** User ↔ media attachment wiring (avatar)
+* [ ] **Ticket:** Ad ↔ media attachment wiring
+
+---
+
+## Phase 15 — Workers (Dedicated Binaries, One Responsibility Each)
+
+---
+
+### 15A) Daily Cron Worker (time-based orchestration only)
+
+**Goal:** All time-based invariants, zero Pub/Sub.
+
+* [ ] **Ticket:** Create `cmd/cron-worker` binary
+  *Includes:* scheduler registry, locking, metrics
+
+* [ ] **Ticket:** License lifecycle jobs
+  *Jobs:* 14d warning, expired, >30d hard delete
+
+* [ ] **Ticket:** Order TTL job
+  *Jobs:* nudge → expire → inventory release
+
+* [ ] **Ticket:** Notification cleanup job (>30d)
+
+* [ ] **Ticket:** Outbox cleanup job (>30d published)
+
+* [ ] **Ticket:** Concurrency model decision
+  *Explicit:* sequential vs goroutines (documented rationale)
+
+---
+
+### 15B) Outbox Dispatcher Worker
+
+**Goal:** Translate DB events → Pub/Sub messages safely.
+
+* [ ] **Ticket:** Create `cmd/outbox-dispatcher` binary
+* [ ] **Ticket:** Event → topic routing registry
+* [ ] **Ticket:** Typed payload validation per event_type
+* [ ] **Ticket:** Retry + max-attempt policy
+* [ ] **Ticket:** DLQ model + migration + repo
+* [ ] **Ticket:** DLQ publish on terminal failure
+
+---
+
+### 15C) Media Processing Worker (GCS-triggered)
+
+**Goal:** Heavy processing off request path.
+
+* [ ] **Ticket:** Create `cmd/media-worker` binary
+* [ ] **Ticket:** Subscribe to GCS finalize events (env-driven)
+* [ ] **Ticket:** Image/video compression helper
+* [ ] **Ticket:** OCR provider abstraction (OpenAI vs Document AI)
+* [ ] **Ticket:** OCR text generation + storage (`ocr.txt`)
+* [ ] **Ticket:** Update media row with derived assets
+* [ ] **Ticket:** Emit `media_processed` outbox event
+
+---
+
+### 15D) Media Deletion Worker  (GCS-triggered || outbox event from DELETE /media/{mediaID})
+
+**Goal:** Safe cascading deletes after API validation.
+
+* [ ] **Ticket:** Create `cmd/media-delete-worker` binary
+* [ ] **Ticket:** Consume `media_deleted` events
+* [ ] **Ticket:** Resolve and delete all attachment references
+* [ ] **Ticket:** Delete GCS originals + derived artifacts
+
+---
+
+## Phase 16 — Analytics Engine (Dedicated Consumer)
+
+---
+
+### 16A) Analytics Worker
+
+* [ ] **Ticket:** Create `cmd/analytics-worker` binary
+* [ ] **Ticket:** Finalize BigQuery schemas (marketplace_events + ad_events)
+* [ ] **Ticket:** Order event ingestion (geo, category, product, )
+* [ ] **Ticket:** ZIP/geo derivation strategy (documented)
+* [ ] **Ticket:** Ad impression/click ingestion 
+* [ ] **Ticket:** Aggregated KPI derivation (AOV, ROAS, top ZIPs)
+* [ ] **Ticket:** Admin analytics endpoint (non-MVP)
+
+---
+
+## Phase 17 — Notifications (Email Pipeline)
+
+* [ ] **Ticket:** Notification template definitions
+* [ ] **Ticket:** Email sender interface
+* [ ] **Ticket:** Stub email sender (log-only)
+* [ ] **Ticket:** SendGrid adapter (future swap)
+
+---
+
+## Phase 18 — COA → OpenAI Product Drafts
+
+* [ ] **Ticket:** OpenAI client bootstrap
+* [ ] **Ticket:** COA OCR → structured parser
+* [ ] **Ticket:** Product draft JSON generator
+* [ ] **Ticket:** Persist draft + status
+
+---
+
+## Phase 19 — Ads Engine (Serve + Track + Token Attribution + Rollup + Bill Bridge)
+
+**Goal:** Ship a production-viable CPM ad engine with request-time serving, Redis counters + dedupe guards, signed client-side attribution tokens frozen at checkout (order + line-item attribution), daily Postgres rollups, and billing bridge via `usage_charges` + Pub/Sub fanout.
+
+### 19A) Core constants, models, schema
+
+* [ ] Ticket: Define ad engine constants + Redis key schema + TTL conventions (imps/clicks/spend + dedupe keys)
+* [ ] Ticket: Add/confirm enums: ad status, placement, billing model (CPM), token event type (impression|click), token target type (store|product)
+* [ ] Ticket: Add Postgres migration: `cart_records.attribution_tokens` JSONB (bounded array) + indexes as needed (store_id, updated_at)
+* [ ] Ticket: Add Postgres migration: `vendor_orders.attribution` JSONB (order-level) + indexable columns if desired (attributed_ad_id, attribution_type)
+* [ ] Ticket: Add Postgres migration: `vendor_order_line_items.attribution` JSONB nullable (line-item level) + indexable columns if desired (attributed_ad_id)
+* [ ] Ticket: Postgres schema: `ad_daily_rollups` table (per ad per day: imps, clicks, spend_cents) + unique(ad_id, day) + indexes
+* [ ] Ticket: Postgres schema: ensure `usage_charges` uniqueness supports idempotent daily ad spend charges (store_id + type + for_date)
+
+### 19B) Attribution token system (server-signed, client-carried)
+
+* [ ] Ticket: Define token schema (“attribution receipt”): fields + versioning + size constraints (ad_id, creative_id, placement, target_type, target_id, buyer_store_id, occurred_at, expires_at, event_type, request_id/nonce)
+* [ ] Ticket: Implement token signing + verification utility (HMAC/JWT HS256) in shared pkg (strict validation + clock skew rules)
+* [ ] Ticket: Add server-side “token validation” helper: verify signature, expiry, buyer_store match, enum sanity, and dedupe rules (token_id/request_id)
+* [ ] Ticket: Define token precedence rules (deterministic): click > impression; for order-level store attribution only target_type=store; for line-item attribution only target_type=product; most-recent wins; stable tie-break hash
+
+### 19C) Ad serving & tracking APIs (serve, impression, click)
+
+* [ ] Ticket: Repo layer: fetch eligible candidate ads for `/ads/serve` (status=active, placement match, time window, joins for store gating)
+* [ ] Ticket: Service: implement eligibility filter pipeline (subscription_active + kyc verified + status/time window + geo hook)
+* [ ] Ticket: Redis helper: budget gate read (imps/clicks/spend today) + “exhausted” evaluation vs daily_budget_cents
+* [ ] Ticket: Serving algorithm: highest bid wins selector + deterministic tie-break (hash(request_id + placement + day + ad_id))
+* [ ] Ticket: DTOs: `ServeAdRequest/Response` includes creative payload + **signed impression token** + **signed click token** + request_id
+* [ ] Ticket: Controller + route: `GET /ads/serve` returns winning creative + tokens (hero placement still targets store or product)
+* [ ] Ticket: Redis dedupe helper: impression dedupe via `SETNX` keyed by (request_id + placement + ad_id) with TTL
+* [ ] Ticket: Controller + route: `POST /ads/impression` verifies token + increments Redis imps + spend (CPM bid_cents/1000) with dedupe guard
+* [ ] Ticket: Redis dedupe helper: click dedupe via `SETNX` keyed by (request_id + ad_id) with TTL
+* [ ] Ticket: Controller + route: `GET /ads/click` verifies token + increments Redis clicks (no Postgres click row) + 302 redirect to destination URL
+
+### 19D) Cart persistence of tokens (client → server)
+
+* [ ] Ticket: Update cart DTOs to accept `attribution_tokens[]` from client (bounded list)
+* [ ] Ticket: Cart service: normalize tokens on cart save (validate signature/expiry/store match; dedupe; cap to max N; keep most recent per (ad_id,event_type,target_id))
+* [ ] Ticket: Cart repo: persist normalized `cart_records.attribution_tokens` and return the normalized set to client (so client converges)
+* [ ] Ticket: Add guardrails: reject unreasonably large payloads; structured logs for invalid tokens; do not hard-fail checkout if tokens invalid (drop tokens)
+
+### 19E) Checkout-time attribution materialization (immediate during checkout validation)
+
+* [ ] Ticket: Checkout validation: load `cart_records.attribution_tokens` and compute per-vendor-order candidate sets (by vendor_store_id + product_ids)
+* [ ] Ticket: Compute **order-level attribution** (store-only): choose best token where target_type=store AND target_id==vendor_store_id using click>impression + recency + tie-break; set `vendor_orders.attribution`
+* [ ] Ticket: Compute **line-item attribution** (product-only): for each line item choose best token where target_type=product AND target_id==product_id using click>impression + recency + tie-break; set `vendor_order_line_items.attribution` (or null)
+* [ ] Ticket: Ensure deterministic attribution reasons are stored (e.g., `reason=store_click_match`, `reason=product_impression_match`, `reason=none`) for analytics/debuggability
+* [ ] Ticket: Wire attribution persistence into the same transaction that creates checkout_group + vendor_orders + line_items (no partial writes)
+
+### 19F) Daily rollup + billing bridge + outbox fanout
+
+* [ ] Ticket: Scheduler job: daily ad rollup reads Redis counters for day N and writes `ad_daily_rollups` + `usage_charges` (idempotent)
+* [ ] Ticket: Rollup rounding policy: deterministic conversion of spend float → cents (document + implement helper; avoid drift)
+* [ ] Ticket: Outbox emission: write `OutboxEvent` for `ad_spend_rolled_up` after successful rollup transaction
+* [ ] Ticket: Pub/Sub topic wiring: publish rollup outbox events and add consumer skeletons for analytics + billing
+* [ ] Ticket: Billing consumer: bridge daily `usage_charges` into `charges` / Stripe-metered usage interface (stub if not shipping Stripe yet)
+
+### 19G) Analytics propagation (BigQuery)
+
+* [ ] Ticket: Define analytics payload contract for ads: include rollups + checkout attribution snapshot (order + line-item attributions)
+* [ ] Ticket: Analytics consumer: on order/checkout events, extract vendor_order.attribution + line_item.attribution and insert rows into BigQuery ad attribution table(s)
+* [ ] Ticket: Analytics consumer: on rollup events, insert/update BigQuery ad daily rollup table(s) (partitioning + clustering consistent with your BQ design)
+* [ ] Ticket: Ensure “EVERY ad associated with the order” is emitted: one row per attributed ad per line item (product) plus optional order-level store row (store)
+
+### 19H) Failure modes, observability, tests
+
+* [ ] Ticket: Failure mode behavior: Redis unavailable => serve no ads; impression/click endpoints fail closed; structured logs
+* [ ] Ticket: Observability: metrics/logs for serve decisions (candidate counts, exclusion reasons, dedupe hits, winner, budget-gated)
+* [ ] Ticket: Load-shedding: per-request candidate limit + optional short-lived caching of candidate IDs per placement/state (separate small ticket)
+* [ ] Ticket: Integration tests: serve→impression→click counters→cart token persist→checkout attribution (order + line-item)→rollup→usage_charges (deterministic tie-break coverage)
+
+
+---
+
+## Phase 20 — Ops, Observability, Hardening
+
+* [ ] Worker metrics + DLQ visibility
+* [ ] Replay & recovery runbooks
+* [ ] Feature flags
+* [ ] Backup/restore drills
+
+---
+
+## Phase 21 — Deferred / Explicitly Parked
+
+* ACH
+* MFA / TOTP
+* Seed-to-sale
+* Address validation
+* Blockchain / NFTs
+
+---
+
+### Final note (important)
+
+At this point, **the biggest risk is no longer missing tickets** — it’s *ticket blast radius*.
+This rewrite ensures:
+
+* each ticket ≈ **one concern**
+* each worker binary evolves independently
+* an LLM cannot “helpfully” refactor half the repo in one go
+
+If you want next:
+
+* I can **annotate which Go packages each ticket should touch**, or
+* Convert **Phase 13 or Phase 15** directly into **LLM-safe Jira tickets**.
+
+You’re now designing *systems that survive assistants*.
