@@ -354,13 +354,15 @@ func parsePrivateKey(pemData string) (*rsa.PrivateKey, error) {
 	return priv, nil
 }
 
-func signWithKey(unsigned string, key *rsa.PrivateKey) (string, error) {
-	hash := sha256.Sum256([]byte(unsigned))
-	signature, err := rsa.SignPKCS1v15(rand.Reader, key, crypto.SHA256, hash[:])
+func signWithKey(stringToSign string, key *rsa.PrivateKey) (string, error) {
+	sum := sha256.Sum256([]byte(stringToSign))
+
+	sigBytes, err := rsa.SignPKCS1v15(rand.Reader, key, crypto.SHA256, sum[:])
 	if err != nil {
 		return "", err
 	}
-	return base64.RawURLEncoding.EncodeToString(signature), nil
+
+	return base64.StdEncoding.EncodeToString(sigBytes), nil
 }
 
 // SignedURL builds a V2 signed PUT URL that enforces the provided Content-Type.
@@ -396,9 +398,9 @@ func (c *Client) SignedURL(bucket, object, contentType string, expires time.Dura
 	}
 
 	values := url.Values{}
-	values.Set("GoogleAccessId", c.serviceAccount.clientEmail)
+	values.Set("GoogleAccessId", url.QueryEscape(c.serviceAccount.clientEmail))
 	values.Set("Expires", strconv.FormatInt(expiry, 10))
-	values.Set("Signature", signature)
+	values.Set("Signature", url.QueryEscape(signature))
 
 	objPath := escapeObjectPath(object)
 	return fmt.Sprintf("https://storage.googleapis.com/%s/%s?%s", bucket, objPath, values.Encode()), nil
