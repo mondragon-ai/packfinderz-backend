@@ -284,7 +284,7 @@ func (s *service) DeleteMedia(ctx context.Context, params DeleteMediaParams) err
 }
 
 func isReadableStatus(status enums.MediaStatus) bool {
-	return status == enums.MediaStatusUploaded || status == enums.MediaStatusReady
+	return status == enums.MediaStatusUploaded || status == enums.MediaStatusReady || status == enums.MediaStatusPending
 }
 
 func isAllowedMime(kind enums.MediaKind, mimeType string) bool {
