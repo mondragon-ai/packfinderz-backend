@@ -105,10 +105,10 @@ func normalizeEnv(raw string) (string, error) {
 func validateAPIKey(env, key string) error {
 	switch env {
 	case testEnv:
-		if strings.HasPrefix(key, "sk_test") || strings.HasPrefix(key, "rk_test") {
+		if strings.HasPrefix(key, "sk_test") || strings.HasPrefix(key, "pk_test") {
 			return nil
 		}
-		return fmt.Errorf("stripe environment %q requires a test secret key (sk_test/rk_test)", testEnv)
+		return fmt.Errorf("stripe environment %q requires a test secret key (sk_test/pk_test)", testEnv)
 	case liveEnv:
 		if strings.HasPrefix(key, "sk_live") || strings.HasPrefix(key, "rk_live") {
 			return nil

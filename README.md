@@ -326,6 +326,12 @@ Re-running the migration is safe because the statements use `CREATE EXTENSION IF
 * Worker retries
 * Scheduler idempotency
 
+### Integration Harness
+
+* `make test` runs the new `scripts/integration/run.sh` scaffold. Supply the route with `INTEGRATION_ARGS="--route <name>"` (e.g., `login` or `register`) so the harness knows which flow to prepare.
+* Required environment variables (`API_BASE_URL`, `STORE_PASSWORD`) are validated up front and stay exported for downstream steps when the route implementations are added.
+* The current scaffolding only verifies configuration; later tickets will add the actual HTTP calls/assertions per route.
+
 ### CI Pipeline
 
 The GitHub Actions workflow (`.github/workflows/ci.yml`) runs gofmt, `golangci-lint`, `go test ./...`, `go build ./cmd/api ./cmd/worker ./cmd/migrate`, and a gitleaks secret scan on every pull request and push to `main`; branch protection should require the `CI` job to pass before merging. DB-dependent tests must use `//go:build db` so they stay excluded from this pipeline (run them locally with `go test -tags=db ./...` once infrastructure is ready), and any secrets caught by gitleaks fail the workflow.
@@ -622,6 +628,7 @@ make dev        # Run API + worker
 make api        # Run API only
 make worker     # Run worker only
 make run-outbox-publisher  # Run new outbox publisher worker
+make test       # Run the integration harness (set INTEGRATION_ARGS="--route <route>")
 ```
 
 ### Behavior
@@ -638,4 +645,5 @@ make run-outbox-publisher  # Run new outbox publisher worker
 make dev                # Run API + worker
 go test ./...           # Run tests
 make run-outbox-publisher  # Run outbox publisher
+make test INTEGRATION_ARGS="--route login"  # Integration harness scaffold (requires API_BASE_URL + STORE_PASSWORD)
 ```
