@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 
 	"github.com/angelmondragon/packfinderz-backend/internal/memberships"
@@ -95,6 +96,7 @@ func (s *registerService) Register(ctx context.Context, req RegisterRequest) err
 			Phone:        req.Phone,
 		})
 		if err != nil {
+			fmt.Printf("CREATE USER DB ERROR: %+v\n", err)
 			return pkgerrors.Wrap(pkgerrors.CodeInternal, err, "create user")
 		}
 

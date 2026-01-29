@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/angelmondragon/packfinderz-backend/pkg/db/models"
+	dbtypes "github.com/angelmondragon/packfinderz-backend/pkg/db/types"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
@@ -22,9 +23,13 @@ func NewRepository(db *gorm.DB) *Repository {
 // Create inserts a new user and returns the persisted model.
 func (r *Repository) Create(ctx context.Context, dto CreateUserDTO) (*models.User, error) {
 	user := dto.ToModel()
-	if err := r.db.WithContext(ctx).Create(user).Error; err != nil {
+
+	if err := r.db.WithContext(ctx).
+		Omit("store_ids").
+		Create(user).Error; err != nil {
 		return nil, err
 	}
+
 	return user, nil
 }
 
@@ -56,10 +61,14 @@ func (r *Repository) UpdateLastLogin(ctx context.Context, id uuid.UUID, at time.
 
 // UpdateStoreIDs overwrites the user's store_ids array.
 func (r *Repository) UpdateStoreIDs(ctx context.Context, id uuid.UUID, storeIDs []uuid.UUID) error {
+	if storeIDs == nil {
+		storeIDs = []uuid.UUID{}
+	}
+
 	return r.db.WithContext(ctx).
 		Model(&models.User{}).
 		Where("id = ?", id).
-		UpdateColumn("store_ids", storeIDs).Error
+		UpdateColumn("store_ids", dbtypes.UUIDArray(storeIDs)).Error
 }
 
 // UpdatePasswordHash sets a new password hash for the user.

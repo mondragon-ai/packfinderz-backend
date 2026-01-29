@@ -151,3 +151,8 @@
 
 ## internal/analytics
 - `Service.VendorAnalytics(ctx, vendorStoreID, start, end)` resolves BigQuery KPIs (orders, revenue, AOV, cash collected) and daily `marketplace_events` series using parameterized queries so vendor dashboards read from the analytics warehouse (`internal/analytics/service.go`:1-200; `pkg/bigquery/client.go`:149-184).
+
+## ads
+- `Serve`: request-time selection (`GET /ads/serve`) filters `status=active`, placement, store gating (`subscription_active=true`, `kyc_status=verified`), and time windows, gates via Redis budgets, chooses the highest CPM bid with deterministic tie-breakers, and issues signed view/click tokens (token_id, buyer_store_id, target + event metadata, expiry≈30d) for attribution (`docs/AD_ENGINE.md`:30-128).
+- Impression/click tracking validate tokens, enforce `buyer_store_id` matches JWT, dedupe via `impdedupe`/`clickdedupe`, increment Redis counters (`imps:<adId>:<day>`, `clicks:<adId>:<day>`, `spend:<adId>:<day>`), and redirect/call out without touching Postgres; tokens and counters fuel the hybrid attribution rules (`docs/AD_ENGINE.md`:106-170).
+- Nightly scheduler reads Redis totals, upserts `ad_daily_rollups`, inserts `usage_charges(type=ad_spend, for_date=day)`, emits outbox events, and keeps BigQuery/Stripe bridges deterministic; checkout attribution uses the token bag to populate `vendor_orders.attribution` and `vendor_order_line_items.attribution`, letting analytics emit per-order/line-item attribution rows (`docs/AD_ENGINE.md`:176-260).

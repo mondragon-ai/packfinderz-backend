@@ -328,9 +328,11 @@ Re-running the migration is safe because the statements use `CREATE EXTENSION IF
 
 ### Integration Harness
 
-* `make test` runs the new `scripts/integration/run.sh` scaffold. Supply the route with `INTEGRATION_ARGS="--route <name>"` (e.g., `login` or `register`) so the harness knows which flow to prepare.
+* `make test` runs the new `scripts/integration/run.sh` scaffold. Supply the route with `INTEGRATION_ARGS="--route <name>"` (e.g., `register`) so the harness knows which flow to prepare.
 * Required environment variables (`API_BASE_URL`, `STORE_PASSWORD`) are validated up front and stay exported for downstream steps when the route implementations are added.
-* The current scaffolding only verifies configuration; later tickets will add the actual HTTP calls/assertions per route.
+* `scripts/integration/http_client.sh` exposes a shared HTTP client with base URL handling, retries, timeouts, and JSON-safe helpers for GET/POST/PUT/DELETE. Source it in downstream scripts (like the register flow) for consistent behavior.
+* The `register` route (`scripts/integration/register.sh`) calls `POST /api/v1/auth/register` twice with buyer and vendor flags, captures the store/user IDs plus access/refresh tokens, and emits a machine-readable JSON block (`{"buyer":…,"vendor":…}`) so later scripts can consume the credentials.
+* The current scaffolding only verifies configuration; future routes will add additional HTTP calls/assertions.
 
 ### CI Pipeline
 

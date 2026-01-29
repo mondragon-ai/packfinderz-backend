@@ -29,6 +29,10 @@ if [ "${#missing_vars[@]}" -gt 0 ]; then
   exit 1
 fi
 
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$script_dir/http_client.sh"
+source "$script_dir/register.sh"
+
 route=""
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -63,9 +67,11 @@ fi
 export API_BASE_URL
 export STORE_PASSWORD
 
-printf 'Integration harness ready (route=%s).\n' "$route"
-printf 'Using API_BASE_URL=%s\n' "$API_BASE_URL"
-printf 'STORE_PASSWORD is set (value hidden).\n'
+printf 'Integration harness ready (route=%s).\n' "$route" >&2
+printf 'Using API_BASE_URL=%s\n' "$API_BASE_URL" >&2
+printf 'STORE_PASSWORD is set (value hidden).\n' >&2
 
-# Placeholder for future flow wiring. Extend here when implementing routes.
-printf '✔ Config validation succeeded; ready to exercise "%s".\n' "$route"
+if ! run_route "$route"; then
+  printf 'ERROR: route execution failed: %s\n' "$route" >&2
+  exit 1
+fi
