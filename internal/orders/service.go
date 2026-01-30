@@ -838,10 +838,14 @@ func canTransitionLineItemStatus(current enums.LineItemStatus) bool {
 }
 
 func buildActor(userID, storeID uuid.UUID, role string) *outbox.ActorRef {
-	store := storeID
+	var storePtr *uuid.UUID
+	if storeID != uuid.Nil {
+		store := storeID
+		storePtr = &store
+	}
 	return &outbox.ActorRef{
 		UserID:  userID,
-		StoreID: &store,
+		StoreID: storePtr,
 		Role:    role,
 	}
 }

@@ -64,12 +64,12 @@ func New(opts Options) *Logger {
 func ParseLevel(value string) zerolog.Level {
 	levelString := strings.ToLower(strings.TrimSpace(value))
 	if levelString == "" {
-		return zerolog.InfoLevel
+		return zerolog.NoLevel
 	}
-	if lvl, err := zerolog.ParseLevel(levelString); err == nil {
-		return lvl
+	if _, err := zerolog.ParseLevel(levelString); err == nil {
+		return zerolog.NoLevel
 	}
-	return zerolog.InfoLevel
+	return zerolog.NoLevel
 }
 
 func (l *Logger) loggerFromContext(ctx context.Context) *zerolog.Logger {
@@ -124,7 +124,8 @@ func (l *Logger) Info(ctx context.Context, msg string) {
 func (l *Logger) Warn(ctx context.Context, msg string) {
 	event := l.loggerFromContext(ctx).Warn()
 	if l.warnStack {
-		event = event.Str("stack", stackTrace())
+		// event = event.Str("stack", stackTrace())
+		event.Msg(msg)
 	}
 	event.Msg(msg)
 }
@@ -134,7 +135,8 @@ func (l *Logger) Error(ctx context.Context, msg string, err error) {
 	if err != nil {
 		event = event.Err(err)
 	}
-	event.Str("stack", stackTrace()).Msg(msg)
+	// event.Str("stack", stackTrace()).Msg(msg)
+	event.Msg(msg)
 }
 
 func stackTrace() string {

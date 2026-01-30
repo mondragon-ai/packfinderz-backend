@@ -158,9 +158,6 @@ func (s *service) GetByID(ctx context.Context, id uuid.UUID) (*StoreDTO, error) 
 		}
 		return nil, pkgerrors.Wrap(pkgerrors.CodeDependency, err, "load store")
 	}
-	if store == nil {
-		return nil, pkgerrors.New(pkgerrors.CodeNotFound, "store not found")
-	}
 	return FromModel(store), nil
 }
 

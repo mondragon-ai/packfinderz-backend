@@ -31,7 +31,10 @@ func (r *Repository) Create(ctx context.Context, dto CreateStoreDTO) (*models.St
 // FindByID loads a store by its UUID.
 func (r *Repository) FindByID(ctx context.Context, id uuid.UUID) (*models.Store, error) {
 	var store models.Store
-	if err := r.db.WithContext(ctx).First(&store, "id = ?", id).Error; err != nil {
+	if err := r.db.WithContext(ctx).
+		Omit("geom").
+		Where("id = ?", id).
+		First(&store).Error; err != nil {
 		return nil, err
 	}
 	return &store, nil

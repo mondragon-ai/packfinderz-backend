@@ -242,8 +242,8 @@ Re-running the migration is safe because the statements use `CREATE EXTENSION IF
 * `LedgerEvent` is append-only
 * `ledger_events` table stores every money lifecycle row (`order_id`, `type`, `amount_cents`, `metadata`, `created_at`) with `(order_id, created_at)` and `(type, created_at)` indexes and an `ON DELETE RESTRICT` FK to `vendor_orders`.
 * Each ledger row also stores `buyer_store_id`, `vendor_store_id`, and `actor_user_id` to let buyers, vendors, and agents/admins audit who produced the event.
-* Admins can review payout-eligible orders via `GET /api/v1/admin/orders/payouts` and inspect each detail with `GET /api/v1/admin/orders/payouts/{orderId}` before confirming the payout.
-* Admins confirm payouts through `POST /api/v1/admin/orders/{orderId}/confirm-payout` (Idempotency-Key required); the flow records a `vendor_payout` ledger row, marks the payment intent as `paid` with `vendor_paid_at`, closes the order, and emits the `order_paid` outbox event so downstream consumers stay in sync.
+* Admins can review payout-eligible orders via `GET /api/admin/v1/orders/payouts` and inspect each detail with `GET /api/admin/v1/orders/payouts/{orderId}` before confirming the payout; the `/api/admin` group omits the store context guard so an admin JWT may lack `activeStoreId`.
+* Admins confirm payouts through `POST /api/admin/v1/orders/{orderId}/confirm-payout` (Idempotency-Key required); the flow records a `vendor_payout` ledger row, marks the payment intent as `paid` with `vendor_paid_at`, closes the order, and emits the `order_paid` outbox event so downstream consumers stay in sync.
 * Payment lifecycle:
   `unpaid → settled → paid`
 

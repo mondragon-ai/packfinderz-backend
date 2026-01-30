@@ -440,7 +440,7 @@ Manifest approach (MVP):
 
 ## 17) HTTP Routing & Validation
 
-* The API boots `api/routes.NewRouter` (chi) with route groups for `/health`, `/api/public`, `/api`, `/api/admin`, and `/api/v1/agent`. Most groups share the middleware chain (recoverer → request_id → logging → auth/store context → role guard → idempotency → rate-limit placeholders), while `/api/v1/agent` (mounted under `/api`) omits the `StoreContext` guard so system-only agents can run without an `activeStoreId`.
+* The API boots `api/routes.NewRouter` (chi) with route groups for `/health`, `/api/public`, `/api`, `/api/admin`, and `/api/v1/agent`. Most groups share the middleware chain (recoverer → request_id → logging → auth/store context → role guard → idempotency → rate-limit placeholders), while `/api/admin` and `/api/v1/agent` purposely skip `StoreContext` so system-only roles can operate without an `activeStoreId`.
 * Controllers under `api/controllers` get validated inputs from `api/validators` (e.g., `DecodeJSONBody`, `ParseQueryInt`, `SanitizeString`) before any business logic runs; validation failures surface as `pkg/errors.CodeValidation`.
 * Validation errors (malformed JSON, missing required fields, query params out of bounds) map to the canonical error envelope so clients always receive `400` + `{ "error": { "details": {...} } }`.
 * Each route group enforces its own auth/role requirements and should be covered by tests for 401/403, plus validation tests that assert the 400 envelope contains field-level messages.
@@ -488,8 +488,8 @@ Manifest approach (MVP):
 
 **Admin/Agent probes**
 
-* `GET /api/admin/ping` – admin role required, shares store context if present, and is exempt from Idempotency checks even though middleware is mounted (api/routes/router.go:64-81; api/controllers/ping.go:26-43).
-* `GET /api/v1/agent/ping` – agent role required, same context behavior as admin ping; the `/api/v1/agent` group (mounted inside `/api`) omits `StoreContext` so system agents seeded solely by `users.system_role='agent'` can call it without `activeStoreId`, while `RequireRole("agent")` rejects other roles (api/routes/router.go:83-101; api/controllers/ping.go:36-43; api/middleware/roles.go:1-27).
+* `GET /api/admin/ping` – admin role required, no `StoreContext` guard blocks the group so admin JWTs without `active_store_id` still pass, and Idempotency checks are skipped even though the middleware is registered (api/routes/router.go:64-81; api/controllers/ping.go:26-43).
+* `GET /api/v1/agent/ping` – agent role required and the `/api/v1/agent` group (mounted inside `/api`) omits `StoreContext` so system agents seeded solely by `users.system_role='agent'` can call it without `activeStoreId`, while `RequireRole("agent")` rejects other roles (api/routes/router.go:83-101; api/controllers/ping.go:36-43; api/middleware/roles.go:1-27).
 
 **Idempotency guards**
 

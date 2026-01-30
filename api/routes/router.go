@@ -191,7 +191,7 @@ func NewRouter(
 
 	r.Route("/api/admin", func(r chi.Router) {
 		r.Use(middleware.Auth(cfg.JWT, sessionManager, logg))
-		r.Use(middleware.StoreContext(logg))
+		// r.Use(middleware.StoreContext(logg))
 		r.Use(middleware.RequireRole("admin", logg))
 		r.Use(middleware.Idempotency(redisClient, logg))
 		r.Use(middleware.RateLimit())
