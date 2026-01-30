@@ -467,8 +467,8 @@ seperate webhook endpoint we can link or subscribe to
 
 > These are intentionally **separate tickets** to avoid cross-domain edits.
 
-* [X] **Ticket:** License ↔ media attachment wiring
-* [X] **Ticket:** Product ↔ media attachment wiring (gallery + COA)
+* [ ] **Ticket:** License ↔ media attachment wiring
+* [ ] **Ticket:** Product ↔ media attachment wiring (gallery + COA)
 * [ ] **Ticket:** Store ↔ media attachment wiring (logo/banner)
 * [ ] **Ticket:** User ↔ media attachment wiring (avatar)
 * [ ] **Ticket:** Ad ↔ media attachment wiring
@@ -483,18 +483,18 @@ seperate webhook endpoint we can link or subscribe to
 
 **Goal:** All time-based invariants, zero Pub/Sub.
 
-* [ ] **Ticket:** Create `cmd/cron-worker` binary
+* [X] **Ticket:** Create `cmd/cron-worker` binary
   *Includes:* scheduler registry, locking, metrics
 
-* [ ] **Ticket:** License lifecycle jobs
+* [X] **Ticket:** License lifecycle jobs
   *Jobs:* 14d warning, expired, >30d hard delete
 
-* [ ] **Ticket:** Order TTL job
+* [X] **Ticket:** Order TTL job
   *Jobs:* nudge → expire → inventory release
 
-* [ ] **Ticket:** Notification cleanup job (>30d)
+* [X] **Ticket:** Notification cleanup job (>30d)
 
-* [ ] **Ticket:** Outbox cleanup job (>30d published)
+* [X] **Ticket:** Outbox cleanup job (>30d published)
 
 * [ ] **Ticket:** Concurrency model decision
   *Explicit:* sequential vs goroutines (documented rationale)
@@ -534,8 +534,8 @@ seperate webhook endpoint we can link or subscribe to
 
 * [X] **Ticket:** Create `cmd/media-delete-worker` binary
 * [X] **Ticket:** Consume `media_deleted` events
-* [X] **Ticket:** Resolve and delete all attachment references
-* [X] **Ticket:** Delete GCS originals + derived artifacts
+* [ ] **Ticket:** Resolve and delete all attachment references -> currently no opp need the actual detatch per entity 
+* [ ] **Ticket:** Delete GCS originals + derived artifacts
 
 ---
 
