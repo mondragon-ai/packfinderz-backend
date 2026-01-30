@@ -285,6 +285,7 @@ Re-running the migration is safe because the statements use `CREATE EXTENSION IF
 * Media metadata (`media` + `media_attachments`, which tie `entity_type`/`entity_id` to `store_id` and cache `gcs_key` so usage lookups stay tenant-scoped)
   * Attachment reconciliation happens through `internal/media.NewAttachmentReconciler`, which diffs usages inside a transaction and follows the lifecycle rules described in `docs/media_attachments_lifecycle.md`.
   * Lifecycle rules (protected attachments, deletion preconditions, and cleanup ordering) are detailed in `docs/media_attachments_lifecycle.md`.
+  * The `cmd/media_deleted_worker` binary subscribes to `pubsub.MediaDeletionSubscription()` and executes `internal/media/consumer.DeletionConsumer` so every GCS `OBJECT_DELETE` event detaches attachments and removes their rows after the API already enforced protection.
 
 ### Redis (Ephemeral)
 

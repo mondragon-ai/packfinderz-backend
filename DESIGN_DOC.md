@@ -307,6 +307,7 @@ Day-1 async:
 * Media ingestion + Pub/Sub:
 
   * `internal/media/consumer.Consumer.Run` (worker binary) watches the configured `MediaSubscription`, decodes `OBJECT_FINALIZE` payloads, and marks the matching media row uploaded while nacking on transient DB errors so retries stay safe (internal/media/consumer/consumer.go:30-235).
+* `cmd/media_deleted_worker/main` + `internal/media/consumer.DeletionConsumer` subscribe to `media-deleted-sub`, parse JSON_API_V1 `OBJECT_DELETE` payloads, resolve `object.name` → `media_id`, load that media’s `media_attachments` in a deterministic order, invoke domain-specific detachment hooks before mutating anything, delete the attachment rows only after successful detachment, and keep the consumer idempotent so every retry is safe; this worker is the canonical cleanup surface for non-protected attachments and centralizes the post-delete lifecycle outside the API (`cmd/media_deleted_worker/main.go`:1-70; `internal/media/consumer/deletion_consumer.go`:1-200).
   * The worker keeps a simple ticker/heartbeat while honoring context cancellation so media processing doesn't block shutdown (cmd/worker/service.go:66-110).
 
 Outbox pattern: YES:

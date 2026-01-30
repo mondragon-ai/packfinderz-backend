@@ -177,10 +177,11 @@ Deletion MUST NOT skip or reorder these steps. The canonical Media delete endpoi
 
 A **dedicated media deletion worker** is responsible for:
 
-* Consuming media delete events
-* Iterating attachments
-* Triggering per-domain detachment
-* Removing attachment rows
+* Subscribing to `projects/packfinderz/subscriptions/media-deleted-sub` (topic `media-deleted`) via `pkg/pubsub`.
+* Parsing JSON_API_V1 `OBJECT_DELETE` payloads, resolving `object.name` (or `objectId`) to `media.gcs_key` → `media_id`.
+* Loading all `media_attachments` for that `media_id` and processing them in a deterministic order, so domain detachment hooks see stable sequences.
+* Running domain-specific detachment logic before mutating any `media_attachments`.
+* Deleting the attachment rows only after detachment succeeds, keeping the worker idempotent so duplicate Pub/Sub deliveries can safely replay the workflow.
 
 ---
 

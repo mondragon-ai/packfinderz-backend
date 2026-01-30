@@ -59,6 +59,8 @@ func setMinimalEnv(t *testing.T) {
 	t.Setenv(EnvGCSDownloadExpiry, "24h")
 	t.Setenv(EnvPubSubMediaTopic, "media-topic")
 	t.Setenv(EnvPubSubMediaSub, "media-sub")
+	t.Setenv(EnvPubSubMediaDeletionTopic, "media-deletion-topic")
+	t.Setenv(EnvPubSubMediaDeletionSub, "media-deletion-sub")
 	t.Setenv(EnvPubSubOrdersTopic, "orders-topic")
 	t.Setenv(EnvPubSubOrdersSub, "orders-sub")
 	t.Setenv(EnvPubSubBillingTopic, "billing-topic")
