@@ -451,11 +451,11 @@ seperate webhook endpoint we can link or subscribe to
 
 ### 14A) Attachment schema & rules (data only)
 
-* [ ] **Ticket:** Finalize `media_attachments` table
+* [X] **Ticket:** Finalize `media_attachments` table
   *Fields:* media_id, entity_type, entity_id, store_id, created_at, gcs_key
   *Indexes:* entity lookup + media lookup
 
-* [ ] **Ticket:** Define attachment lifecycle rules (code comments + docs)
+* [X] **Ticket:** Define attachment lifecycle rules (code comments + docs)
   *Explicit:*
 
   * One attachment row per usage
@@ -467,8 +467,8 @@ seperate webhook endpoint we can link or subscribe to
 
 > These are intentionally **separate tickets** to avoid cross-domain edits.
 
-* [ ] **Ticket:** License ↔ media attachment wiring
-* [ ] **Ticket:** Product ↔ media attachment wiring (gallery + COA)
+* [X] **Ticket:** License ↔ media attachment wiring
+* [X] **Ticket:** Product ↔ media attachment wiring (gallery + COA)
 * [ ] **Ticket:** Store ↔ media attachment wiring (logo/banner)
 * [ ] **Ticket:** User ↔ media attachment wiring (avatar)
 * [ ] **Ticket:** Ad ↔ media attachment wiring
@@ -532,10 +532,10 @@ seperate webhook endpoint we can link or subscribe to
 
 **Goal:** Safe cascading deletes after API validation.
 
-* [ ] **Ticket:** Create `cmd/media-delete-worker` binary
-* [ ] **Ticket:** Consume `media_deleted` events
-* [ ] **Ticket:** Resolve and delete all attachment references
-* [ ] **Ticket:** Delete GCS originals + derived artifacts
+* [X] **Ticket:** Create `cmd/media-delete-worker` binary
+* [X] **Ticket:** Consume `media_deleted` events
+* [X] **Ticket:** Resolve and delete all attachment references
+* [X] **Ticket:** Delete GCS originals + derived artifacts
 
 ---
 

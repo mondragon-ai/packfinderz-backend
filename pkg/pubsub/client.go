@@ -80,6 +80,7 @@ func subscriptionNames(cfg config.PubSubConfig) []string {
 	names := []string{}
 	for _, name := range []string{
 		cfg.MediaSubscription,
+		cfg.MediaDeletionSubscription,
 		cfg.OrdersSubscription,
 		cfg.BillingSubscription,
 		cfg.NotificationSubscription,
@@ -127,6 +128,11 @@ func (c *Client) Subscription(name string) *pubsub.Subscriber {
 // MediaSubscription returns the configured media subscription subscriber.
 func (c *Client) MediaSubscription() *pubsub.Subscriber {
 	return c.Subscription(c.cfg.MediaSubscription)
+}
+
+// MediaDeletionSubscription returns the configured media deletion subscription.
+func (c *Client) MediaDeletionSubscription() *pubsub.Subscriber {
+	return c.Subscription(c.cfg.MediaDeletionSubscription)
 }
 
 // OrdersSubscription returns the configured orders subscription subscriber.

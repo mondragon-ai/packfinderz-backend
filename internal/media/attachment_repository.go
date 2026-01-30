@@ -25,7 +25,11 @@ func (r *mediaAttachmentRepository) Create(ctx context.Context, tx *gorm.DB, att
 
 // Delete removes the attachment row matching the provided identifiers.
 func (r *mediaAttachmentRepository) Delete(ctx context.Context, tx *gorm.DB, entityType string, entityID, mediaID uuid.UUID) error {
-	return tx.WithContext(ctx).
+	executor := tx
+	if executor == nil {
+		executor = r.db
+	}
+	return executor.WithContext(ctx).
 		Where("entity_type = ? AND entity_id = ? AND media_id = ?", entityType, entityID, mediaID).
 		Delete(&models.MediaAttachment{}).
 		Error
