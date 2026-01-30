@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"path"
+	"sort"
 	"strings"
 	"time"
 	"unicode"
@@ -285,8 +286,9 @@ func (s *service) DeleteMedia(ctx context.Context, params DeleteMediaParams) err
 	if err != nil {
 		return pkgerrors.Wrap(pkgerrors.CodeDependency, err, "load media attachments")
 	}
-	if hasProtectedAttachment(attachments) {
-		return pkgerrors.New(pkgerrors.CodeConflict, "media has protected attachments")
+	if protected := protectedAttachmentEntities(attachments); len(protected) > 0 {
+		return pkgerrors.New(pkgerrors.CodeConflict,
+			fmt.Sprintf("media has protected attachments: %s", strings.Join(protected, ", ")))
 	}
 
 	if err := s.gcs.DeleteObject(ctx, s.bucket, mediaRow.GCSKey); err != nil {
@@ -300,13 +302,25 @@ func isReadableStatus(status enums.MediaStatus) bool {
 	return status == enums.MediaStatusUploaded || status == enums.MediaStatusReady
 }
 
-func hasProtectedAttachment(attachments []models.MediaAttachment) bool {
+func protectedAttachmentEntities(attachments []models.MediaAttachment) []string {
+	if len(attachments) == 0 {
+		return nil
+	}
+	set := make(map[string]struct{})
 	for _, attachment := range attachments {
 		if _, ok := models.ProtectedAttachmentEntities[attachment.EntityType]; ok {
-			return true
+			set[attachment.EntityType] = struct{}{}
 		}
 	}
-	return false
+	if len(set) == 0 {
+		return nil
+	}
+	types := make([]string, 0, len(set))
+	for entityType := range set {
+		types = append(types, entityType)
+	}
+	sort.Strings(types)
+	return types
 }
 
 func isAllowedMime(kind enums.MediaKind, mimeType string) bool {

@@ -81,6 +81,10 @@
 
 The worker also consumes the `gcp-meda-sub` Pub/Sub subscription for GCS `OBJECT_FINALIZE` notifications and marks matching `media.gcs_key` rows as `uploaded`, keeping the media lifecycle in sync with bucket uploads.
 
+### Cron Worker
+
+`cmd/cron-worker` is the dedicated scheduler binary for time-based invariants. It boots the shared config, structured logger, Postgres, and Redis clients (and runs Goose migrations in dev), then loops every 24 hours while coordinating a global Redis lock so only one instance runs the jobs. Each job start/end/duration is logged and emits Prometheus metrics (`job_duration_seconds`, `job_success`, `job_failure`) so the cron layer can be monitored independently of the API and worker dynos. No business jobs are currently registered, keeping the worker ready for future license, retention, and cleanup flows without touching Pub/Sub.
+
 ### Outbox Publisher
 
 `cmd/outbox-publisher` is the dedicated outbox publisher that polls `outbox_events` with `FOR UPDATE SKIP LOCKED`, publishes domain envelopes to `PACKFINDERZ_PUBSUB_DOMAIN_TOPIC`, and marks `published_at` or increments `attempt_count`/`last_error` before committing the transaction. Run it locally with `make run-outbox-publisher`, build it via `make build-outbox-publisher`, and run the `outbox-publisher` dyno in Heroku alongside `api`/`worker`. The operational guide in `docs/outbox.md` explains claiming, at-least-once semantics, retry expectations, and consumer idempotency requirements. When the API completes checkout it writes an `order_created` outbox row (payload includes `checkout_group_id` plus the `vendor_order_ids`) so analytics and notification consumers can react to the same transactional split recorded in Postgres.
@@ -285,6 +289,7 @@ Re-running the migration is safe because the statements use `CREATE EXTENSION IF
 * Media metadata (`media` + `media_attachments`, which tie `entity_type`/`entity_id` to `store_id` and cache `gcs_key` so usage lookups stay tenant-scoped)
   * Attachment reconciliation happens through `internal/media.NewAttachmentReconciler`, which diffs usages inside a transaction and follows the lifecycle rules described in `docs/media_attachments_lifecycle.md`.
   * Lifecycle rules (protected attachments, deletion preconditions, and cleanup ordering) are detailed in `docs/media_attachments_lifecycle.md`.
+  * `DELETE /api/v1/media/{mediaId}` loads `media_attachments`, rejects the request whenever a `license` or `ad` attachment exists, deletes the GCS object once the guard passes, and marks the media row as `deleted` so repeat calls short-circuit while downstream workers clean up non-protected references.
   * The `cmd/media_deleted_worker` binary subscribes to `pubsub.MediaDeletionSubscription()` and executes `internal/media/consumer.DeletionConsumer` so every GCS `OBJECT_DELETE` event detaches attachments and removes their rows after the API already enforced protection.
 
 ### Redis (Ephemeral)

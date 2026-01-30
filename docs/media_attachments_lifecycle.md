@@ -163,7 +163,7 @@ Before deleting a Media row, the service MUST:
    * Domain-specific cleanup MUST run first (gallery updates, banner resets, avatar clears, etc.)
 6. **Delete attachment rows**
 
-Deletion MUST NOT skip or reorder these steps. The canonical Media delete endpoint (`internal/media.Service.DeleteMedia`) already performs steps 1-3, so API callers only proceed with deletion after the protected-check passes.
+Deletion MUST NOT skip or reorder these steps. The canonical Media delete endpoint (`internal/media.Service.DeleteMedia`) already performs steps 1-3, so API callers only proceed with deletion after the protected-check passes. After deleting the GCS object it marks the `media` row as `deleted` so repeat requests are idempotent while downstream consumers process the associated attachments asynchronously.
 
 ---
 
