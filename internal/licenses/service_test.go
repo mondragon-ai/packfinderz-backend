@@ -153,6 +153,11 @@ type stubStoreRepo struct {
 	updated   *models.Store
 }
 
+// // UpdateStatusWithTx implements [storesRepository].
+// func (s *stubStoreRepo) UpdateStatusWithTx(tx *gorm.DB, storeID uuid.UUID, newStatus enums.KYCStatus) error {
+// 	panic("unimplemented")
+// }
+
 func (s *stubStoreRepo) FindByID(ctx context.Context, id uuid.UUID) (*models.Store, error) {
 	if s.findErr != nil {
 		return nil, s.findErr
@@ -524,6 +529,24 @@ func TestDeleteLicenseKeepsStoreWhenValidLicenseExists(t *testing.T) {
 	if storeRepo.updated != nil {
 		t.Fatalf("expected no store update, got %v", storeRepo.updated)
 	}
+}
+
+// UpdateStatusWithTx implements [storesRepository].
+func (s *stubStoreRepo) UpdateStatusWithTx(tx *gorm.DB, storeID uuid.UUID, newStatus enums.KYCStatus) error {
+	if s.updateErr != nil {
+		return s.updateErr
+	}
+
+	// mimic persistence + allow assertions
+	if s.store == nil {
+		s.store = &models.Store{ID: storeID}
+	}
+	s.store.ID = storeID
+	s.store.KYCStatus = newStatus
+
+	// keep existing test expectations that check storeRepo.updated
+	s.updated = s.store
+	return nil
 }
 
 func TestVerifyLicenseSuccess(t *testing.T) {

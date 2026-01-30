@@ -37,6 +37,7 @@ type storesRepository interface {
 	Update(ctx context.Context, store *models.Store) error
 	FindByIDWithTx(tx *gorm.DB, id uuid.UUID) (*models.Store, error)
 	UpdateWithTx(tx *gorm.DB, store *models.Store) error
+	UpdateStatusWithTx(tx *gorm.DB, storeID uuid.UUID, newStatus enums.KYCStatus) error
 }
 
 type licensesRepository interface {
@@ -399,8 +400,12 @@ func (s *service) reconcileStoreKYC(ctx context.Context, tx *gorm.DB, storeID uu
 	if store.KYCStatus == newStatus {
 		return nil
 	}
-	store.KYCStatus = newStatus
-	return s.storeRepo.UpdateWithTx(tx, store)
+
+	if err := s.storeRepo.UpdateStatusWithTx(tx, storeID, newStatus); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func DetermineStoreKYCStatus(statuses []enums.LicenseStatus) enums.KYCStatus {
@@ -424,8 +429,8 @@ func DetermineStoreKYCStatus(statuses []enums.LicenseStatus) enums.KYCStatus {
 	}
 	return enums.KYCStatusPendingVerification
 }
-
 func (s *service) VerifyLicense(ctx context.Context, licenseID uuid.UUID, decision enums.LicenseStatus, reason string) (*models.License, error) {
+
 	if licenseID == uuid.Nil {
 		return nil, pkgerrors.New(pkgerrors.CodeValidation, "license id is required")
 	}
@@ -434,7 +439,9 @@ func (s *service) VerifyLicense(ctx context.Context, licenseID uuid.UUID, decisi
 	}
 
 	var updated *models.License
+
 	err := s.tx.WithTx(ctx, func(tx *gorm.DB) error {
+
 		license, err := s.repo.FindByIDWithTx(tx, licenseID)
 		if err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -450,17 +457,31 @@ func (s *service) VerifyLicense(ctx context.Context, licenseID uuid.UUID, decisi
 		if err := s.repo.UpdateStatusWithTx(tx, licenseID, decision); err != nil {
 			return err
 		}
+
 		license.Status = decision
+
 		if err := s.reconcileStoreKYC(ctx, tx, license.StoreID); err != nil {
 			return err
 		}
+
 		updated = license
-		return s.emitLicenseStatusEvent(ctx, tx, license, decision, reason, nil)
+
+		if err := s.emitLicenseStatusEvent(ctx, tx, license, decision, reason, nil); err != nil {
+			return err
+		}
+
+		if tx != nil && tx.Error != nil {
+			fmt.Printf("[VerifyLicense] tx.state tx.Error=%T %v\n", tx.Error, tx.Error)
+		}
+
+		return nil
 	})
+
 	if err != nil {
 		if pkgErr := pkgerrors.As(err); pkgErr != nil {
 			return nil, pkgErr
 		}
+
 		return nil, pkgerrors.Wrap(pkgerrors.CodeDependency, err, "update license status")
 	}
 

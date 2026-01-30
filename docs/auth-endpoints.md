@@ -599,8 +599,12 @@ curl -X DELETE "{{API_BASE_URL}}/api/v1/licenses/{{license_id}}" \
 
 Success returns `{"deleted": true}` and, if the store no longer has any valid licenses, the service flips the store’s KYC back to `pending_verification`.
 
+
+
+## Admin endpoints
+
 ### POST /api/admin/v1/auth/login
-Admin login lives under `/api/admin` so the resulting access token is storeless (`role=admin`, no `active_store_id`). Valid credentials set `X-PF-Token` to the fresh access token, return the `refresh_token`, and include the admin `user` DTO; invalid credentials return the standard `401` message.
+Admin login lives under `/api/admin` so the resulting access token is storeless (`role=admin`, no `active_store_id`). Valid credentials set `X-PF-Token` to the fresh access token, return the `refresh_token`, and include the admin `user` DTO; invalid credentials return the standard `401` message. The request payload is `auth.LoginRequest` (`email`/`password` are required strings and `email` is normalized before the lookup). The response mirrors `pkg/db/models.User` fields (`id`, `email`, `first_name`, `last_name`, `phone`, `system_role`), and the service rejects anything that does not have `system_role="admin"` even if the password is valid.
 
 #### Request body
 ```json
@@ -614,18 +618,16 @@ Admin login lives under `/api/admin` so the resulting access token is storeless 
 ```bash
 curl -X POST "{{API_BASE_URL}}/api/admin/v1/auth/login" \
   -H "Content-Type: application/json" \
-  -H "Accept: application/json" \
-  -H "Idempotency-Key: {{optional_idempotency_key}}" \
   -d '{
     "email": "admin@example.com",
     "password": "Secur3P@ssw0rd!"
   }'
 ```
 
-Success returns `{"user": {...}, "refresh_token": "{{refresh_token}}"}` and the `X-PF-Token` header contains the access token used by `/api/admin/*`.
+Success returns `{"user": {...}, "refresh_token": "{{refresh_token}}"}` and the `X-PF-Token` header contains the access token used by `/api/admin/*`. The handler updates `last_login_at` on the `users` row before minting the JWT so downstream tooling sees the latest activity timestamp.
 
 ### POST /api/admin/v1/auth/register
-Developer-only helper that exists when `PACKFINDERZ_APP_ENV != prod`. It creates an admin user with `system_role="admin"` and `is_active=true`, hashes the password, returns the admin `user` DTO plus tokens, and sets `X-PF-Token` so tooling can immediately call `/api/admin/*`. Duplicate emails return `409 Conflict` and the route is omitted entirely in production.
+Developer-only helper that exists when `PACKFINDERZ_APP_ENV != prod` (the controller immediately returns `403 admin register disabled in production` otherwise). It creates an admin user with `system_role="admin"`, `is_active=true`, and an Argon2id password hash via `security.HashPassword`, returns the `user` DTO plus the tokens, and sets `X-PF-Token` so tooling can immediately call `/api/admin/*`. Duplicate emails return `409 Conflict` (the service checks `users.Repository.FindByEmail` before insert), while validation errors still surface `422`. The response payload is identical to the admin login output because the controller proxies to `auth.AdminLogin`.
 
 #### Request body
 ```json
@@ -635,21 +637,35 @@ Developer-only helper that exists when `PACKFINDERZ_APP_ENV != prod`. It creates
 }
 ```
 
+`email` and `password` are both required (`auth.AdminRegisterRequest`). The created `users` row mirrors `pkg/db/models.User`, so it will have `password_hash`, `system_role`, `is_active`, and timestamps (`created_at`, `updated_at`).
+
 #### cURL
 ```bash
 curl -X POST "{{API_BASE_URL}}/api/admin/v1/auth/register" \
   -H "Content-Type: application/json" \
-  -H "Accept: application/json" \
   -d '{
     "email": "admin@example.com",
     "password": "Secur3P@ssw0rd!"
   }'
 ```
 
-Success returns `{"user": {...}, "access_token": "{{access_token}}", "refresh_token": "{{refresh_token}}"}` and the `X-PF-Token` header, matching the admin login payload.
+Success returns the admin `user` DTO plus `refresh_token` and the `X-PF-Token` header (the access token itself is not serialized). The endpoint is omitted when `PACKFINDERZ_APP_ENV=prod`, keeping the admin table writable only in dev/stage.
+
+### GET /api/admin/ping
+Admin ping simply echoes `{"scope":"admin","status":"ok"}` and confirms the JWT has `role=admin`. The route is guarded by `middleware.Auth` and `middleware.RequireRole("admin")` while skipping `StoreContext` so storeless tokens pass.
+
+#### cURL
+```bash
+curl -X GET "{{API_BASE_URL}}/api/admin/ping" \
+  -H "Authorization: Bearer {{admin_access_token}}"
+```
+
+Expect `200` with the status payload; no body or query parameters are accepted.
 
 ### POST /api/admin/v1/licenses/{licenseId}/verify
-Admin users (via `/api/admin`) control license status. Supply `decision` (`verified` or `rejected`) and an optional `reason`. The route returns the updated `licenseResponse` and publishes the `LicenseStatusChanged` outbox event.
+Admin users (via `/api/admin`) control license status. Supply `decision` (`verified` or `rejected`) and an optional `reason`. The route returns the updated `licenseResponse` and publishes the `LicenseStatusChanged` outbox event. The request DTO is `adminLicenseVerifyRequest`, so `decision` is required, `reason` is optional, and the controller rejects any string other than the `pkg/enums.LicenseStatus` values `verified`/`rejected`.
+
+The updated `licenseResponse` mirrors `pkg/db/models.License` fields (`id`, `store_id`, `status`, `media_id`, `issuing_state`, `issue_date`, `expiration_date`, `type`, `number`, timestamps). If the license already has a non-`pending` status the service returns `409 Conflict`.
 
 #### Request body
 ```json
@@ -659,13 +675,12 @@ Admin users (via `/api/admin`) control license status. Supply `decision` (`verif
 }
 ```
 
-`reason` may stay empty when you just toggle to `verified`.
+`reason` is optional and stored with the license update to give stores context for the admin decision. `decision` must be `verified` or `rejected`; anything else results in `422 decision must be verified or rejected`.
 
 #### cURL (admin token example)
 ```bash
 curl -X POST "{{API_BASE_URL}}/api/admin/v1/licenses/{{license_id}}/verify" \
   -H "Content-Type: application/json" \
-  -H "Accept: application/json" \
   -H "Authorization: Bearer {{admin_access_token}}" \
   -d '{
     "decision": "verified",
@@ -673,4 +688,50 @@ curl -X POST "{{API_BASE_URL}}/api/admin/v1/licenses/{{license_id}}/verify" \
   }'
 ```
 
-If the license already has a non-`pending` status, the endpoint returns `409 Conflict`. When verification succeeds the store’s KYC status is reconciled (`verified`, `rejected`, or `expired` depending on the remaining licenses). License details in the response mirror `licenseResponse`.
+When verification succeeds the store’s KYC status is recalculated (`verified`, `rejected`, or `expired` depending on other licenses) and the response includes the refreshed license record along with any generated `notifications`.
+
+### GET /api/admin/v1/orders/payouts
+Returns delivered, settled, and unpaid vendor orders eligible for payout. Query `limit` (default `25`, max `100`) and optional `cursor` control pagination (`pagination.Params`), and each entry includes `orderId`, `orderNumber`, `vendorStoreId`, `amountCents`, and `deliveredAt` coming from `internal/orders.Repository.ListPayoutOrders`. The repository filters `pkg/db/models.VendorOrder` rows where `status=delivered` and joins `pkg/db/models.PaymentIntent` rows with `status=settled`, so clients can target payout-ready orders exactly.
+
+Query options:
+
+  * `limit` (optional, default `25`, max `100`)
+  * `cursor` (optional pagination cursor)
+
+#### cURL
+```bash
+curl -G "{{API_BASE_URL}}/api/admin/v1/orders/payouts" \
+  -H "Authorization: Bearer {{admin_access_token}}" \
+  --data-urlencode "limit=25" \
+  --data-urlencode "cursor={{optional_cursor}}"
+```
+
+Response is `internal/orders.PayoutOrderList` containing the cursor for the next page plus the entries described above.
+
+### GET /api/admin/v1/orders/payouts/{orderId}
+Loads the detail for a single payout-ready order via `internal/orders.Repository.FindOrderDetail`. The handler verifies the `vendor_orders.status` is `delivered` and the attached `payment_intents.status` is `settled` before returning the shared `internal/orders.OrderDetail`, which mirrors `pkg/db/models.VendorOrder`/`pkg/db/models.PaymentIntent` plus joined line items, assignments, and store metadata. Default 404/403 responses occur if the order is missing or fails the payout guard.
+
+#### cURL
+```bash
+curl -X GET "{{API_BASE_URL}}/api/admin/v1/orders/payouts/{{order_id}}" \
+  -H "Authorization: Bearer {{admin_access_token}}"
+```
+
+Success returns the full order detail payload so the admin UI can review items, payment info, and delivery timestamps before authorizing the cash payout.
+
+### POST /api/admin/v1/orders/{orderId}/confirm-payout
+Finalizes the payout for an eligible order. The controller reads `orderId` from the path (validated as UUID) and uses `internal/orders.Service.ConfirmPayout` to set `payment_intents.status=paid`, stamp `vendor_paid_at`, close the vendor order, append a ledger row, and emit the `order_paid` outbox event. The route is protected by `middleware.Idempotency`, so include `Idempotency-Key` (24h TTL) in every request to avoid replays.
+
+Headers:
+
+  * `Authorization: Bearer {{admin_access_token}}`
+  * `Idempotency-Key: {{unique_key}}`
+
+#### cURL
+```bash
+curl -X POST "{{API_BASE_URL}}/api/admin/v1/orders/{{order_id}}/confirm-payout" \
+  -H "Authorization: Bearer {{admin_access_token}}" \
+  -H "Idempotency-Key: payout-{{uuid}}"
+```
+
+Success returns `200` with an empty data envelope; if the order is no longer delivered/settled, the API responds with `409`/`422` describing the state conflict. The `ConfirmPayout` service enforces `pkg/db/models.VendorOrder.status=delivered` and `pkg/db/models.PaymentIntent.status=settled` before mutating rows.

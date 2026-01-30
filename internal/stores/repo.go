@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/angelmondragon/packfinderz-backend/pkg/db/models"
+	"github.com/angelmondragon/packfinderz-backend/pkg/enums"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
@@ -63,7 +64,7 @@ func (r *Repository) FindByIDWithTx(tx *gorm.DB, id uuid.UUID) (*models.Store, e
 		return nil, gorm.ErrInvalidTransaction
 	}
 	var store models.Store
-	if err := tx.First(&store, "id = ?", id).Error; err != nil {
+	if err := tx.Omit("geom").First(&store, "id = ?", id).Error; err != nil {
 		return nil, err
 	}
 	return &store, nil
@@ -78,4 +79,17 @@ func (r *Repository) UpdateWithTx(tx *gorm.DB, store *models.Store) error {
 		return fmt.Errorf("store is required")
 	}
 	return tx.Save(store).Error
+}
+
+// UpdateStatusWithTx persists the store using the provided transaction & mod status.
+func (r *Repository) UpdateStatusWithTx(tx *gorm.DB, storeID uuid.UUID, newStatus enums.KYCStatus) error {
+	if tx == nil {
+		return gorm.ErrInvalidTransaction
+	}
+	if err := tx.Model(&models.Store{}).
+		Where("id = ?", storeID).
+		Update("kyc_status", newStatus).Error; err != nil {
+		return err
+	}
+	return nil
 }
