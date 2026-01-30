@@ -38,7 +38,7 @@
 - `id`, optional `store_id`/`user_id` (FKs), `kind media_kind`, `status media_status DEFAULT 'pending'`, `gcs_key` unique (corrected via `20260122143235`), `file_name`, `mime_type`, `ocr`, `size_bytes`, `is_compressed` bool, timestamps plus `uploaded_at`, `verified_at`, `processing_started_at`, `ready_at`, `failed_at`, `deleted_at`; indexes on `(store_id,created_at DESC)`, `kind`, `user_id` (pkg/migrate/migrations/20260120003415_create_media.sql:1-41; pkg/migrate/migrations/20260122143235_fix_media_gcs_key.sql:1-52; pkg/db/models/media.go:11-32).
 
 ### media_attachments
-- `id`, `media_id FK`, `owner_type`, `owner_id`, timestamp, unique constraint `(media_id,owner_type,owner_id)` for attachments (pkg/migrate/migrations/20260120003415_create_media.sql:7-24).
+- `id`, `media_id FK`, `entity_type`, `entity_id`, `store_id FK`, `gcs_key`, `created_at`, indexes on `(entity_type,entity_id)` and `(media_id)` so attachments can be queried by consumer or by the referenced media row, and FK constraints enforce `media(id)` and `stores(id)` tenancy (pkg/migrate/migrations/20260230180000_finalize_media_attachments.sql:2-31).
 
 ### products
 - `id uuid`, `store_id store_id FK`, `sku`, `title`, optional `subtitle/body_html`, `category category`, `feelings feelings[]`, `flavors flavors[]`, `usage usage[]`, `strain`, `classification classification`, `unit unit`, `moq`, `price_cents`, optional `compare_at_price_cents`, `is_active bool`, `is_featured bool`, optional `thc_percent`, optional `cbd_percent`, timestamps (DESIGN_DOC.md:2710-2757; pkg/db/models/product.go:9-45; pkg/enums/product.go:5-148).

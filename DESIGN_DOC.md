@@ -3278,25 +3278,32 @@ FKs
 
 ### 2.18 `media_attachments`
 
-**Purpose:** many-to-many attaching media to domain entities.
+**Purpose:** normalize how media is **used** across domain entities while keeping every attachment scoped to the owning store so the same media object can be reused safely.
 
 Fields
 
 * `id uuid pk`
 * `media_id uuid not null`
-* `owner_type text not null` (e.g., `product|license|ad|order`)
-* `owner_id uuid not null`
+* `entity_type text not null` (controlled enum in code, not a DB enum)
+* `entity_id uuid not null`
+* `store_id uuid not null`
+* `gcs_key text not null`
 * `created_at timestamptz not null default now()`
 
 Indexes
 
-* `unique(media_id, owner_type, owner_id)`
-* `(owner_type, owner_id)`
+* `(entity_type, entity_id)`
+* `(media_id)`
 
 FKs
 
-* `media_id -> media(id) on delete cascade`
-* **ASSUMPTION:** no FK to polymorphic owner; enforced app-side.
+* `media_id -> media(id) on delete restrict`
+* `store_id -> stores(id) on delete restrict`
+
+Notes:
+* `gcs_key` mirrors `media.gsc_key`, letting services sign URLs from attachments without hitting the media join.
+* `entity_type`/`entity_id` describe the consuming entity (product, license, store, ad, order, etc.), with the polymorphic semantics enforced at the application layer.
+* Multiple rows per `media_id` are allowed so a single `media` row can appear in many attachments.
 
 ---
 
