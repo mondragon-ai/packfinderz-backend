@@ -1,6 +1,7 @@
 package controllers
 
 import (
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -70,31 +71,57 @@ func VendorCreateProduct(svc productsvc.Service, logg *logger.Logger) http.Handl
 	}
 }
 
+type createProductRequest struct {
+	SKU                 string                        `json:"sku" validate:"required"`
+	Title               string                        `json:"title" validate:"required"`
+	Subtitle            *string                       `json:"subtitle,omitempty"`
+	BodyHTML            *string                       `json:"body_html,omitempty"`
+	Category            string                        `json:"category" validate:"required"`
+	Feelings            []string                      `json:"feelings" validate:"required,min=1,dive,required"`
+	Flavors             []string                      `json:"flavors"  validate:"required,min=1,dive,required"`
+	Usage               []string                      `json:"usage"    validate:"required,min=1,dive,required"`
+	Strain              *string                       `json:"strain,omitempty"`
+	Classification      *string                       `json:"classification,omitempty"`
+	Unit                string                        `json:"unit" validate:"required"`
+	MOQ                 int                           `json:"moq" validate:"required,min=1"`
+	PriceCents          int                           `json:"price_cents" validate:"required,min=0"`
+	CompareAtPriceCents *int                          `json:"compare_at_price_cents,omitempty" validate:"omitempty,min=0"`
+	IsActive            *bool                         `json:"is_active,omitempty"`
+	IsFeatured          *bool                         `json:"is_featured,omitempty"`
+	THCPercent          *float64                      `json:"thc_percent,omitempty" validate:"omitempty,gte=0,lte=100"`
+	CBDPercent          *float64                      `json:"cbd_percent,omitempty" validate:"omitempty,gte=0,lte=100"`
+	Inventory           createInventoryRequest        `json:"inventory" validate:"required"`
+	MediaIDs            []string                      `json:"media_ids,omitempty"`
+	VolumeDiscounts     []createVolumeDiscountRequest `json:"volume_discounts,omitempty" validate:"omitempty,min=1,dive"`
+}
+
+type createInventoryRequest struct {
+	AvailableQty int `json:"available_qty" validate:"required,min=0"`
+	ReservedQty  int `json:"reserved_qty" validate:"omitempty,min=0"`
+}
+
+type createVolumeDiscountRequest struct {
+	MinQty         int `json:"min_qty" validate:"required,min=1"`
+	UnitPriceCents int `json:"unit_price_cents" validate:"required,min=0"`
+}
+
 // VendorUpdateProduct handles patching existing products.
 func VendorUpdateProduct(svc productsvc.Service, logg *logger.Logger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		fmt.Printf("[VendorUpdateProduct] START method=%s path=%s\n", r.Method, r.URL.Path)
+
 		if svc == nil {
+			fmt.Printf("[VendorUpdateProduct] svc == nil (bailing)\n")
 			responses.WriteError(r.Context(), logg, w, pkgerrors.New(pkgerrors.CodeInternal, "product service unavailable"))
 			return
 		}
 
 		storeID := middleware.StoreIDFromContext(r.Context())
-		if storeID == "" {
-			responses.WriteError(r.Context(), logg, w, pkgerrors.New(pkgerrors.CodeForbidden, "store context missing"))
-			return
-		}
-
 		userID := middleware.UserIDFromContext(r.Context())
-		if userID == "" {
-			responses.WriteError(r.Context(), logg, w, pkgerrors.New(pkgerrors.CodeUnauthorized, "user context missing"))
-			return
-		}
+		fmt.Printf("[VendorUpdateProduct] ctx storeID=%q userID=%q\n", storeID, userID)
 
 		productIDParam := strings.TrimSpace(chi.URLParam(r, "productId"))
-		if productIDParam == "" {
-			responses.WriteError(r.Context(), logg, w, pkgerrors.New(pkgerrors.CodeValidation, "product id is required"))
-			return
-		}
+		fmt.Printf("[VendorUpdateProduct] url productId=%q\n", productIDParam)
 
 		productID, err := uuid.Parse(productIDParam)
 		if err != nil {
@@ -115,23 +142,45 @@ func VendorUpdateProduct(svc productsvc.Service, logg *logger.Logger) http.Handl
 		}
 
 		var payload updateProductRequest
+		fmt.Printf("[VendorUpdateProduct] decoding JSON body...\n")
 		if err := validators.DecodeJSONBody(r, &payload); err != nil {
+			fmt.Printf("[VendorUpdateProduct] DecodeJSONBody ERROR: %v\n", err)
 			responses.WriteError(r.Context(), logg, w, err)
 			return
 		}
 
+		// Log which fields are actually present (helps catch "unexpected nil" assumptions)
+		fmt.Printf("[VendorUpdateProduct] payload present: SKU=%t Title=%t Category=%t Unit=%t Inventory=%t MediaIDs=%t VolumeDiscounts=%t\n",
+			payload.SKU != nil,
+			payload.Title != nil,
+			payload.Category != nil,
+			payload.Unit != nil,
+			payload.Inventory != nil,
+			payload.MediaIDs != nil,
+			payload.VolumeDiscounts != nil,
+		)
+		if payload.Inventory != nil {
+			fmt.Printf("[VendorUpdateProduct] payload.Inventory: AvailableQty=%v ReservedQty=%v\n",
+				payload.Inventory.AvailableQty, payload.Inventory.ReservedQty)
+		}
+
+		fmt.Printf("[VendorUpdateProduct] converting payload -> input...\n")
 		input, err := payload.toUpdateInput()
 		if err != nil {
+			fmt.Printf("[VendorUpdateProduct] toUpdateInput ERROR: %v\n", err)
 			responses.WriteError(r.Context(), logg, w, err)
 			return
 		}
 
+		fmt.Printf("[VendorUpdateProduct] calling svc.UpdateProduct user=%s store=%s product=%s\n", uid.String(), sid.String(), productID.String())
 		product, err := svc.UpdateProduct(r.Context(), uid, sid, productID, input)
 		if err != nil {
+			fmt.Printf("[VendorUpdateProduct] svc.UpdateProduct ERROR: %v\n", err)
 			responses.WriteError(r.Context(), logg, w, err)
 			return
 		}
 
+		fmt.Printf("[VendorUpdateProduct] SUCCESS productID=%s\n", product.ID)
 		responses.WriteSuccess(w, product)
 	}
 }
@@ -187,40 +236,6 @@ func VendorDeleteProduct(svc productsvc.Service, logg *logger.Logger) http.Handl
 
 		w.WriteHeader(http.StatusNoContent)
 	}
-}
-
-type createProductRequest struct {
-	SKU                 string                        `json:"sku" validate:"required"`
-	Title               string                        `json:"title" validate:"required"`
-	Subtitle            *string                       `json:"subtitle,omitempty"`
-	BodyHTML            *string                       `json:"body_html,omitempty"`
-	Category            string                        `json:"category" validate:"required"`
-	Feelings            []string                      `json:"feelings" validate:"required,min=1,dive,required"`
-	Flavors             []string                      `json:"flavors"  validate:"required,min=1,dive,required"`
-	Usage               []string                      `json:"usage"    validate:"required,min=1,dive,required"`
-	Strain              *string                       `json:"strain,omitempty"`
-	Classification      *string                       `json:"classification,omitempty"`
-	Unit                string                        `json:"unit" validate:"required"`
-	MOQ                 int                           `json:"moq" validate:"required,min=1"`
-	PriceCents          int                           `json:"price_cents" validate:"required,min=0"`
-	CompareAtPriceCents *int                          `json:"compare_at_price_cents,omitempty" validate:"omitempty,min=0"`
-	IsActive            *bool                         `json:"is_active,omitempty"`
-	IsFeatured          *bool                         `json:"is_featured,omitempty"`
-	THCPercent          *float64                      `json:"thc_percent,omitempty" validate:"omitempty,gte=0,lte=100"`
-	CBDPercent          *float64                      `json:"cbd_percent,omitempty" validate:"omitempty,gte=0,lte=100"`
-	Inventory           createInventoryRequest        `json:"inventory" validate:"required"`
-	MediaIDs            []string                      `json:"media_ids,omitempty"`
-	VolumeDiscounts     []createVolumeDiscountRequest `json:"volume_discounts,omitempty" validate:"omitempty,min=1,dive"`
-}
-
-type createInventoryRequest struct {
-	AvailableQty int `json:"available_qty" validate:"required,min=0"`
-	ReservedQty  int `json:"reserved_qty" validate:"omitempty,min=0"`
-}
-
-type createVolumeDiscountRequest struct {
-	MinQty         int `json:"min_qty" validate:"required,min=1"`
-	UnitPriceCents int `json:"unit_price_cents" validate:"required,min=0"`
 }
 
 type updateProductRequest struct {

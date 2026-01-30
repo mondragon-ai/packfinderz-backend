@@ -48,11 +48,10 @@ SELECT s.id AS store_id,
        logo.logo_gcs_key
 FROM stores s
 LEFT JOIN LATERAL (
-  SELECT m.id AS logo_media_id,
-         m.gcs_key AS logo_gcs_key
+  SELECT ma.media_id AS logo_media_id,
+         ma.gcs_key AS logo_gcs_key
   FROM media_attachments ma
-  JOIN media m ON m.id = ma.media_id
-  WHERE ma.owner_type = 'store' AND ma.owner_id = s.id
+  WHERE ma.entity_type = 'store' AND ma.entity_id = s.id
   ORDER BY ma.created_at DESC
   LIMIT 1
 ) logo ON true

@@ -282,7 +282,7 @@ Re-running the migration is safe because the statements use `CREATE EXTENSION IF
 * Outbox events
 * Audit logs
 * Google Cloud Storage (pkg/storage/gcs) verified via `/health/ready`
-* Media metadata (`media` + `media_attachments`)
+* Media metadata (`media` + `media_attachments`, which tie `entity_type`/`entity_id` to `store_id` and cache `gcs_key` so usage lookups stay tenant-scoped)
 
 ### Redis (Ephemeral)
 
