@@ -1,14 +1,15 @@
 package outbox
 
 import (
+	"context"
 	"errors"
 	"time"
 
+	"github.com/angelmondragon/packfinderz-backend/pkg/db/models"
+	"github.com/angelmondragon/packfinderz-backend/pkg/enums"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
-
-	"github.com/angelmondragon/packfinderz-backend/pkg/db/models"
 )
 
 const maxLastErrorLen = 1024
@@ -101,6 +102,18 @@ func (r *Repository) MarkFailedTx(tx *gorm.DB, id uuid.UUID, err error) error {
 			"last_error":    lastErrPtr,
 			"attempt_count": gorm.Expr("attempt_count + 1"),
 		}).Error
+}
+
+func (r *Repository) Exists(ctx context.Context, eventType enums.OutboxEventType, aggregateType enums.OutboxAggregateType, aggregateID uuid.UUID) (bool, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	var count int64
+	err := r.db.WithContext(ctx).
+		Model(&models.OutboxEvent{}).
+		Where("event_type = ? AND aggregate_type = ? AND aggregate_id = ?", eventType, aggregateType, aggregateID).
+		Count(&count).Error
+	return count > 0, err
 }
 
 func truncateError(message string) string {

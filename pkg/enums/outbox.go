@@ -55,6 +55,8 @@ const (
 	EventOrderStateChanged     OutboxEventType = "order_state_changed"
 	EventLineItemStateChanged  OutboxEventType = "line_item_state_changed"
 	EventLicenseStatusChanged  OutboxEventType = "license_status_changed"
+	EventLicenseExpiringSoon   OutboxEventType = "license_expiring_soon"
+	EventLicenseExpired        OutboxEventType = "license_expired"
 	EventMediaUploaded         OutboxEventType = "media_uploaded"
 	EventPaymentSettled        OutboxEventType = "payment_settled"
 	EventCashCollected         OutboxEventType = "cash_collected"
@@ -80,6 +82,8 @@ var validOutboxEventTypes = []OutboxEventType{
 	EventOrderStateChanged,
 	EventLineItemStateChanged,
 	EventLicenseStatusChanged,
+	EventLicenseExpiringSoon,
+	EventLicenseExpired,
 	EventMediaUploaded,
 	EventPaymentSettled,
 	EventCashCollected,

@@ -43,6 +43,13 @@ func (r *Repository) Delete(ctx context.Context, id uuid.UUID) error {
 	return r.db.WithContext(ctx).Where("id = ?", id).Delete(&models.Media{}).Error
 }
 
+func (r *Repository) DeleteWithTx(tx *gorm.DB, id uuid.UUID) error {
+	if tx == nil {
+		return gorm.ErrInvalidTransaction
+	}
+	return tx.Where("id = ?", id).Delete(&models.Media{}).Error
+}
+
 func escapeLike(value string) string {
 	value = strings.ReplaceAll(value, `\`, `\\`)
 	value = strings.ReplaceAll(value, `%`, `\%`)

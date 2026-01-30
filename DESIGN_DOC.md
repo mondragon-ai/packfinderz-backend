@@ -3936,9 +3936,12 @@ WHERE published_at IS NOT NULL
 
   * find licenses expiring in 14d (notify)
   * find expired today (flip status, update store kyc mirror)
+  * find licenses expired >30 days and hard-delete them along with their `media`/`media_attachments` artifacts so FKs (`media_attachments.media_id`) stay satisfied while attachments follow `docs/media_attachments_lifecycle.md` rules (PF-137).
   * emit outbox events for notifications/analytics
 * Implementation: `cmd/cron-worker/main` boots configuration/logging/DB/Redis, flips `cfg.Service.Kind=cron-worker`, registers `metrics.NewCronJobMetrics(prometheus.DefaultRegisterer)`, creates `cron.NewRedisLock` for `pf:cron-worker:lock:<env>`, and builds `cron.NewService`/`cron.NewRegistry()` so the scheduler loop runs every 24h with a single leader (logs, lock handoff, failure isolation, and `job_duration_seconds`/`job_success`/`job_failure` metrics for every registered job). `internal/schedulers/licenses.Service` provides the `Run`/`process` helpers that `cron.Registry` jobs can call; they still call `warnExpiring`/`expireLicenses`, update KYC via `reconcileKYC`, and emit `license_status_changed` events inside `db.WithTx` so each warning/expiration stays atomic (`cmd/cron-worker/main.go`:13-112; `internal/cron/service.go`:14-154; `pkg/metrics/cron.go`:16-40; `internal/schedulers/licenses/service.go`:1-220; `internal/licenses/service.go`:405-416`).
+* TODO: `pkg/enums/outbox.go` already defines `license_expiring_soon` and `license_expired` event types so the warning/expiration flows can eventually point at those strings instead of `license_status_changed` without schema changes (`pkg/enums/outbox.go`:38-84).
 * Idempotency: `expireLicense` reloads the license inside the same transaction, skips updates if the status is already `expired`, and clears the `pf:evt:processed` guard by letting the outbox handle duplicates so rerunning the job on the same calendar day is safe (`internal/schedulers/licenses/service.go`:183-210).
+* HARD DELETE `UNKNOWN`: the service currently stops after `reconcileKYC`, so PF-137 must add the >30-day cleanup that detaches `entity_type='license'` attachments, removes `media` rows, and deletes the license only after the GCS object is gone; the cron worker must keep that job ordered after the warning/expiration steps so metrics/logs still cover the full lifecycle (`internal/schedulers/licenses/service.go`:174-210; `docs/media_attachments_lifecycle.md`).
 
 ### 7.5 Orphaned media GC
 
