@@ -30,3 +30,12 @@ func (r *mediaAttachmentRepository) Delete(ctx context.Context, tx *gorm.DB, ent
 		Delete(&models.MediaAttachment{}).
 		Error
 }
+
+// ListByMediaID returns attachments referencing the given media ID.
+func (r *mediaAttachmentRepository) ListByMediaID(ctx context.Context, mediaID uuid.UUID) ([]models.MediaAttachment, error) {
+	var attachments []models.MediaAttachment
+	if err := r.db.WithContext(ctx).Where("media_id = ?", mediaID).Find(&attachments).Error; err != nil {
+		return nil, err
+	}
+	return attachments, nil
+}

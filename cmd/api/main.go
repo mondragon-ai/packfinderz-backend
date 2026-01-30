@@ -208,9 +208,11 @@ func main() {
 	}
 
 	mediaRepo := media.NewRepository(dbClient.DB())
+	mediaAttachmentRepo := media.NewMediaAttachmentRepository(dbClient.DB())
 	mediaService, err := media.NewService(
 		mediaRepo,
 		membershipsRepo,
+		mediaAttachmentRepo,
 		gcsClient,
 		cfg.GCS.BucketName,
 		cfg.GCS.UploadURLExpiry,
