@@ -108,20 +108,16 @@ type createVolumeDiscountRequest struct {
 // VendorUpdateProduct handles patching existing products.
 func VendorUpdateProduct(svc productsvc.Service, logg *logger.Logger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		fmt.Printf("[VendorUpdateProduct] START method=%s path=%s\n", r.Method, r.URL.Path)
 
 		if svc == nil {
-			fmt.Printf("[VendorUpdateProduct] svc == nil (bailing)\n")
 			responses.WriteError(r.Context(), logg, w, pkgerrors.New(pkgerrors.CodeInternal, "product service unavailable"))
 			return
 		}
 
 		storeID := middleware.StoreIDFromContext(r.Context())
 		userID := middleware.UserIDFromContext(r.Context())
-		fmt.Printf("[VendorUpdateProduct] ctx storeID=%q userID=%q\n", storeID, userID)
 
 		productIDParam := strings.TrimSpace(chi.URLParam(r, "productId"))
-		fmt.Printf("[VendorUpdateProduct] url productId=%q\n", productIDParam)
 
 		productID, err := uuid.Parse(productIDParam)
 		if err != nil {
@@ -142,45 +138,28 @@ func VendorUpdateProduct(svc productsvc.Service, logg *logger.Logger) http.Handl
 		}
 
 		var payload updateProductRequest
-		fmt.Printf("[VendorUpdateProduct] decoding JSON body...\n")
 		if err := validators.DecodeJSONBody(r, &payload); err != nil {
-			fmt.Printf("[VendorUpdateProduct] DecodeJSONBody ERROR: %v\n", err)
 			responses.WriteError(r.Context(), logg, w, err)
 			return
 		}
 
-		// Log which fields are actually present (helps catch "unexpected nil" assumptions)
-		fmt.Printf("[VendorUpdateProduct] payload present: SKU=%t Title=%t Category=%t Unit=%t Inventory=%t MediaIDs=%t VolumeDiscounts=%t\n",
-			payload.SKU != nil,
-			payload.Title != nil,
-			payload.Category != nil,
-			payload.Unit != nil,
-			payload.Inventory != nil,
-			payload.MediaIDs != nil,
-			payload.VolumeDiscounts != nil,
-		)
 		if payload.Inventory != nil {
 			fmt.Printf("[VendorUpdateProduct] payload.Inventory: AvailableQty=%v ReservedQty=%v\n",
 				payload.Inventory.AvailableQty, payload.Inventory.ReservedQty)
 		}
 
-		fmt.Printf("[VendorUpdateProduct] converting payload -> input...\n")
 		input, err := payload.toUpdateInput()
 		if err != nil {
-			fmt.Printf("[VendorUpdateProduct] toUpdateInput ERROR: %v\n", err)
 			responses.WriteError(r.Context(), logg, w, err)
 			return
 		}
 
-		fmt.Printf("[VendorUpdateProduct] calling svc.UpdateProduct user=%s store=%s product=%s\n", uid.String(), sid.String(), productID.String())
 		product, err := svc.UpdateProduct(r.Context(), uid, sid, productID, input)
 		if err != nil {
-			fmt.Printf("[VendorUpdateProduct] svc.UpdateProduct ERROR: %v\n", err)
 			responses.WriteError(r.Context(), logg, w, err)
 			return
 		}
 
-		fmt.Printf("[VendorUpdateProduct] SUCCESS productID=%s\n", product.ID)
 		responses.WriteSuccess(w, product)
 	}
 }

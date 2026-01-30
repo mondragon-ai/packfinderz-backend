@@ -283,6 +283,8 @@ Re-running the migration is safe because the statements use `CREATE EXTENSION IF
 * Audit logs
 * Google Cloud Storage (pkg/storage/gcs) verified via `/health/ready`
 * Media metadata (`media` + `media_attachments`, which tie `entity_type`/`entity_id` to `store_id` and cache `gcs_key` so usage lookups stay tenant-scoped)
+  * Attachment reconciliation happens through `internal/media.NewAttachmentReconciler`, which diffs usages inside a transaction and follows the lifecycle rules described in `docs/media_attachments_lifecycle.md`.
+  * Lifecycle rules (protected attachments, deletion preconditions, and cleanup ordering) are detailed in `docs/media_attachments_lifecycle.md`.
 
 ### Redis (Ephemeral)
 

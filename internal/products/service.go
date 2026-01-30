@@ -227,7 +227,6 @@ func (s *service) CreateProduct(ctx context.Context, userID, storeID uuid.UUID, 
 
 // UpdateProduct updates an existing product and related rows.
 func (s *service) UpdateProduct(ctx context.Context, userID, storeID, productID uuid.UUID, input UpdateProductInput) (*ProductDTO, error) {
-	fmt.Printf("[UpdateProduct] START user=%s store=%s product=%s\n", userID, storeID, productID)
 
 	if input.Inventory != nil {
 		fmt.Printf("[UpdateProduct] input.Inventory available=%d reserved=%d\n", input.Inventory.AvailableQty, input.Inventory.ReservedQty)
@@ -240,31 +239,23 @@ func (s *service) UpdateProduct(ctx context.Context, userID, storeID, productID 
 	}
 
 	if input.Inventory != nil && input.Inventory.ReservedQty > input.Inventory.AvailableQty {
-		fmt.Printf("[UpdateProduct] VALIDATION FAIL reserved > available\n")
 		return nil, pkgerrors.New(pkgerrors.CodeValidation, "reserved_qty cannot exceed available_qty")
 	}
 
-	fmt.Printf("[UpdateProduct] ensureVendorStore...\n")
 	if err := s.ensureVendorStore(ctx, storeID); err != nil {
-		fmt.Printf("[UpdateProduct] ensureVendorStore ERROR: %v\n", err)
 		return nil, err
 	}
 
-	fmt.Printf("[UpdateProduct] ensureUserRole...\n")
 	if err := s.ensureUserRole(ctx, userID, storeID); err != nil {
-		fmt.Printf("[UpdateProduct] ensureUserRole ERROR: %v\n", err)
 		return nil, err
 	}
 
 	if input.VolumeDiscounts != nil {
-		fmt.Printf("[UpdateProduct] ensureUniqueDiscounts...\n")
 		if err := ensureUniqueDiscounts(*input.VolumeDiscounts); err != nil {
-			fmt.Printf("[UpdateProduct] ensureUniqueDiscounts ERROR: %v\n", err)
 			return nil, err
 		}
 	}
 
-	fmt.Printf("[UpdateProduct] repo.FindByID...\n")
 	product, err := s.repo.FindByID(ctx, productID)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -278,40 +269,24 @@ func (s *service) UpdateProduct(ctx context.Context, userID, storeID, productID 
 
 	var updatedID uuid.UUID
 	if err := s.dbClient.WithTx(ctx, func(tx *gorm.DB) error {
-		fmt.Printf("[UpdateProduct.tx] START productID=%s\n", product.ID)
 		txRepo := s.repo.WithTx(tx)
 
-		fmt.Printf("[UpdateProduct.tx] applyUpdateToProduct...\n")
 		applyUpdateToProduct(product, input)
-
-		fmt.Printf("[UpdateProduct.tx] txRepo.UpdateProduct...\n")
 		if _, err := txRepo.UpdateProduct(ctx, product); err != nil {
-			fmt.Printf("[UpdateProduct.tx] UpdateProduct ERROR: %v\n", err)
 			return err
 		}
 
-		fmt.Printf("[UpdateProduct.tx] inventory branch? %t\n", input.Inventory != nil)
 		if input.Inventory != nil {
-			fmt.Printf("[UpdateProduct.tx] about to build InventoryItem; product.Inventory nil? %t\n", product.Inventory == nil)
-
-			// 👇 Put a marker RIGHT before the line that currently panics:
-			fmt.Printf("[UpdateProduct.tx] building models.InventoryItem...\n")
-
 			inventory := &models.InventoryItem{
 				ProductID:    product.ID,
 				AvailableQty: input.Inventory.AvailableQty,
-				// ReservedQty:  product.Inventory.ReservedQty, // <- likely panic
-				ReservedQty: input.Inventory.ReservedQty, // <- safe + correct
+				ReservedQty:  input.Inventory.ReservedQty,
 			}
 
-			fmt.Printf("[UpdateProduct.tx] txRepo.UpsertInventory...\n")
 			if _, err := txRepo.UpsertInventory(ctx, inventory); err != nil {
-				fmt.Printf("[UpdateProduct.tx] UpsertInventory ERROR: %v\n", err)
 				return err
 			}
 		}
-
-		fmt.Printf("[UpdateProduct.tx] volume discounts branch? %t\n", input.VolumeDiscounts != nil)
 		if input.VolumeDiscounts != nil {
 			tiers := make([]models.ProductVolumeDiscount, len(*input.VolumeDiscounts))
 			for i, tier := range *input.VolumeDiscounts {
@@ -328,21 +303,16 @@ func (s *service) UpdateProduct(ctx context.Context, userID, storeID, productID 
 		}
 
 		if input.MediaIDs != nil {
-			fmt.Printf("[UpdateProduct.tx] buildProductMediaRows...\n")
 			entries, err := s.buildProductMediaRows(ctx, storeID, product.ID, *input.MediaIDs)
 			if err != nil {
-				fmt.Printf("[UpdateProduct.tx] buildProductMediaRows ERROR: %v\n", err)
 				return err
 			}
-			fmt.Printf("[UpdateProduct.tx] ReplaceProductMedia entries=%d...\n", len(entries))
 			if err := txRepo.ReplaceProductMedia(ctx, product.ID, entries); err != nil {
-				fmt.Printf("[UpdateProduct.tx] ReplaceProductMedia ERROR: %v\n", err)
 				return err
 			}
 		}
 
 		updatedID = product.ID
-		fmt.Printf("[UpdateProduct.tx] COMMIT OK updatedID=%s\n", updatedID)
 		return nil
 	}); err != nil {
 		if pkgerrors.As(err) != nil {

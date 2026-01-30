@@ -129,6 +129,7 @@
 - `PresignInput`, `PresignOutput`, `ListParams`, `ListResult`, `ListItem`, `ReadURLParams`, `ReadURLOutput`, and `DeleteMediaParams` define the request/response contracts (internal/media/service.go:94-244; internal/media/list.go:15-139).
 - `Repository` supports `Create`, `FindByID`, `List`, `MarkUploaded`, and `MarkDeleted` for metadata lifecycle updates (internal/media/repo.go:14-110).
 - `consumer.Consumer.Run` processes GCS `OBJECT_FINALIZE` notifications, looks up media by GCS key, and calls `MarkUploaded` with retries/nacks for transient DB errors (internal/media/consumer/consumer.go:30-235).
+- `NewAttachmentReconciler` plus `MediaAttachmentRepository` (`internal/media/attachment_reconciler.go`, `internal/media/attachment_repository.go`) diff `old_media_ids` vs `new_media_ids`, run inside the caller’s transaction, fetch each candidate `media` row for its `store_id`/`gcs_key`, refuse cross-store references, and create/delete the matching `media_attachments` rows so every domain write uses the same lifecycle rules without mutating historical attachments directly.
 
 ## internal/schedulers/licenses
 - `Service` runs inside the worker loop every 24h, warning stores 14 days before a license `expiration_date` and expiring licenses on the day of expiration (`internal/schedulers/licenses/service.go:1-220`).
