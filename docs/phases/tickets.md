@@ -496,7 +496,7 @@ seperate webhook endpoint we can link or subscribe to
 
 * [X] **Ticket:** Outbox cleanup job (>30d published)
 
-* [ ] **Ticket:** Concurrency model decision
+* [X] **Ticket:** Concurrency model decision
   *Explicit:* sequential vs goroutines (documented rationale)
 
 ---

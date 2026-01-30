@@ -11,12 +11,17 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/angelmondragon/packfinderz-backend/internal/cron"
+	"github.com/angelmondragon/packfinderz-backend/internal/licenses"
+	"github.com/angelmondragon/packfinderz-backend/internal/media"
+	"github.com/angelmondragon/packfinderz-backend/internal/stores"
 	"github.com/angelmondragon/packfinderz-backend/pkg/config"
 	"github.com/angelmondragon/packfinderz-backend/pkg/db"
 	"github.com/angelmondragon/packfinderz-backend/pkg/logger"
 	"github.com/angelmondragon/packfinderz-backend/pkg/metrics"
 	"github.com/angelmondragon/packfinderz-backend/pkg/migrate"
+	"github.com/angelmondragon/packfinderz-backend/pkg/outbox"
 	"github.com/angelmondragon/packfinderz-backend/pkg/redis"
+	"github.com/angelmondragon/packfinderz-backend/pkg/storage/gcs"
 )
 
 const lockKeyFormat = "pf:cron-worker:lock:%s"
@@ -69,6 +74,23 @@ func main() {
 		}
 	}()
 
+	licenseRepo := licenses.NewRepository(dbClient.DB())
+	storeRepo := stores.NewRepository(dbClient.DB())
+	mediaRepo := media.NewRepository(dbClient.DB())
+	attachmentRepo := media.NewMediaAttachmentRepository(dbClient.DB())
+	outboxRepo := outbox.NewRepository(dbClient.DB())
+	outboxSvc := outbox.NewService(outboxRepo, logg)
+	gcsClient, err := gcs.NewClient(context.Background(), cfg.GCS, cfg.GCP, logg)
+	if err != nil {
+		logg.Error(context.Background(), "failed to bootstrap gcs", err)
+		os.Exit(1)
+	}
+	defer func() {
+		if err := gcsClient.Close(); err != nil {
+			logg.Error(context.Background(), "error closing gcs client", err)
+		}
+	}()
+
 	metricsCollector := metrics.NewCronJobMetrics(prometheus.DefaultRegisterer)
 	lock, err := cron.NewRedisLock(redisClient, lockKey(cfg.App.Env), 0)
 	if err != nil {
@@ -77,6 +99,23 @@ func main() {
 	}
 
 	registry := cron.NewRegistry()
+	licenseJob, err := cron.NewLicenseLifecycleJob(cron.LicenseLifecycleJobParams{
+		Logger:         logg,
+		DB:             dbClient,
+		LicenseRepo:    licenseRepo,
+		StoreRepo:      storeRepo,
+		MediaRepo:      mediaRepo,
+		AttachmentRepo: attachmentRepo,
+		Outbox:         outboxSvc,
+		OutboxRepo:     outboxRepo,
+		GCS:            gcsClient,
+		GCSBucket:      cfg.GCS.BucketName,
+	})
+	if err != nil {
+		logg.Error(context.Background(), "failed to create license lifecycle job", err)
+		os.Exit(1)
+	}
+	registry.Register(licenseJob)
 	service, err := cron.NewService(cron.ServiceParams{
 		Logger:   logg,
 		Registry: registry,

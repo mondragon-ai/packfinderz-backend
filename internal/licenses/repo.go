@@ -58,6 +58,13 @@ func (r *Repository) Delete(ctx context.Context, id uuid.UUID) error {
 	return r.db.WithContext(ctx).Where("id = ?", id).Delete(&models.License{}).Error
 }
 
+func (r *Repository) DeleteWithTx(tx *gorm.DB, id uuid.UUID) error {
+	if tx == nil {
+		return gorm.ErrInvalidTransaction
+	}
+	return tx.Where("id = ?", id).Delete(&models.License{}).Error
+}
+
 func (r *Repository) CountValidLicenses(ctx context.Context, storeID uuid.UUID) (int64, error) {
 	var count int64
 	if err := r.db.WithContext(ctx).
@@ -116,6 +123,22 @@ func (r *Repository) FindExpiredByDate(ctx context.Context, day time.Time) ([]mo
 	var rows []models.License
 	err := r.db.WithContext(ctx).
 		Where("expiration_date >= ? AND expiration_date < ? AND status != ?", start, end, enums.LicenseStatusExpired).
+		Find(&rows).Error
+	return rows, err
+}
+
+func (r *Repository) FindExpiredInRange(ctx context.Context, from, to time.Time) ([]models.License, error) {
+	var rows []models.License
+	err := r.db.WithContext(ctx).
+		Where("expiration_date >= ? AND expiration_date < ? AND expiration_date IS NOT NULL AND status != ?", from, to, enums.LicenseStatusExpired).
+		Find(&rows).Error
+	return rows, err
+}
+
+func (r *Repository) FindExpiredBefore(ctx context.Context, cutoff time.Time) ([]models.License, error) {
+	var rows []models.License
+	err := r.db.WithContext(ctx).
+		Where("expiration_date IS NOT NULL AND expiration_date <= ? AND status = ?", cutoff, enums.LicenseStatusExpired).
 		Find(&rows).Error
 	return rows, err
 }
