@@ -27,3 +27,10 @@ type LoginResponse struct {
 	Stores       []StoreSummary `json:"stores"`
 	User         *users.UserDTO `json:"user"`
 }
+
+// AdminLoginResponse mirrors LoginResponse but hides the access token from JSON while exposing the admin user.
+type AdminLoginResponse struct {
+	AccessToken  string         `json:"-"`
+	RefreshToken string         `json:"refresh_token"`
+	User         *users.UserDTO `json:"user"`
+}

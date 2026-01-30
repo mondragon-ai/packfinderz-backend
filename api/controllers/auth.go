@@ -35,3 +35,28 @@ func AuthLogin(svc auth.Service, logg *logger.Logger) http.HandlerFunc {
 		responses.WriteSuccess(w, result)
 	}
 }
+
+func AdminAuthLogin(svc auth.Service, logg *logger.Logger) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if svc == nil {
+			err := pkgerrors.New(pkgerrors.CodeInternal, "auth service unavailable")
+			responses.WriteError(r.Context(), logg, w, err)
+			return
+		}
+
+		var body auth.LoginRequest
+		if err := validators.DecodeJSONBody(r, &body); err != nil {
+			responses.WriteError(r.Context(), logg, w, err)
+			return
+		}
+
+		result, err := svc.AdminLogin(r.Context(), body)
+		if err != nil {
+			responses.WriteError(r.Context(), logg, w, err)
+			return
+		}
+
+		w.Header().Set("X-PF-Token", result.AccessToken)
+		responses.WriteSuccess(w, result)
+	}
+}

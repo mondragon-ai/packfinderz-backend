@@ -49,7 +49,17 @@ func TestSignedURLSuccess(t *testing.T) {
 	}
 
 	values := parsed.Query()
-	if got := values.Get("GoogleAccessId"); got != "signer@example.com" {
+	// if got := values.Get("GoogleAccessId"); got != "signer@example.com" {
+	// 	t.Fatalf("unexpected GoogleAccessId %q", got)
+	// }
+	got := values.Get("GoogleAccessId")
+
+	got, err = url.QueryUnescape(got)
+	if err != nil {
+		t.Fatalf("unescape GoogleAccessId: %v", err)
+	}
+
+	if got != "signer@example.com" {
 		t.Fatalf("unexpected GoogleAccessId %q", got)
 	}
 
@@ -71,7 +81,16 @@ func TestSignedURLSuccess(t *testing.T) {
 	data := []byte("PUT\n\n" + contentType + "\n" + expireParam + "\n/" + "bucket" + "/" + object)
 	hash := sha256.Sum256(data)
 
-	rawSig, err := base64.RawURLEncoding.DecodeString(signature)
+	// rawSig, err := base64.RawURLEncoding.DecodeString(signature)
+	// if err != nil {
+	// 	t.Fatalf("decode signature: %v", err)
+	// }
+	signature, err = url.QueryUnescape(signature)
+	if err != nil {
+		t.Fatalf("unescape signature: %v", err)
+	}
+
+	rawSig, err := base64.StdEncoding.DecodeString(signature)
 	if err != nil {
 		t.Fatalf("decode signature: %v", err)
 	}
@@ -121,7 +140,14 @@ func TestSignedReadURLSuccess(t *testing.T) {
 
 	data := []byte("GET\n\n\n" + expireParam + "\n/" + "bucket" + "/" + object)
 	hash := sha256.Sum256(data)
-	rawSig, err := base64.RawURLEncoding.DecodeString(signature)
+	// rawSig, err := base64.RawURLEncoding.DecodeString(signature)
+	// if err != nil {
+	// 	t.Fatalf("decode signature: %v", err)
+	// }
+
+	signature = strings.ReplaceAll(signature, " ", "+") // critical line
+
+	rawSig, err := base64.StdEncoding.DecodeString(signature)
 	if err != nil {
 		t.Fatalf("decode signature: %v", err)
 	}

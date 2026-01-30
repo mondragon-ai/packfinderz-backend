@@ -599,6 +599,31 @@ curl -X DELETE "{{API_BASE_URL}}/api/v1/licenses/{{license_id}}" \
 
 Success returns `{"deleted": true}` and, if the store no longer has any valid licenses, the service flips the store’s KYC back to `pending_verification`.
 
+### POST /api/admin/v1/auth/login
+Admin login lives under `/api/admin` so the resulting access token is storeless (`role=admin`, no `active_store_id`). Valid credentials set `X-PF-Token` to the fresh access token, return the `refresh_token`, and include the admin `user` DTO; invalid credentials return the standard `401` message.
+
+#### Request body
+```json
+{
+  "email": "admin@example.com",
+  "password": "Secur3P@ssw0rd!"
+}
+```
+
+#### cURL
+```bash
+curl -X POST "{{API_BASE_URL}}/api/admin/v1/auth/login" \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json" \
+  -H "Idempotency-Key: {{optional_idempotency_key}}" \
+  -d '{
+    "email": "admin@example.com",
+    "password": "Secur3P@ssw0rd!"
+  }'
+```
+
+Success returns `{"user": {...}, "refresh_token": "{{refresh_token}}"}` and the `X-PF-Token` header contains the access token used by `/api/admin/*`.
+
 ### POST /api/admin/v1/licenses/{licenseId}/verify
 Admin users (via `/api/admin`) control license status. Supply `decision` (`verified` or `rejected`) and an optional `reason`. The route returns the updated `licenseResponse` and publishes the `LicenseStatusChanged` outbox event.
 

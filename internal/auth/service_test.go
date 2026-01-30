@@ -97,6 +97,94 @@ func TestServiceLoginRequiresMembershipWithoutSystemRole(t *testing.T) {
 	}
 }
 
+func TestServiceAdminLoginAdminUser(t *testing.T) {
+	password := "admin-secret"
+	hashed := mustHashPassword(t, password)
+	user := &models.User{
+		ID:           uuid.New(),
+		Email:        "admin@example.com",
+		PasswordHash: hashed,
+		FirstName:    "Admin",
+		LastName:     "User",
+		IsActive:     true,
+		SystemRole:   strPtr("admin"),
+	}
+	cfg := config.JWTConfig{
+		Secret:            "secret",
+		Issuer:            "packfinderz",
+		ExpirationMinutes: 30,
+	}
+
+	svc, _, err := buildTestService(user, nil, cfg)
+	if err != nil {
+		t.Fatalf("build service: %v", err)
+	}
+
+	resp, err := svc.AdminLogin(context.Background(), LoginRequest{
+		Email:    user.Email,
+		Password: password,
+	})
+	if err != nil {
+		t.Fatalf("admin login: %v", err)
+	}
+	if resp.User == nil || resp.User.ID != user.ID {
+		t.Fatalf("expected user dto for %s got %+v", user.ID, resp.User)
+	}
+	if resp.RefreshToken == "" {
+		t.Fatal("expected refresh token to be set")
+	}
+
+	claims, err := pkgAuth.ParseAccessToken(cfg, resp.AccessToken)
+	if err != nil {
+		t.Fatalf("parse access token: %v", err)
+	}
+	if claims.Role != enums.MemberRoleAdmin {
+		t.Fatalf("expected admin role claim, got %s", claims.Role)
+	}
+	if claims.ActiveStoreID != nil {
+		t.Fatalf("expected nil active store, got %v", claims.ActiveStoreID)
+	}
+	if claims.StoreType != nil {
+		t.Fatalf("expected nil store type, got %v", claims.StoreType)
+	}
+}
+
+func TestServiceAdminLoginRequiresAdminRole(t *testing.T) {
+	password := "staff-secret"
+	hashed := mustHashPassword(t, password)
+	user := &models.User{
+		ID:           uuid.New(),
+		Email:        "staff@example.com",
+		PasswordHash: hashed,
+		FirstName:    "Staff",
+		LastName:     "User",
+		IsActive:     true,
+		SystemRole:   strPtr("staff"),
+	}
+	cfg := config.JWTConfig{
+		Secret:            "secret",
+		Issuer:            "packfinderz",
+		ExpirationMinutes: 30,
+	}
+
+	svc, _, err := buildTestService(user, nil, cfg)
+	if err != nil {
+		t.Fatalf("build service: %v", err)
+	}
+
+	_, err = svc.AdminLogin(context.Background(), LoginRequest{
+		Email:    user.Email,
+		Password: password,
+	})
+	if err == nil {
+		t.Fatalf("expected unauthorized for non-admin role")
+	}
+	typed := pkgerrors.As(err)
+	if typed == nil || typed.Code() != pkgerrors.CodeUnauthorized {
+		t.Fatalf("expected unauthorized error, got %v", err)
+	}
+}
+
 func buildTestService(user *models.User, stores []memberships.MembershipWithStore, jwtCfg config.JWTConfig) (Service, *stubSessionManager, error) {
 	userRepo := stubUserRepo{user: user}
 	membershipRepo := stubMembershipsRepo{stores: stores}

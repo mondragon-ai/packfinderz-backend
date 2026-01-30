@@ -453,6 +453,7 @@ All enums implement:
 * `ops`
 
 * `admin` is also used for `/api/admin` routes that deliberately skip the store context middleware so JWTs with `role=admin` can omit `active_store_id`/`store_type`.
+* `POST /api/admin/v1/auth/login` issues a storeless `access_token`/`refresh_token` pair for `users.system_role=admin`, sets `X-PF-Token` to the freshly minted access token while the JSON response returns `{"user":<users.UserDTO>,"refresh_token":<refresh_token>}`, and enforces the canonical `401 invalid credentials` when the email/password is wrong or the user lacks the `admin` system role. `AdminLogin` updates `last_login_at`, mints a JWT with `role=admin` and no `active_store_id`/`store_type`, and seeds the refresh session via `session.Generate` so admin tooling can call `/api/admin/*` without store context (api/routes/router.go:117-119; api/controllers/auth.go:39-61; internal/auth/service.go:160-194).
 
 ### `Outbox`
 

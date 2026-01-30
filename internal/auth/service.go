@@ -25,6 +25,7 @@ const invalidCredentialsMessage = "invalid credentials"
 // Service defines the behavior needed by the auth controller.
 type Service interface {
 	Login(ctx context.Context, req LoginRequest) (*LoginResponse, error)
+	AdminLogin(ctx context.Context, req LoginRequest) (*AdminLoginResponse, error)
 }
 
 type service struct {
@@ -75,25 +76,9 @@ func NewService(params ServiceParams) (Service, error) {
 }
 
 func (s *service) Login(ctx context.Context, req LoginRequest) (*LoginResponse, error) {
-	email := strings.TrimSpace(req.Email)
-	if email == "" {
-		return nil, pkgerrors.New(pkgerrors.CodeUnauthorized, invalidCredentialsMessage)
-	}
-
-	user, err := s.users.FindByEmail(ctx, strings.ToLower(email))
+	user, err := s.authenticate(ctx, req.Email, req.Password)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, pkgerrors.New(pkgerrors.CodeUnauthorized, invalidCredentialsMessage)
-		}
-		return nil, pkgerrors.Wrap(pkgerrors.CodeInternal, err, "lookup user")
-	}
-
-	valid, err := security.VerifyPassword(req.Password, user.PasswordHash)
-	if err != nil {
-		return nil, pkgerrors.Wrap(pkgerrors.CodeInternal, err, "verify password")
-	}
-	if !valid || !user.IsActive {
-		return nil, pkgerrors.New(pkgerrors.CodeUnauthorized, invalidCredentialsMessage)
+		return nil, err
 	}
 
 	memberships, err := s.memberships.ListUserStores(ctx, user.ID)
@@ -106,11 +91,10 @@ func (s *service) Login(ctx context.Context, req LoginRequest) (*LoginResponse, 
 		return nil, pkgerrors.New(pkgerrors.CodeUnauthorized, invalidCredentialsMessage)
 	}
 
-	now := time.Now().UTC()
-	if err := s.users.UpdateLastLogin(ctx, user.ID, now); err != nil {
-		return nil, pkgerrors.Wrap(pkgerrors.CodeInternal, err, "update last login")
+	now, err := s.recordLogin(ctx, user)
+	if err != nil {
+		return nil, err
 	}
-	user.LastLoginAt = &now
 
 	stores := make([]StoreSummary, 0, len(memberships))
 	for _, m := range memberships {
@@ -171,6 +155,74 @@ func (s *service) Login(ctx context.Context, req LoginRequest) (*LoginResponse, 
 		Stores:       stores,
 		User:         users.FromModel(user),
 	}, nil
+}
+
+func (s *service) AdminLogin(ctx context.Context, req LoginRequest) (*AdminLoginResponse, error) {
+	user, err := s.authenticate(ctx, req.Email, req.Password)
+	if err != nil {
+		return nil, err
+	}
+	if normalizedSystemRole(user.SystemRole) != string(enums.MemberRoleAdmin) {
+		return nil, pkgerrors.New(pkgerrors.CodeUnauthorized, invalidCredentialsMessage)
+	}
+
+	now, err := s.recordLogin(ctx, user)
+	if err != nil {
+		return nil, err
+	}
+
+	accessID := session.NewAccessID()
+	tokenPayload := pkgAuth.AccessTokenPayload{
+		UserID: user.ID,
+		Role:   enums.MemberRoleAdmin,
+		JTI:    accessID,
+	}
+	accessToken, err := pkgAuth.MintAccessToken(s.jwtCfg, now, tokenPayload)
+	if err != nil {
+		return nil, pkgerrors.Wrap(pkgerrors.CodeInternal, err, "mint jwt")
+	}
+	refreshToken, err := s.session.Generate(ctx, accessID)
+	if err != nil {
+		return nil, pkgerrors.Wrap(pkgerrors.CodeInternal, err, "store refresh token")
+	}
+
+	return &AdminLoginResponse{
+		AccessToken:  accessToken,
+		RefreshToken: refreshToken,
+		User:         users.FromModel(user),
+	}, nil
+}
+
+func (s *service) authenticate(ctx context.Context, email, password string) (*models.User, error) {
+	input := strings.TrimSpace(email)
+	if input == "" {
+		return nil, pkgerrors.New(pkgerrors.CodeUnauthorized, invalidCredentialsMessage)
+	}
+	user, err := s.users.FindByEmail(ctx, strings.ToLower(input))
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, pkgerrors.New(pkgerrors.CodeUnauthorized, invalidCredentialsMessage)
+		}
+		return nil, pkgerrors.Wrap(pkgerrors.CodeInternal, err, "lookup user")
+	}
+
+	valid, err := security.VerifyPassword(password, user.PasswordHash)
+	if err != nil {
+		return nil, pkgerrors.Wrap(pkgerrors.CodeInternal, err, "verify password")
+	}
+	if !valid || !user.IsActive {
+		return nil, pkgerrors.New(pkgerrors.CodeUnauthorized, invalidCredentialsMessage)
+	}
+	return user, nil
+}
+
+func (s *service) recordLogin(ctx context.Context, user *models.User) (time.Time, error) {
+	now := time.Now().UTC()
+	if err := s.users.UpdateLastLogin(ctx, user.ID, now); err != nil {
+		return time.Time{}, pkgerrors.Wrap(pkgerrors.CodeInternal, err, "update last login")
+	}
+	user.LastLoginAt = &now
+	return now, nil
 }
 
 func normalizedSystemRole(role *string) string {
