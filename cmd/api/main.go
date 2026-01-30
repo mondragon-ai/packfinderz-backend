@@ -143,6 +143,14 @@ func main() {
 		logg.Error(context.Background(), "failed to create register service", err)
 		os.Exit(1)
 	}
+	adminRegisterService, err := auth.NewAdminRegisterService(auth.AdminRegisterServiceParams{
+		DB:             dbClient,
+		PasswordConfig: cfg.Password,
+	})
+	if err != nil {
+		logg.Error(context.Background(), "failed to create admin register service", err)
+		os.Exit(1)
+	}
 
 	switchService, err := auth.NewSwitchStoreService(auth.SwitchStoreServiceParams{
 		MembershipsRepo: membershipsRepo,
@@ -314,6 +322,7 @@ func main() {
 			analyticsService,
 			authService,
 			registerService,
+			adminRegisterService,
 			switchService,
 			storeService,
 			mediaService,

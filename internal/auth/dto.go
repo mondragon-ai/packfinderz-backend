@@ -28,9 +28,9 @@ type LoginResponse struct {
 	User         *users.UserDTO `json:"user"`
 }
 
-// AdminLoginResponse mirrors LoginResponse but hides the access token from JSON while exposing the admin user.
+// AdminLoginResponse mirrors LoginResponse while exposing the admin user.
 type AdminLoginResponse struct {
-	AccessToken  string         `json:"-"`
+	AccessToken  string         `json:"access_token"`
 	RefreshToken string         `json:"refresh_token"`
 	User         *users.UserDTO `json:"user"`
 }

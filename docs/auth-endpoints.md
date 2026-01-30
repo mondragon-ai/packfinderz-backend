@@ -624,6 +624,30 @@ curl -X POST "{{API_BASE_URL}}/api/admin/v1/auth/login" \
 
 Success returns `{"user": {...}, "refresh_token": "{{refresh_token}}"}` and the `X-PF-Token` header contains the access token used by `/api/admin/*`.
 
+### POST /api/admin/v1/auth/register
+Developer-only helper that exists when `PACKFINDERZ_APP_ENV != prod`. It creates an admin user with `system_role="admin"` and `is_active=true`, hashes the password, returns the admin `user` DTO plus tokens, and sets `X-PF-Token` so tooling can immediately call `/api/admin/*`. Duplicate emails return `409 Conflict` and the route is omitted entirely in production.
+
+#### Request body
+```json
+{
+  "email": "admin@example.com",
+  "password": "Secur3P@ssw0rd!"
+}
+```
+
+#### cURL
+```bash
+curl -X POST "{{API_BASE_URL}}/api/admin/v1/auth/register" \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json" \
+  -d '{
+    "email": "admin@example.com",
+    "password": "Secur3P@ssw0rd!"
+  }'
+```
+
+Success returns `{"user": {...}, "access_token": "{{access_token}}", "refresh_token": "{{refresh_token}}"}` and the `X-PF-Token` header, matching the admin login payload.
+
 ### POST /api/admin/v1/licenses/{licenseId}/verify
 Admin users (via `/api/admin`) control license status. Supply `decision` (`verified` or `rejected`) and an optional `reason`. The route returns the updated `licenseResponse` and publishes the `LicenseStatusChanged` outbox event.
 

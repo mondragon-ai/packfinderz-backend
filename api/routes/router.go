@@ -52,6 +52,7 @@ func NewRouter(
 	analyticsService analytics.Service,
 	authService auth.Service,
 	registerService auth.RegisterService,
+	adminRegisterService auth.AdminRegisterService,
 	switchService auth.SwitchStoreService,
 	storeService stores.Service,
 	mediaService media.Service,
@@ -115,6 +116,9 @@ func NewRouter(
 	})
 
 	r.Route("/api/admin/v1/auth", func(r chi.Router) {
+		if !cfg.App.IsProd() {
+			r.Post("/register", controllers.AdminAuthRegister(adminRegisterService, authService, cfg, logg))
+		}
 		r.With(middleware.AuthRateLimit(loginPolicy, redisClient, logg)).Post("/login", controllers.AdminAuthLogin(authService, logg))
 	})
 
