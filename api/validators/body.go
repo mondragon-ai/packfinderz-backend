@@ -26,18 +26,106 @@ func newValidator() *validator.Validate {
 	return v
 }
 
-func DecodeJSONBody(r *http.Request, dest any) error {
+func safeValidateStruct(dest any) (err error) {
 	defer func() {
-		if _, err := io.Copy(io.Discard, r.Body); err != nil {
-			return
+		if r := recover(); r != nil {
+			fmt.Printf("[VALIDATION] Running dive-tag scan to find likely offender...\n")
+			scanDiveTags(dest)
+			err = fmt.Errorf("validation panic: %v", r)
 		}
 	}()
+
+	scanDiveTags(dest)
+
+	if e := validate.Struct(dest); e != nil {
+		return e
+	}
+	return nil
+}
+
+func scanDiveTags(dest any) {
+	t := reflect.TypeOf(dest)
+	v := reflect.ValueOf(dest)
+
+	for t != nil && t.Kind() == reflect.Ptr {
+		if v.IsValid() && !v.IsNil() {
+			v = v.Elem()
+		}
+		t = t.Elem()
+	}
+
+	if t == nil || t.Kind() != reflect.Struct {
+		fmt.Printf("[VALIDATION] scanDiveTags: dest is not a struct (type=%T kind=%v)\n", dest, t.Kind())
+		return
+	}
+
+	walkStructFields(t, "", func(path string, ft reflect.StructField) {
+		tag := ft.Tag.Get("validate")
+		if tag == "" {
+			return
+		}
+		if !strings.Contains(tag, "dive") {
+			return
+		}
+
+		kind := ft.Type.Kind()
+		elemKind := kind
+
+		if kind == reflect.Ptr {
+			elemKind = ft.Type.Elem().Kind()
+		}
+
+		isDiveable := elemKind == reflect.Slice || elemKind == reflect.Array || elemKind == reflect.Map
+
+		if !isDiveable {
+			fmt.Printf("[VALIDATION] ❌ dive tag on NON-diveable field: %s type=%s kind=%v validate=%q\n",
+				path, ft.Type.String(), ft.Type.Kind(), tag)
+		} else {
+			fmt.Printf("[VALIDATION] ✅ dive tag OK: %s type=%s validate=%q\n", path, ft.Type.String(), tag)
+		}
+	})
+}
+
+func walkStructFields(t reflect.Type, prefix string, fn func(path string, ft reflect.StructField)) {
+	for i := 0; i < t.NumField(); i++ {
+		ft := t.Field(i)
+
+		if ft.PkgPath != "" {
+			continue
+		}
+		name := ft.Name
+		path := name
+		if prefix != "" {
+			path = prefix + "." + name
+		}
+
+		fn(path, ft)
+
+		ftType := ft.Type
+		for ftType.Kind() == reflect.Ptr {
+			ftType = ftType.Elem()
+		}
+		if ftType.Kind() == reflect.Struct {
+			if ftType != t {
+				walkStructFields(ftType, path, fn)
+			}
+		}
+	}
+}
+
+func DecodeJSONBody(r *http.Request, dest any) error {
+	defer func() {
+		_, _ = io.Copy(io.Discard, r.Body)
+	}()
+
 	decoder := json.NewDecoder(r.Body)
 	decoder.DisallowUnknownFields()
+
 	if err := decoder.Decode(dest); err != nil {
-		return pkgerrors.Wrap(pkgerrors.CodeValidation, err, "invalid request body").WithDetails(map[string]any{"error": err.Error()})
+		return pkgerrors.Wrap(pkgerrors.CodeValidation, err, "invalid request body").
+			WithDetails(map[string]any{"error": err.Error()})
 	}
-	if err := validate.Struct(dest); err != nil {
+	if err := safeValidateStruct(dest); err != nil {
 		return formatValidationErrors(err)
 	}
 	return nil

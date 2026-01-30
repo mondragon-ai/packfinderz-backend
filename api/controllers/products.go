@@ -195,9 +195,9 @@ type createProductRequest struct {
 	Subtitle            *string                       `json:"subtitle,omitempty"`
 	BodyHTML            *string                       `json:"body_html,omitempty"`
 	Category            string                        `json:"category" validate:"required"`
-	Feelings            []string                      `json:"feelings" validate:"required,dive,required"`
-	Flavors             []string                      `json:"flavors" validate:"required,dive,required"`
-	Usage               []string                      `json:"usage" validate:"required,dive,required"`
+	Feelings            []string                      `json:"feelings" validate:"required,min=1,dive,required"`
+	Flavors             []string                      `json:"flavors"  validate:"required,min=1,dive,required"`
+	Usage               []string                      `json:"usage"    validate:"required,min=1,dive,required"`
 	Strain              *string                       `json:"strain,omitempty"`
 	Classification      *string                       `json:"classification,omitempty"`
 	Unit                string                        `json:"unit" validate:"required"`
@@ -208,9 +208,9 @@ type createProductRequest struct {
 	IsFeatured          *bool                         `json:"is_featured,omitempty"`
 	THCPercent          *float64                      `json:"thc_percent,omitempty" validate:"omitempty,gte=0,lte=100"`
 	CBDPercent          *float64                      `json:"cbd_percent,omitempty" validate:"omitempty,gte=0,lte=100"`
-	Inventory           createInventoryRequest        `json:"inventory" validate:"required,dive"`
+	Inventory           createInventoryRequest        `json:"inventory" validate:"required"`
 	MediaIDs            []string                      `json:"media_ids,omitempty"`
-	VolumeDiscounts     []createVolumeDiscountRequest `json:"volume_discounts,omitempty"`
+	VolumeDiscounts     []createVolumeDiscountRequest `json:"volume_discounts,omitempty" validate:"omitempty,min=1,dive"`
 }
 
 type createInventoryRequest struct {

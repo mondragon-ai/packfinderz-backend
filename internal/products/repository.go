@@ -3,8 +3,10 @@ package product
 import (
 	"context"
 	"database/sql"
+	"fmt"
 
 	"github.com/angelmondragon/packfinderz-backend/pkg/db/models"
+	pkgerrors "github.com/angelmondragon/packfinderz-backend/pkg/errors"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
@@ -188,7 +190,9 @@ func (r *Repository) GetInventoryByProductID(ctx context.Context, productID uuid
 // CreateVolumeDiscount inserts a tiered pricing entry.
 func (r *Repository) CreateVolumeDiscount(ctx context.Context, discount *models.ProductVolumeDiscount) (*models.ProductVolumeDiscount, error) {
 	if err := r.db.WithContext(ctx).Create(discount).Error; err != nil {
-		return nil, err
+		return nil, pkgerrors.Wrap(pkgerrors.CodeDependency, err,
+			fmt.Sprintf("insert volume discount (product_id=%s min_qty=%d)", discount.ProductID, discount.MinQty),
+		)
 	}
 	return discount, nil
 }

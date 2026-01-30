@@ -175,7 +175,7 @@ func (s *service) CreateProduct(ctx context.Context, userID, storeID uuid.UUID, 
 
 		created, err := txRepo.CreateProduct(ctx, product)
 		if err != nil {
-			return err
+			return pkgerrors.Wrap(pkgerrors.CodeDependency, err, "db: insert product")
 		}
 		createdProductID = created.ID
 
@@ -185,17 +185,18 @@ func (s *service) CreateProduct(ctx context.Context, userID, storeID uuid.UUID, 
 			ReservedQty:  input.Inventory.ReservedQty,
 		}
 		if _, err := txRepo.UpsertInventory(ctx, inventory); err != nil {
-			return err
+			return pkgerrors.Wrap(pkgerrors.CodeDependency, err, "db: upsert inventory")
 		}
 
 		for _, discount := range input.VolumeDiscounts {
 			tier := &models.ProductVolumeDiscount{
+				StoreID:        storeID,
 				ProductID:      created.ID,
 				MinQty:         discount.MinQty,
 				UnitPriceCents: discount.UnitPriceCents,
 			}
 			if _, err := txRepo.CreateVolumeDiscount(ctx, tier); err != nil {
-				return err
+				return pkgerrors.Wrap(pkgerrors.CodeDependency, err, "db: insert volume discount")
 			}
 		}
 
@@ -205,7 +206,7 @@ func (s *service) CreateProduct(ctx context.Context, userID, storeID uuid.UUID, 
 				return err
 			}
 			if err := txRepo.ReplaceProductMedia(ctx, created.ID, entries); err != nil {
-				return err
+				return pkgerrors.Wrap(pkgerrors.CodeDependency, err, "db: replace product media")
 			}
 		}
 

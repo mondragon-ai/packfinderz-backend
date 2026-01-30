@@ -383,36 +383,37 @@ Creates a new product record plus its inventory, optional media links, and optio
 #### Sample request body (required + optional fields)
 ```json
 {
-  "sku": "SPINACH-4OZ",
-  "title": "Fresh Cut Spinach",
-  "subtitle": "Crazy fresh",
-  "body_html": "<p>Ultra fresh</p>",
-  "category": "accessory",
-  "feelings": ["relaxed", "calm"],
-  "flavors": ["herbal", "earthy"],
-  "usage": ["stress_relief"],
-  "strain": "n/a",
-  "classification": "balanced",
-  "unit": "unit",
-  "moq": 1,
-  "price_cents": 650,
-  "compare_at_price_cents": 700,
+  "sku": "FLWR-OK-GLZ-008",
+  "title": "Galactic Glaze — Premium Indoor Flower",
+  "subtitle": "Sticky, terp-forward buds with a bright citrus + pine finish.",
+  "body_html": "<h3>Overview</h3><p><strong>Galactic Glaze</strong> is a boutique indoor flower with dense structure, strong bag appeal, and a clean burn. Expect an initial citrus pop that settles into piney, earthy undertones.</p><h3>Aroma & Flavor</h3><ul><li><strong>Citrus</strong> upfront</li><li><strong>Pine</strong> on the finish</li><li><strong>Earthy</strong> base notes</li></ul><h3>Effects</h3><p>Often described as <strong>uplifted</strong>, <strong>focused</strong>, and <strong>happy</strong>, making it a solid daytime option for customers who want clarity without feeling heavy.</p><h3>Suggested Use Cases</h3><ul><li>Stress relief</li><li>Anxiety support</li><li>Mood lift</li></ul><h3>Compliance Notes</h3><p>COA available upon request. Store and handle per local regulations.</p>",
+  "category": "flower",
+  "feelings": ["uplifted", "focused", "happy"],
+  "flavors": ["citrus", "pine", "earthy"],
+  "usage": ["stress_relief", "anxiety", "depression"],
+  "strain": "Galactic Glaze",
+  "classification": "hybrid",
+  "unit": "eighth",
+  "moq": 10,
+  "price_cents": 1800,
+  "compare_at_price_cents": 2200,
   "is_active": true,
   "is_featured": false,
-  "thc_percent": 0,
-  "cbd_percent": 0,
+  "thc_percent": 24.75,
+  "cbd_percent": 0.35,
   "inventory": {
-    "available_qty": 200,
-    "reserved_qty": 5
+    "on_hand_qty": 240,
+    "reserved_qty": 0,
+    "low_stock_threshold": 30
   },
   "media_ids": [
-    "{{optional_product_media_id}}"
+    "3b7e2b6a-6b9f-4b2a-9f7a-7c4c9a2b5e11",
+    "c1f0e7e4-0d7a-4d63-8d6f-0b2c2d1f9a77"
   ],
   "volume_discounts": [
-    {
-      "min_qty": 10,
-      "unit_price_cents": 600
-    }
+    { "min_qty": 25, "unit_price_cents": 1700 },
+    { "min_qty": 50, "unit_price_cents": 1550 },
+    { "min_qty": 100, "unit_price_cents": 1400 }
   ]
 }
 ```
