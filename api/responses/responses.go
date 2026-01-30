@@ -19,31 +19,52 @@ func WriteSuccess(w http.ResponseWriter, data any) {
 func WriteSuccessStatus(w http.ResponseWriter, status int, data any) {
 	writeJSON(w, status, types.SuccessEnvelope{Data: data})
 }
-
 func WriteError(ctx context.Context, logg *logger.Logger, w http.ResponseWriter, err error) {
 	if err == nil {
 		err = errors.New("unknown error")
 	}
+
 	typed := pkgerrors.As(err)
 	if typed == nil {
 		typed = pkgerrors.Wrap(pkgerrors.CodeInternal, err, "unexpected error")
 	}
+
 	meta := pkgerrors.MetadataFor(typed.Code())
+
+	msg := meta.PublicMessage
+
+	switch typed.Code() {
+	case pkgerrors.CodeValidation,
+		pkgerrors.CodeForbidden,
+		pkgerrors.CodeUnauthorized,
+		pkgerrors.CodeNotFound,
+		pkgerrors.CodeConflict,
+		pkgerrors.CodeStateConflict,
+		pkgerrors.CodeIdempotency,
+		pkgerrors.CodeRateLimit:
+		if m := typed.Message(); m != "" {
+			msg = m
+		}
+	}
+
 	payload := types.ErrorEnvelope{
 		Error: types.APIError{
 			Code:    string(typed.Code()),
-			Message: meta.PublicMessage,
+			Message: msg,
 		},
 	}
+
 	if meta.DetailsAllowed {
 		if details := typed.Details(); details != nil {
 			payload.Error.Details = details
 		}
 	}
+
 	if logg != nil {
 		ctx = logg.WithField(ctx, "error_code", string(typed.Code()))
 		logg.Error(ctx, "request.error", err)
 	}
+
 	writeJSON(w, meta.HTTPStatus, payload)
 }
 

@@ -452,6 +452,8 @@ All enums implement:
 * `staff`
 * `ops`
 
+* `admin` is also used for `/api/admin` routes that deliberately skip the store context middleware so JWTs with `role=admin` can omit `active_store_id`/`store_type`.
+
 ### `Outbox`
 
 * `event_type_enum`: `order_created`, `license_status_changed`, `media_uploaded`, `notification_requested`, `ad_*`, etc.

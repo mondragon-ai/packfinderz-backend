@@ -360,3 +360,268 @@ curl -X POST "{{API_BASE_URL}}/api/v1/checkout" \
 - `vendor_orders`: array of vendors with totals (`subtotal_cents`, `transport_fee_cents`, `discount_cents`, `tax_cents`, `total_cents`, `balance_due_cents`) and their `items`.
 - Each line item includes `line_item_id`, `product_id` (nullable), `product_name`, `qty`, `unit`, `unit_price_cents`, `discount_cents`, `total_cents`, `status`, and optional `notes`.
 - `rejected_vendors`: appears when one or more vendors reject items their order; each entry provides `vendor_store_id` and the rejected line items.
+
+## Product & inventory endpoints
+
+Vendor product management lives under the authenticated store context, so every request requires `Authorization: Bearer {{access_token}}` and the store in the JWT must be a **vendor** store. Only vendor members with roles `owner`, `admin`, `manager`, `staff`, `agent`, or `ops` can use these routes. `POST /api/v1/vendor/products` additionally requires an `Idempotency-Key` header (24‑hour TTL) because it creates inventory, media, and volume discount rows in a single transaction.
+
+### POST /api/v1/vendor/products
+Creates a new product record plus its inventory, optional media links, and optional tiered pricing. The controller decodes the `createProductRequest` DTO and validates every required field (`sku`, `title`, `category`, `feelings`, `flavors`, `usage`, `unit`, `moq`, `price_cents`, `inventory`). The request also enforces:
+
+- `category` must be one of `flower`, `cart`, `pre_roll`, `edible`, `concentrate`, `beverage`, `vape`, `topical`, `tincture`, `seed`, `seedling`, or `accessory`.
+- `unit` must be one of `unit`, `gram`, `ounce`, `pound`, `eighth`, or `sixteenth`.
+- `feelings`, `flavors`, and `usage` are required string arrays where each entry is validated against the `product` enums (e.g., `feelings`: `relaxed`, `happy`, `euphoric`, `focused`, `hungry`, `talkative`, `creative`, `sleepy`, `uplifted`, `calm`; `flavors`: `earthy`, `citrus`, `fruity`, `floral`, `cheese`, `diesel`, `spicy`, `sweet`, `pine`, `herbal`; `usage`: `stress_relief`, `pain_relief`, `sleep`, `depression`, `muscle_relaxant`, `nausea`, `anxiety`, `appetite_stimulation`).
+- `moq` must be ≥ 1 and `price_cents`/`compare_at_price_cents` must be ≥ 0.
+- `thc_percent` and `cbd_percent` are optional and must stay between 0 and 100.
+- `classification` (if provided) must be one of `sativa`, `hybrid`, `indica`, `cbd`, `hemp`, or `balanced`.
+- `inventory` is required and must contain `available_qty` (≥ 0) and `reserved_qty` (≥ 0) with `reserved_qty ≤ available_qty`; the service stores both counts in `inventory_items`.
+- `media_ids`, when present, must be UUIDs for `media_kind=product` rows that belong to the same vendor store (duplicates are rejected).
+- `volume_discounts` entries must include `min_qty` (≥ 1) and `unit_price_cents` (≥ 0), and `min_qty` values must be unique within the payload.
+
+`partial fields` are allowed for the optional attributes (`subtitle`, `body_html`, `strain`, `media_ids`, `volume_discounts`, `compare_at_price_cents`, `is_active`, `is_featured`, `thc_percent`, `cbd_percent`). `is_active` defaults to `true` when omitted; `is_featured` defaults to `false`.
+
+#### Sample request body (required + optional fields)
+```json
+{
+  "sku": "SPINACH-4OZ",
+  "title": "Fresh Cut Spinach",
+  "subtitle": "Crazy fresh",
+  "body_html": "<p>Ultra fresh</p>",
+  "category": "accessory",
+  "feelings": ["relaxed", "calm"],
+  "flavors": ["herbal", "earthy"],
+  "usage": ["stress_relief"],
+  "strain": "n/a",
+  "classification": "balanced",
+  "unit": "unit",
+  "moq": 1,
+  "price_cents": 650,
+  "compare_at_price_cents": 700,
+  "is_active": true,
+  "is_featured": false,
+  "thc_percent": 0,
+  "cbd_percent": 0,
+  "inventory": {
+    "available_qty": 200,
+    "reserved_qty": 5
+  },
+  "media_ids": [
+    "{{optional_product_media_id}}"
+  ],
+  "volume_discounts": [
+    {
+      "min_qty": 10,
+      "unit_price_cents": 600
+    }
+  ]
+}
+```
+
+#### cURL (copy into Postman > Raw)
+```bash
+curl -X POST "{{API_BASE_URL}}/api/v1/vendor/products" \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json" \
+  -H "Authorization: Bearer {{access_token}}" \
+  -H "Idempotency-Key: {{unique_product_key}}" \
+  -d '{ ... }'
+```
+
+Replace `{ ... }` with the JSON payload above. The response returns the persisted `product.ProductDTO`, which includes `inventory`, `volume_discounts`, and `media` (may be absent/`null` when there are no attachments). The `inventory` block in the response surfaces the live `available_qty`, `reserved_qty`, and `updated_at`, while `media` objects expose `id`, `url` (nullable), `gcs_key`, `position`, and `created_at`.
+
+### PATCH /api/v1/vendor/products/{productId}
+Updates metadata, inventory, volume discounts, or media for an existing product. The `updateProductRequest` allows every field to be optional, but trimmed strings (`sku`, `title`) must not become empty and enumerated values are re-validated. The controller enforces the same enum/value rules as creation, and the service includes these behaviors:
+
+- Passing `inventory` will upsert the `inventory_items` row via `UpsertInventory`; both `available_qty` and `reserved_qty` must be provided (the controller enforces this) and `reserved_qty` cannot exceed `available_qty`, so you can keep inventory synchronized from Postman (existing `reserved_qty` is preserved while `available_qty` is overwritten to avoid unintentional reservation changes).
+- Providing `volume_discounts` replaces every tier for the product, so send the full desired set each time; duplicates in `min_qty` are rejected.
+- Providing `media_ids` replaces the ordered media stack, so you can clear media by sending an empty array or reorder requests by inserting IDs in the desired order. Media must exist, belong to the active vendor store, and be `media_kind=product`.
+- Omitting optional blocks leaves that portion of the product untouched.
+
+#### Sample update body (optional fields + inventory sync)
+```json
+{
+  "title": "Fresh Cut Spinach (updated)",
+  "price_cents": 630,
+  "inventory": {
+    "available_qty": 250,
+    "reserved_qty": 5
+  },
+  "media_ids": [
+    "{{new_media_id}}",
+    "{{second_media_id}}"
+  ],
+  "volume_discounts": [
+    {
+      "min_qty": 5,
+      "unit_price_cents": 620
+    },
+    {
+      "min_qty": 15,
+      "unit_price_cents": 590
+    }
+  ]
+}
+```
+
+#### cURL (copy into Postman > Raw)
+```bash
+curl -X PATCH "{{API_BASE_URL}}/api/v1/vendor/products/{{product_id}}" \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json" \
+  -H "Authorization: Bearer {{access_token}}" \
+  -d '{ ... }'
+```
+
+The response is the updated `product.ProductDTO`. Inventory changes appear under `inventory`, and `media` may be `null` if no attachments remain. Volume discounts mirror the new tier list with each entry returning `id`, `min_qty`, `unit_price_cents`, and `created_at`.
+
+### DELETE /api/v1/vendor/products/{productId}
+Removes the product, its inventory, volume discounts, and media cascading via FK constraints. The bearer must be a vendor member who owns (or is an allowed role on) the store; the controller checks `store_id` ownership before delegating to the service.
+
+#### cURL
+```bash
+curl -X DELETE "{{API_BASE_URL}}/api/v1/vendor/products/{{product_id}}" \
+  -H "Accept: application/json" \
+  -H "Authorization: Bearer {{access_token}}"
+```
+
+Returns `204 No Content` on success. Requesting a product that belongs to another store returns `403 Forbidden`, and non-existent products return `404 Not Found`.
+
+### GET /api/v1/inventory
+Returns every inventory row that belongs to the authenticated vendor store. Each entry matches an `inventory_items` row and surfaces `product_id`, `available_qty`, `reserved_qty`, and `updated_at` so you can keep the UI aligned with the database truth. The API enforces vendor context and member roles (owner/admin/manager/staff/agent/ops), so missing or mismatched stores return `403`.
+
+#### cURL
+```bash
+curl -G "{{API_BASE_URL}}/api/v1/inventory" \
+  -H "Accept: application/json" \
+  -H "Authorization: Bearer {{access_token}}"
+```
+
+#### Response highlights
+- `items`: array of inventory objects keyed by `product_id`.
+- `available_qty`: non-negative integer (the value you control via the set endpoint).
+- `reserved_qty`: number of units already reserved by active carts/orders (read-only in this endpoint).
+- `updated_at`: timestamp showing when the row was last synced.
+
+### PUT /api/v1/inventory/{productId}
+Sets the vendor's available quantity for a specific product. The route is idempotent (the middleware requires `Idempotency-Key` and deduplicates identical payloads), and you are only allowed to touch `available_qty` here—`reserved_qty` remains managed by reservations/checkouts. Provide a valid `productId` path parameter (UUID) and a body containing the new `available_qty` (must be `>= 0`).
+
+#### Request body
+```json
+{
+  "available_qty": 180
+}
+```
+
+#### cURL (copy into Postman > Raw)
+```bash
+curl -X PUT "{{API_BASE_URL}}/api/v1/inventory/{{product_id}}" \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json" \
+  -H "Authorization: Bearer {{access_token}}" \
+  -H "Idempotency-Key: {{unique_inventory_key}}" \
+  -d '{
+    "available_qty": 180
+  }'
+```
+
+The response mirrors the updated inventory row (`available_qty`, `reserved_qty`, `updated_at`). Invalid quantities (`< 0`) or a `productId` that belongs to another store return `403/404`, and the middleware enforces idempotency so repeat submissions with the same key and payload return the original result without double updates.
+
+## License endpoints
+
+License metadata lives under the vendor store context and requires `Authorization: Bearer {{access_token}}`. Only members with roles `owner`, `admin`, `manager`, `staff`, or `ops` can mutate licenses. Every license record must be backed by a `media_id` that points at an uploaded `media_kind=license_doc` asset belonging to the same store; the service verifies the media is ready (`uploaded`/`ready`) with an allowed mime type (PDF or image) before persisting the license.
+
+### POST /api/v1/licenses
+Registers a new license for the active store. The controller decodes the `licenseCreateRequest`, which enforces:
+
+- `media_id` (required UUID) – points at the license PDF/image that already exists in the store’s media table, `media_kind=license_doc`, and owns the right store.
+- `issuing_state`, `type`, and `number` are required strings (`type` is one of `producer`, `grower`, `dispensary`, or `merchant`); `issuing_state` and `number` are trimmed before persistence.
+- `issue_date` and `expiration_date` are optional ISO dates (Go’s `time.Time`).
+
+#### Request body
+```json
+{
+  "media_id": "{{license_media_id}}",
+  "issuing_state": "WA",
+  "issue_date": "2025-11-01T00:00:00Z",
+  "expiration_date": "2026-11-01T00:00:00Z",
+  "type": "dispensary",
+  "number": "LIC-123456"
+}
+```
+
+> `issue_date`/`expiration_date` may be omitted; the server stores them null when missing.
+
+#### cURL (copy into Postman > Raw)
+```bash
+curl -X POST "{{API_BASE_URL}}/api/v1/licenses" \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json" \
+  -H "Authorization: Bearer {{access_token}}" \
+  -d '{
+    "media_id": "{{license_media_id}}",
+    "issuing_state": "WA",
+    "issue_date": "2025-11-01T00:00:00Z",
+    "expiration_date": "2026-11-01T00:00:00Z",
+    "type": "dispensary",
+    "number": "LIC-123456"
+  }'
+```
+
+Success returns the `licenseResponse` (`id`, `store_id`, `user_id`, `status`, `media_id`, `issuing_state`, `issue_date`, `expiration_date`, `type`, `number`, `created_at`, `updated_at`). Status starts as `pending`.
+
+### GET /api/v1/licenses
+Lists the store’s licenses with pagination. Supply optional query parameters `limit` (positive integer) and `cursor` (opaque string from the previous response). The `ListResult` contains `items` and a `cursor` for the next page.
+
+#### Query parameters
+- `limit` – optional, positive integer; when omitted the service uses its default limit.
+- `cursor` – optional pagination cursor returned by a previous call.
+
+#### cURL (with pagination example)
+```bash
+curl -G "{{API_BASE_URL}}/api/v1/licenses" \
+  -H "Accept: application/json" \
+  -H "Authorization: Bearer {{access_token}}" \
+  --data-urlencode "limit=25" \
+  --data-urlencode "cursor={{optional_cursor}}"
+```
+
+Each item exposes `id`, `store_id`, `user_id`, `status` (`pending`, `verified`, `rejected`, or `expired`), `media_id`, `issuing_state`, `issue_date`, `expiration_date`, `type`, `number`, `created_at`, `updated_at`, and `signed_url` (pre-signed GCS URL for the license file, when available).
+
+### DELETE /api/v1/licenses/{licenseId}
+Removes a rejected or expired license so the store can re-submit compliance assets. Only `owner`/`manager` roles may delete, and the endpoint returns `403 Forbidden` if the license belongs to another store or `409 Conflict` when the status is still `pending` or `verified`.
+
+#### cURL
+```bash
+curl -X DELETE "{{API_BASE_URL}}/api/v1/licenses/{{license_id}}" \
+  -H "Accept: application/json" \
+  -H "Authorization: Bearer {{access_token}}"
+```
+
+Success returns `{"deleted": true}` and, if the store no longer has any valid licenses, the service flips the store’s KYC back to `pending_verification`.
+
+### POST /api/admin/v1/licenses/{licenseId}/verify
+Admin users (via `/api/admin`) control license status. Supply `decision` (`verified` or `rejected`) and an optional `reason`. The route returns the updated `licenseResponse` and publishes the `LicenseStatusChanged` outbox event.
+
+#### Request body
+```json
+{
+  "decision": "verified",
+  "reason": "Documentation verified"
+}
+```
+
+`reason` may stay empty when you just toggle to `verified`.
+
+#### cURL (admin token example)
+```bash
+curl -X POST "{{API_BASE_URL}}/api/admin/v1/licenses/{{license_id}}/verify" \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json" \
+  -H "Authorization: Bearer {{admin_access_token}}" \
+  -d '{
+    "decision": "verified",
+    "reason": "Documentation verified"
+  }'
+```
+
+If the license already has a non-`pending` status, the endpoint returns `409 Conflict`. When verification succeeds the store’s KYC status is reconciled (`verified`, `rejected`, or `expired` depending on the remaining licenses). License details in the response mirror `licenseResponse`.

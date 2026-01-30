@@ -474,6 +474,19 @@ func TestAdminGroupRequiresAdminRole(t *testing.T) {
 	}
 }
 
+func TestAdminGroupAllowsStorelessAdmin(t *testing.T) {
+	cfg := testConfig()
+	router := newTestRouter(cfg)
+
+	admin := httptest.NewRequest(http.MethodGet, "/api/admin/ping", nil)
+	admin.Header.Set("Authorization", "Bearer "+buildTokenWithoutStore(t, cfg, enums.MemberRoleAdmin))
+	resp := httptest.NewRecorder()
+	router.ServeHTTP(resp, admin)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("expected 200 for storeless admin got %d", resp.Code)
+	}
+}
+
 func TestAgentGroupRequiresAgentRole(t *testing.T) {
 	cfg := testConfig()
 	router := newTestRouter(cfg)
@@ -805,6 +818,20 @@ func buildTokenWithUserID(t *testing.T, cfg *config.Config, role enums.MemberRol
 		Role:          role,
 		StoreType:     &storeType,
 		JTI:           accessID,
+	})
+	if err != nil {
+		t.Fatalf("mint token: %v", err)
+	}
+	return token
+}
+
+func buildTokenWithoutStore(t *testing.T, cfg *config.Config, role enums.MemberRole) string {
+	t.Helper()
+	accessID := session.NewAccessID()
+	token, err := pkgAuth.MintAccessToken(cfg.JWT, time.Now(), pkgAuth.AccessTokenPayload{
+		UserID: uuid.New(),
+		Role:   role,
+		JTI:    accessID,
 	})
 	if err != nil {
 		t.Fatalf("mint token: %v", err)
