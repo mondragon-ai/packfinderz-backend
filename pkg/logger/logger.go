@@ -4,7 +4,6 @@ import (
 	"context"
 	"io"
 	"os"
-	"runtime/debug"
 	"strings"
 	"time"
 
@@ -32,7 +31,7 @@ func New(opts Options) *Logger {
 		opts.Level = zerolog.InfoLevel
 	}
 
-	var output io.Writer = opts.Output
+	output := opts.Output
 	if output == nil {
 		output = os.Stdout
 	}
@@ -139,6 +138,6 @@ func (l *Logger) Error(ctx context.Context, msg string, err error) {
 	event.Msg(msg)
 }
 
-func stackTrace() string {
-	return strings.TrimSpace(string(debug.Stack()))
-}
+// func stackTrace() string {
+// 	return strings.TrimSpace(string(debug.Stack()))
+// }

@@ -467,6 +467,7 @@ Manifest approach (MVP):
 **Auth & session endpoints**
 
 * `POST /api/v1/auth/login` – returns `auth.LoginResponse` plus `X-PF-Token`, letting clients boot authenticated sessions with bearer tokens from `auth.Service.Login`. The service now normalizes `users.system_role` against `enums.MemberRole`, uses that value (or the primary membership) to set the JWT `role` claim, and still issues tokens when `system_role=agent|admin` even if no store membership exists; `middleware.Auth` hydrates that claim into context so `RequireRole("agent")`/`RequireRole("admin")` can gate their respective groups (api/controllers/auth.go:13-36; internal/auth/service.go:24-153; api/middleware/auth.go:19-80; api/middleware/roles.go:1-27).
+* `POST /api/admin/v1/auth/login` – admin-only route that validates `SystemRole=admin`, issues a storeless `role=admin` JWT (no `active_store_id`), returns the admin `user` DTO plus the `refresh_token`, and mirrors the freshest access token in `X-PF-Token` so `/api/admin/*` can be accessed immediately.
 * `POST /api/v1/auth/register` – requires `Idempotency-Key`, creates user + store, auto-logins, and returns tokens + `X-PF-Token` (api/controllers/register.go:13-41; internal/auth/register.go:21-133).
 * `POST /api/v1/auth/logout` – revokes the Redis session via `session.Manager.Revoke` and responds `{"status":"logged_out"}` (api/controllers/session.go:47-79).
 * `POST /api/v1/auth/refresh` – rotates the Redis session, issues fresh access/refresh tokens, and mirrors them via `X-PF-Token` for convenience (api/controllers/session.go:81-143).

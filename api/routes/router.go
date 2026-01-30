@@ -114,6 +114,10 @@ func NewRouter(
 		r.Post("/switch-store", controllers.AuthSwitchStore(switchService, cfg.JWT, logg))
 	})
 
+	r.Route("/api/admin/v1/auth", func(r chi.Router) {
+		r.With(middleware.AuthRateLimit(loginPolicy, redisClient, logg)).Post("/login", controllers.AdminAuthLogin(authService, logg))
+	})
+
 	r.Route("/api", func(r chi.Router) {
 		r.Use(middleware.Auth(cfg.JWT, sessionManager, logg))
 		r.Use(middleware.Idempotency(redisClient, logg))
@@ -191,7 +195,6 @@ func NewRouter(
 
 	r.Route("/api/admin", func(r chi.Router) {
 		r.Use(middleware.Auth(cfg.JWT, sessionManager, logg))
-		// r.Use(middleware.StoreContext(logg))
 		r.Use(middleware.RequireRole("admin", logg))
 		r.Use(middleware.Idempotency(redisClient, logg))
 		r.Use(middleware.RateLimit())

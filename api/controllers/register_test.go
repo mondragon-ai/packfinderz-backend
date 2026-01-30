@@ -31,6 +31,10 @@ func (s stubAuthService) Login(ctx context.Context, req auth.LoginRequest) (*aut
 	return s.resp, s.err
 }
 
+func (s stubAuthService) AdminLogin(ctx context.Context, req auth.LoginRequest) (*auth.AdminLoginResponse, error) {
+	return nil, s.err
+}
+
 func TestAuthRegisterSuccess(t *testing.T) {
 	token := "new-token"
 	resp := &auth.LoginResponse{

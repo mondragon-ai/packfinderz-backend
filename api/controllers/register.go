@@ -26,7 +26,9 @@ func AuthRegister(reg auth.RegisterService, svc auth.Service, logg *logger.Logge
 		}
 
 		if err := reg.Register(r.Context(), body); err != nil {
-			logg.Error(r.Context(), "register failed", err)
+			if logg != nil {
+				logg.Error(r.Context(), "register failed", err)
+			}
 			responses.WriteError(r.Context(), logg, w, err)
 			return
 		}
@@ -38,6 +40,6 @@ func AuthRegister(reg auth.RegisterService, svc auth.Service, logg *logger.Logge
 		}
 
 		w.Header().Set("X-PF-Token", result.AccessToken)
-		responses.WriteSuccessStatus(w, http.StatusOK, result)
+		responses.WriteSuccessStatus(w, http.StatusCreated, result)
 	}
 }

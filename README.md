@@ -425,6 +425,14 @@ POST /api/v1/auth/login
 
 Validates email/password, collects the store memberships, and returns `200` with tokens plus `stores[]` (for multi-store selection). Each response also sets `X-PF-Token` to the latest access token.
 
+#### Admin Login
+
+```
+POST /api/admin/v1/auth/login
+```
+
+Builds a storeless admin session (`role=admin`, `activeStoreId` omitted) for `users.system_role="admin"`. Returns HTTP 200 with a `refresh_token`, the admin `user` DTO, and the `X-PF-Token` header containing the access token that can be used against `/api/admin/*`. Invalid credentials yield the same 401 response as the regular login route.
+
 #### Logout
 
 ```

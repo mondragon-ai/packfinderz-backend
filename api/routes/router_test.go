@@ -46,6 +46,10 @@ func (stubAuthService) Login(ctx context.Context, req auth.LoginRequest) (*auth.
 	return nil, fmt.Errorf("not implemented")
 }
 
+func (stubAuthService) AdminLogin(ctx context.Context, req auth.LoginRequest) (*auth.AdminLoginResponse, error) {
+	return nil, fmt.Errorf("not implemented")
+}
+
 type stubRegisterService struct{}
 
 func (stubRegisterService) Register(ctx context.Context, req auth.RegisterRequest) error {
