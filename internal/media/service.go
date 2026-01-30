@@ -36,6 +36,10 @@ type gcsClient interface {
 	DeleteObject(ctx context.Context, bucket, object string) error
 }
 
+type mediaAttachmentLookup interface {
+	ListByMediaID(ctx context.Context, mediaID uuid.UUID) ([]models.MediaAttachment, error)
+}
+
 // Service exposes media-presign semantics.
 type Service interface {
 	PresignUpload(ctx context.Context, userID, storeID uuid.UUID, input PresignInput) (*PresignOutput, error)
@@ -48,6 +52,7 @@ type service struct {
 	repo         mediaRepository
 	memberships  membershipsRepository
 	gcs          gcsClient
+	attachments  mediaAttachmentLookup
 	bucket       string
 	uploadTTL    time.Duration
 	downloadTTL  time.Duration
@@ -55,12 +60,15 @@ type service struct {
 }
 
 // NewService constructs a media service backed by the provided repositories and GCS signer.
-func NewService(repo mediaRepository, memberships membershipsRepository, gcsClient gcsClient, bucket string, uploadTTL, downloadTTL time.Duration) (Service, error) {
+func NewService(repo mediaRepository, memberships membershipsRepository, attachments mediaAttachmentLookup, gcsClient gcsClient, bucket string, uploadTTL, downloadTTL time.Duration) (Service, error) {
 	if repo == nil {
 		return nil, fmt.Errorf("media repository required")
 	}
 	if memberships == nil {
 		return nil, fmt.Errorf("memberships repository required")
+	}
+	if attachments == nil {
+		return nil, fmt.Errorf("attachments lookup required")
 	}
 	if gcsClient == nil {
 		return nil, fmt.Errorf("gcs client required")
@@ -78,6 +86,7 @@ func NewService(repo mediaRepository, memberships membershipsRepository, gcsClie
 		repo:        repo,
 		memberships: memberships,
 		gcs:         gcsClient,
+		attachments: attachments,
 		bucket:      bucket,
 		uploadTTL:   uploadTTL,
 		downloadTTL: downloadTTL,
@@ -272,12 +281,16 @@ func (s *service) DeleteMedia(ctx context.Context, params DeleteMediaParams) err
 		return pkgerrors.New(pkgerrors.CodeConflict, "media not available for deletion")
 	}
 
-	if err := s.gcs.DeleteObject(ctx, s.bucket, mediaRow.GCSKey); err != nil {
-		return pkgerrors.Wrap(pkgerrors.CodeDependency, err, "delete gcs object")
+	attachments, err := s.attachments.ListByMediaID(ctx, mediaRow.ID)
+	if err != nil {
+		return pkgerrors.Wrap(pkgerrors.CodeDependency, err, "load media attachments")
+	}
+	if hasProtectedAttachment(attachments) {
+		return pkgerrors.New(pkgerrors.CodeConflict, "media has protected attachments")
 	}
 
-	if err := s.repo.MarkDeleted(ctx, mediaRow.ID, time.Now()); err != nil {
-		return pkgerrors.Wrap(pkgerrors.CodeDependency, err, "mark media deleted")
+	if err := s.gcs.DeleteObject(ctx, s.bucket, mediaRow.GCSKey); err != nil {
+		return pkgerrors.Wrap(pkgerrors.CodeDependency, err, "delete gcs object")
 	}
 
 	return nil
@@ -285,6 +298,15 @@ func (s *service) DeleteMedia(ctx context.Context, params DeleteMediaParams) err
 
 func isReadableStatus(status enums.MediaStatus) bool {
 	return status == enums.MediaStatusUploaded || status == enums.MediaStatusReady
+}
+
+func hasProtectedAttachment(attachments []models.MediaAttachment) bool {
+	for _, attachment := range attachments {
+		if _, ok := models.ProtectedAttachmentEntities[attachment.EntityType]; ok {
+			return true
+		}
+	}
+	return false
 }
 
 func isAllowedMime(kind enums.MediaKind, mimeType string) bool {

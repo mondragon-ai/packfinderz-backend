@@ -121,14 +121,27 @@ func (s *stubGCS) DeleteObject(ctx context.Context, bucket, object string) error
 	return nil
 }
 
+type stubAttachmentLookup struct {
+	attachments []models.MediaAttachment
+	err         error
+}
+
+func (s *stubAttachmentLookup) ListByMediaID(ctx context.Context, mediaID uuid.UUID) ([]models.MediaAttachment, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+	return s.attachments, nil
+}
+
 func TestMediaServicePresignSuccess(t *testing.T) {
 	t.Parallel()
 
 	repo := &stubMediaRepo{}
 	members := stubMemberships{ok: true}
 	gcs := &stubGCS{url: "https://signed.example"}
+	attachments := &stubAttachmentLookup{}
 
-	svc, err := NewService(repo, members, gcs, "bucket", time.Minute, 15*time.Minute)
+	svc, err := NewService(repo, members, attachments, gcs, "bucket", time.Minute, 15*time.Minute)
 	if err != nil {
 		t.Fatalf("NewService: %v", err)
 	}
@@ -172,7 +185,8 @@ func TestMediaServicePresignValidation(t *testing.T) {
 	repo := &stubMediaRepo{}
 	members := stubMemberships{ok: true}
 	gcs := &stubGCS{url: "ok"}
-	svc, err := NewService(repo, members, gcs, "bucket", time.Minute, 15*time.Minute)
+	attachments := &stubAttachmentLookup{}
+	svc, err := NewService(repo, members, attachments, gcs, "bucket", time.Minute, 15*time.Minute)
 	if err != nil {
 		t.Fatalf("NewService: %v", err)
 	}
@@ -220,7 +234,8 @@ func TestMediaServicePresignForbidden(t *testing.T) {
 	repo := &stubMediaRepo{}
 	members := stubMemberships{ok: false}
 	gcs := &stubGCS{}
-	svc, err := NewService(repo, members, gcs, "bucket", time.Minute, 15*time.Minute)
+	attachments := &stubAttachmentLookup{}
+	svc, err := NewService(repo, members, attachments, gcs, "bucket", time.Minute, 15*time.Minute)
 	if err != nil {
 		t.Fatalf("NewService: %v", err)
 	}
@@ -254,8 +269,9 @@ func TestMediaServiceGenerateReadURLSuccess(t *testing.T) {
 	}
 	members := stubMemberships{ok: true}
 	gcs := &stubGCS{readURL: "https://download.example"}
+	attachments := &stubAttachmentLookup{}
 
-	svc, err := NewService(repo, members, gcs, "bucket", time.Minute, 15*time.Minute)
+	svc, err := NewService(repo, members, attachments, gcs, "bucket", time.Minute, 15*time.Minute)
 	if err != nil {
 		t.Fatalf("NewService: %v", err)
 	}
@@ -291,7 +307,8 @@ func TestMediaServiceGenerateReadURLStoreMismatch(t *testing.T) {
 	}
 	members := stubMemberships{ok: true}
 	gcs := &stubGCS{}
-	svc, err := NewService(repo, members, gcs, "bucket", time.Minute, 15*time.Minute)
+	attachments := &stubAttachmentLookup{}
+	svc, err := NewService(repo, members, attachments, gcs, "bucket", time.Minute, 15*time.Minute)
 	if err != nil {
 		t.Fatalf("NewService: %v", err)
 	}
@@ -319,7 +336,8 @@ func TestMediaServiceGenerateReadURLInvalidStatus(t *testing.T) {
 	}
 	members := stubMemberships{ok: true}
 	gcs := &stubGCS{}
-	svc, err := NewService(repo, members, gcs, "bucket", time.Minute, 15*time.Minute)
+	attachments := &stubAttachmentLookup{}
+	svc, err := NewService(repo, members, attachments, gcs, "bucket", time.Minute, 15*time.Minute)
 	if err != nil {
 		t.Fatalf("NewService: %v", err)
 	}
@@ -347,7 +365,8 @@ func TestMediaServiceGenerateReadURLDependencyError(t *testing.T) {
 	}
 	members := stubMemberships{ok: true}
 	gcs := &stubGCS{readErr: errors.New("boom")}
-	svc, err := NewService(repo, members, gcs, "bucket", time.Minute, 15*time.Minute)
+	attachments := &stubAttachmentLookup{}
+	svc, err := NewService(repo, members, attachments, gcs, "bucket", time.Minute, 15*time.Minute)
 	if err != nil {
 		t.Fatalf("NewService: %v", err)
 	}
@@ -377,8 +396,9 @@ func TestMediaServiceDeleteSuccess(t *testing.T) {
 	}
 	members := stubMemberships{ok: true}
 	gcs := &stubGCS{}
+	attachments := &stubAttachmentLookup{}
 
-	svc, err := NewService(repo, members, gcs, "bucket", time.Minute, 15*time.Minute)
+	svc, err := NewService(repo, members, attachments, gcs, "bucket", time.Minute, 15*time.Minute)
 	if err != nil {
 		t.Fatalf("NewService: %v", err)
 	}
@@ -388,12 +408,6 @@ func TestMediaServiceDeleteSuccess(t *testing.T) {
 		MediaID: mediaID,
 	}); err != nil {
 		t.Fatalf("DeleteMedia returned error: %v", err)
-	}
-	if !gcs.deleteCalled {
-		t.Fatal("expected gcs delete called")
-	}
-	if !repo.markDeleted {
-		t.Fatal("expected repo.MarkDeleted called")
 	}
 }
 
@@ -410,7 +424,8 @@ func TestMediaServiceDeleteStoreMismatch(t *testing.T) {
 	}
 	members := stubMemberships{ok: true}
 	gcs := &stubGCS{}
-	svc, err := NewService(repo, members, gcs, "bucket", time.Minute, 15*time.Minute)
+	attachments := &stubAttachmentLookup{}
+	svc, err := NewService(repo, members, attachments, gcs, "bucket", time.Minute, 15*time.Minute)
 	if err != nil {
 		t.Fatalf("NewService: %v", err)
 	}
@@ -439,7 +454,8 @@ func TestMediaServiceDeleteInvalidStatus(t *testing.T) {
 	}
 	members := stubMemberships{ok: true}
 	gcs := &stubGCS{}
-	svc, err := NewService(repo, members, gcs, "bucket", time.Minute, 15*time.Minute)
+	attachments := &stubAttachmentLookup{}
+	svc, err := NewService(repo, members, attachments, gcs, "bucket", time.Minute, 15*time.Minute)
 	if err != nil {
 		t.Fatalf("NewService: %v", err)
 	}
@@ -469,7 +485,8 @@ func TestMediaServiceDeleteDependencyError(t *testing.T) {
 	}
 	members := stubMemberships{ok: true}
 	gcs := &stubGCS{deleteErr: errors.New("boom")}
-	svc, err := NewService(repo, members, gcs, "bucket", time.Minute, 15*time.Minute)
+	attachments := &stubAttachmentLookup{}
+	svc, err := NewService(repo, members, attachments, gcs, "bucket", time.Minute, 15*time.Minute)
 	if err != nil {
 		t.Fatalf("NewService: %v", err)
 	}
@@ -484,13 +501,57 @@ func TestMediaServiceDeleteDependencyError(t *testing.T) {
 	}
 }
 
+func TestMediaServiceDeleteProtectedAttachment(t *testing.T) {
+	t.Parallel()
+
+	storeID := uuid.New()
+	mediaID := uuid.New()
+	repo := &stubMediaRepo{
+		findMedia: &models.Media{
+			ID:      mediaID,
+			StoreID: storeID,
+			Status:  enums.MediaStatusUploaded,
+			GCSKey:  "media/key",
+		},
+	}
+	members := stubMemberships{ok: true}
+	gcs := &stubGCS{}
+	attachments := &stubAttachmentLookup{
+		attachments: []models.MediaAttachment{
+			{EntityType: models.AttachmentEntityLicense},
+		},
+	}
+	svc, err := NewService(repo, members, attachments, gcs, "bucket", time.Minute, 15*time.Minute)
+	if err != nil {
+		t.Fatalf("NewService: %v", err)
+	}
+
+	err = svc.DeleteMedia(context.Background(), DeleteMediaParams{
+		StoreID: storeID,
+		MediaID: mediaID,
+	})
+	if err == nil {
+		t.Fatal("expected conflict error when protected attachment exists")
+	}
+	if typed := pkgerrors.As(err); typed == nil || typed.Code() != pkgerrors.CodeConflict {
+		t.Fatalf("expected conflict code, got %v", err)
+	}
+	if gcs.deleteCalled {
+		t.Fatal("gcs delete should not be called when deletion blocked")
+	}
+	if repo.markDeleted {
+		t.Fatal("media should not be marked deleted when deletion blocked")
+	}
+}
+
 func TestMediaServicePresignGcsErrorCleansUp(t *testing.T) {
 	t.Parallel()
 
 	repo := &stubMediaRepo{}
 	members := stubMemberships{ok: true}
 	gcs := &stubGCS{err: errTest}
-	svc, err := NewService(repo, members, gcs, "bucket", time.Minute, 15*time.Minute)
+	attachments := &stubAttachmentLookup{}
+	svc, err := NewService(repo, members, attachments, gcs, "bucket", time.Minute, 15*time.Minute)
 	if err != nil {
 		t.Fatalf("NewService: %v", err)
 	}

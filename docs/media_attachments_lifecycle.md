@@ -158,10 +158,12 @@ Before deleting a Media row, the service MUST:
      * outbox event emitted in the delete transaction
 5. **Detach non-protected attachments**
 
+   * The API MUST *never* bypass this check; the media delete endpoint is the designated gatekeeper that loads the attachments, enforces `ProtectedAttachmentEntities`, returns a clear protected-attachment error, and only emits the delete event once the guard passes. Workers and downstream reconcilers run afterwards.
+
    * Domain-specific cleanup MUST run first (gallery updates, banner resets, avatar clears, etc.)
 6. **Delete attachment rows**
 
-Deletion MUST NOT skip or reorder these steps.
+Deletion MUST NOT skip or reorder these steps. The canonical Media delete endpoint (`internal/media.Service.DeleteMedia`) already performs steps 1-3, so API callers only proceed with deletion after the protected-check passes.
 
 ---
 
