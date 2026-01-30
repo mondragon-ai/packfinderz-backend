@@ -22,6 +22,7 @@ import (
 	product "github.com/angelmondragon/packfinderz-backend/internal/products"
 	"github.com/angelmondragon/packfinderz-backend/internal/stores"
 	subscriptionsvc "github.com/angelmondragon/packfinderz-backend/internal/subscriptions"
+	"github.com/angelmondragon/packfinderz-backend/internal/users"
 	pkgAuth "github.com/angelmondragon/packfinderz-backend/pkg/auth"
 	"github.com/angelmondragon/packfinderz-backend/pkg/auth/session"
 	"github.com/angelmondragon/packfinderz-backend/pkg/config"
@@ -47,6 +48,12 @@ func (stubAuthService) Login(ctx context.Context, req auth.LoginRequest) (*auth.
 }
 
 func (stubAuthService) AdminLogin(ctx context.Context, req auth.LoginRequest) (*auth.AdminLoginResponse, error) {
+	return nil, fmt.Errorf("not implemented")
+}
+
+type stubAdminRegisterService struct{}
+
+func (stubAdminRegisterService) Register(ctx context.Context, req auth.AdminRegisterRequest) (*users.UserDTO, error) {
 	return nil, fmt.Errorf("not implemented")
 }
 
@@ -429,7 +436,8 @@ func newTestRouter(cfg *config.Config) http.Handler {
 		&stubAnalyticsService{}, // analytics.Service
 		stubAuthService{},       // auth.Service
 		stubRegisterService{},   // auth.RegisterService
-		stubSwitchService{},     // auth.SwitchStoreService
+		stubAdminRegisterService{},
+		stubSwitchService{}, // auth.SwitchStoreService
 		stubStoreService{},
 		stubMediaService{},
 		stubLicensesService{},
@@ -568,6 +576,7 @@ func TestAgentAssignedOrdersRequiresAgentRole(t *testing.T) {
 		&stubAnalyticsService{},
 		stubAuthService{},
 		stubRegisterService{},
+		stubAdminRegisterService{},
 		stubSwitchService{},
 		stubStoreService{},
 		stubMediaService{},
@@ -633,6 +642,7 @@ func TestAgentAssignedOrderDetailRequiresAgentRole(t *testing.T) {
 		&stubAnalyticsService{},
 		stubAuthService{},
 		stubRegisterService{},
+		stubAdminRegisterService{},
 		stubSwitchService{},
 		stubStoreService{},
 		stubMediaService{},
@@ -674,6 +684,7 @@ func TestAgentPickupRequiresAgentRole(t *testing.T) {
 		&stubAnalyticsService{},
 		stubAuthService{},
 		stubRegisterService{},
+		stubAdminRegisterService{},
 		stubSwitchService{},
 		stubStoreService{},
 		stubMediaService{},
@@ -730,6 +741,7 @@ func TestAgentDeliverRequiresAgentRole(t *testing.T) {
 		&stubAnalyticsService{},
 		stubAuthService{},
 		stubRegisterService{},
+		stubAdminRegisterService{},
 		stubSwitchService{},
 		stubStoreService{},
 		stubMediaService{},

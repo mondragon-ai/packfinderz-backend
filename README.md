@@ -433,6 +433,14 @@ POST /api/admin/v1/auth/login
 
 Builds a storeless admin session (`role=admin`, `activeStoreId` omitted) for `users.system_role="admin"`. Returns HTTP 200 with a `refresh_token`, the admin `user` DTO, and the `X-PF-Token` header containing the access token that can be used against `/api/admin/*`. Invalid credentials yield the same 401 response as the regular login route.
 
+#### Admin Register (dev-only)
+
+```
+POST /api/admin/v1/auth/register
+```
+
+Available only when `PACKFINDERZ_APP_ENV != prod`, this endpoint seeds a `system_role="admin"` user, hashes the password via `security.HashPassword`, returns the admin `user` DTO plus `access_token`/`refresh_token`, and mirrors the access token in `X-PF-Token` so dev tooling can immediately hit `/api/admin/*`. Duplicate emails return `409 Conflict`.
+
 #### Logout
 
 ```
