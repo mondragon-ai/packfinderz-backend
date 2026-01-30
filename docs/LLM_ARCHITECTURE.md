@@ -52,6 +52,7 @@
 - `internal/media/service.PresignUpload` validates uploader role/kind/size, persists a `Media` row with status `pending`, and signs a PUT URL with the GCS client before the object hits storage (internal/media/service.go:94-195).
 - `ListMedia`/`buildReadURL` apply cursor pagination, filters, and attach signed GET URLs for `uploaded` or `ready` media before returning `ListResult` (internal/media/list.go:15-139).
 - `DeleteMedia` checks ownership/status, deletes the GCS object, and marks the row `deleted` after `DeleteObject` succeeds (internal/media/service.go:242-284).
+- `internal/media.NewAttachmentReconciler` is the canonical helper for attachment CRUD: it diffs `old_media_ids` vs `new_media_ids` inside the caller’s transaction, refuses media rows owned by a different `store_id`, and creates or removes `media_attachments` rows (through `MediaAttachmentRepository`) so every domain write follows the lifecycle rules without mutating existing attachments manually (internal/media/attachment_reconciler.go:13-97; internal/media/attachment_repository.go:11-32).
 - `internal/media/consumer` picks up GCS `OBJECT_FINALIZE` events via Pub/Sub, finds the row by GCS key, and calls `MarkUploaded` so subsequent reads expose the download URL (internal/media/consumer/consumer.go:30-235).
 
 ## Dependencies & tooling

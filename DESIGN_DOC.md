@@ -3304,6 +3304,8 @@ Notes:
 * `gcs_key` mirrors `media.gsc_key`, letting services sign URLs from attachments without hitting the media join.
 * `entity_type`/`entity_id` describe the consuming entity (product, license, store, ad, order, etc.), with the polymorphic semantics enforced at the application layer.
 * Multiple rows per `media_id` are allowed so a single `media` row can appear in many attachments.
+* Attachment reconciliation flows use `internal/media.NewAttachmentReconciler` to diff old vs new media IDs within a transaction so all creations/removals follow the lifecycle rules.
+* Lifecycle rules (protected attachments, deletion preconditions, and clean-up ordering) are documented in `docs/media_attachments_lifecycle.md`, and the service layer enforces them via `pkg/db/models/media_attachment.go`.
 
 ---
 
