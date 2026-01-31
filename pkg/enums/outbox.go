@@ -63,6 +63,7 @@ const (
 	EventVendorPayoutRecorded  OutboxEventType = "vendor_payout_recorded"
 	EventNotificationRequested OutboxEventType = "notification_requested"
 	EventOrderExpired          OutboxEventType = "order_expired"
+	EventOrderPendingNudge     OutboxEventType = "order_pending_nudge"
 	EventOrderCanceled         OutboxEventType = "order_canceled"
 	EventOrderRetried          OutboxEventType = "order_retried"
 	EventOrderPaid             OutboxEventType = "order_paid"
@@ -90,6 +91,7 @@ var validOutboxEventTypes = []OutboxEventType{
 	EventVendorPayoutRecorded,
 	EventNotificationRequested,
 	EventOrderExpired,
+	EventOrderPendingNudge,
 	EventOrderCanceled,
 	EventOrderRetried,
 	EventOrderPaid,

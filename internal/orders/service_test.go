@@ -32,6 +32,11 @@ type stubOrdersRepo struct {
 	updatePaymentIntent  func(ctx context.Context, orderID uuid.UUID, updates map[string]any) error
 }
 
+// FindPendingOrdersBefore implements [Repository].
+func (s *stubOrdersRepo) FindPendingOrdersBefore(ctx context.Context, cutoff time.Time) ([]models.VendorOrder, error) {
+	panic("unimplemented")
+}
+
 func (s *stubOrdersRepo) WithTx(tx *gorm.DB) Repository {
 	return s
 }

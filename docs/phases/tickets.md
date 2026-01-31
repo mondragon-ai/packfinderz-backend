@@ -505,11 +505,12 @@ seperate webhook endpoint we can link or subscribe to
 
 **Goal:** Translate DB events → Pub/Sub messages safely.
 
-* [ ] **Ticket:** Create `cmd/outbox-dispatcher` binary
-* [ ] **Ticket:** Event → topic routing registry
-* [ ] **Ticket:** Typed payload validation per event_type
-* [ ] **Ticket:** Retry + max-attempt policy
-* [ ] **Ticket:** DLQ model + migration + repo
+Most services, repos, etc live and new ones will also live here `pkg/outbox/**/*`
+
+* [ ] **Ticket:** Finalize `cmd/outbox-publisher` binary
+* [ ] **Ticket:** Event → topic routing registry switch case per event_type & Typed payload validation per event_type
+* [ ] **Ticket:** Retry + max-attempt policy defined
+* [ ] **Ticket:** DLQ model + migration + repo defined
 * [ ] **Ticket:** DLQ publish on terminal failure
 
 ---

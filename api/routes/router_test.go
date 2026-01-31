@@ -244,6 +244,11 @@ type stubOrdersRepo struct {
 	detail        func(ctx context.Context, orderID uuid.UUID) (*ordersrepo.OrderDetail, error)
 }
 
+// FindPendingOrdersBefore implements [orders.Repository].
+func (s *stubOrdersRepo) FindPendingOrdersBefore(ctx context.Context, cutoff time.Time) ([]models.VendorOrder, error) {
+	panic("unimplemented")
+}
+
 // FindOrderLineItem implements [orders.Repository].
 func (s *stubOrdersRepo) FindOrderLineItem(ctx context.Context, lineItemID uuid.UUID) (*models.OrderLineItem, error) {
 	panic("unimplemented")

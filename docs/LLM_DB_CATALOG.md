@@ -48,6 +48,7 @@
 ### inventory_items
 - `product_id uuid PRIMARY KEY REFERENCES products(id)` stores the 1:1 inventory row, along with `available_qty`, `reserved_qty`, and `updated_at` (DESIGN_DOC.md:2813-2824; pkg/db/models/inventory_item.go:9-24).
 - The repository ensures `product_id` is the PK so `UpsertInventory`/`GetInventoryByProductID` always target the single row per product.
+- The order TTL cron job releases inventory via `orders.ReleaseLineItemInventory` so `reserved_qty` decrements while `available_qty` increments before `vendor_orders.status` flips to `expired`, keeping the row’s invariants (`internal/cron/order_ttl_job.go`:170-208; `internal/orders/service.go`:853-975; pkg/db/models/inventory_item.go:9-24).
 
 ### product_volume_discounts
 - `id uuid`, `product_id uuid REFERENCES products(id)`, `min_qty`, `unit_price_cents`, `created_at` plus `unique(product_id,min_qty)` and `order by (product_id,min_qty desc)` for tiered pricing lookups (DESIGN_DOC.md:2780-2804; pkg/db/models/product_volume_discount.go:9-24).
@@ -99,6 +100,7 @@
   - `unique(checkout_group_id, vendor_store_id)` (ux_vendor_orders_group_vendor, one order per vendor per checkout) preserves the original checkout constraint (pkg/migrate/migrations/20260124000004_create_checkout_order_tables.sql:146-150).
 - Foreign keys: `checkout_group_id -> checkout_groups(id)`, `buyer_store_id -> stores(id)`, `vendor_store_id -> stores(id)` (all in the same migration block).
 - Constraint: `CHECK (buyer_store_id <> vendor_store_id)` to enforce opposing roles on the same order.
+- The order TTL cron job (PF-138) builds on these rows: `internal/cron/order_ttl_job.go` and `internal/orders/repo.go:131-150` query `status=created_pending`/`created_at <= cutoff` ordered by `created_at` so 5d nudges and 10d expirations stay deterministic, emits the `order_pending_nudge` + `order_expired` outbox pairs (`pkg/enums/outbox.go`:5-84), and lets inventory release before marking the order `VendorOrderStatusExpired` (`pkg/enums/vendor_order_status.go`:5-26; `internal/orders/service.go`:853-975).
 
 ### ledger_events
 - Append-only ledger rows capturing cash collection, vendor payouts, adjustments, and future refunds; defined by `pkg/migrate/migrations/20260130000000_create_ledger_events_table.sql`, which creates `ledger_event_type_enum`, `ledger_events`, and the `(order_id, created_at)` and `(type, created_at)` indexes while the Goose down block drops the table+enum.
