@@ -19,6 +19,11 @@ type fakeRepository struct {
 	markAllReadFn func(ctx context.Context, storeID uuid.UUID, now time.Time) (int64, error)
 }
 
+// DeleteOlderThan implements [Repository].
+func (f *fakeRepository) DeleteOlderThan(ctx context.Context, tx *gorm.DB, cutoff time.Time) (int64, error) {
+	panic("unimplemented")
+}
+
 func (f *fakeRepository) WithTx(tx *gorm.DB) Repository {
 	return f
 }

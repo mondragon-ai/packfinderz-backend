@@ -17,6 +17,7 @@ type Repository interface {
 	List(ctx context.Context, params listNotificationsParams) ([]models.Notification, *pagination.Cursor, error)
 	MarkRead(ctx context.Context, storeID, notificationID uuid.UUID, now time.Time) (notificationMarkResult, error)
 	MarkAllRead(ctx context.Context, storeID uuid.UUID, now time.Time) (int64, error)
+	DeleteOlderThan(ctx context.Context, tx *gorm.DB, cutoff time.Time) (int64, error)
 }
 
 type repositoryImpl struct {
@@ -106,6 +107,20 @@ func (r *repositoryImpl) MarkAllRead(ctx context.Context, storeID uuid.UUID, now
 		Model(&models.Notification{}).
 		Where("store_id = ? AND read_at IS NULL", storeID).
 		UpdateColumn("read_at", now)
+	if result.Error != nil {
+		return 0, result.Error
+	}
+	return result.RowsAffected, nil
+}
+
+func (r *repositoryImpl) DeleteOlderThan(ctx context.Context, tx *gorm.DB, cutoff time.Time) (int64, error) {
+	db := r.db
+	if tx != nil {
+		db = tx
+	}
+	result := db.WithContext(ctx).
+		Where("created_at < ?", cutoff).
+		Delete(&models.Notification{})
 	if result.Error != nil {
 		return 0, result.Error
 	}

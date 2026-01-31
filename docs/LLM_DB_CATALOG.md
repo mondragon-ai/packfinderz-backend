@@ -89,6 +89,7 @@
 - `id`, `store_id`, `type notification_type`, `title`, `message`, optional `link`, `read_at`, `created_at` default `now()` (pkg/migrate/migrations/20260124000000_create_notifications.sql:1-41; pkg/db/models/notification.go:10-24).
 - Indexes on `(store_id,created_at desc)`, `(store_id,read_at)`, and `(created_at)` plus `store_id -> stores(id)` cascade FK (pkg/migrate/migrations/20260124000000_create_notifications.sql:1-41).
 - Compliance workflows insert `notification_type=compliance` rows for pending uploads (admin notices) and verified/rejected licences (store notices) when `license_status_changed` events are consumed, keeping a `store_id` anchor and `link` for UI navigation (internal/notifications/consumer.go:128-186).
+- Notification retention is enforced by `internal/cron/notification_cleanup_job.go` (PF-139): it deletes every row where `created_at < now - 30d` via `repositoryImpl.DeleteOlderThan` inside a transaction so the table stays bounded while the job logs `rows_deleted`, `retention_days`, and `cutoff` each run (`internal/cron/notification_cleanup_job.go`:1-102; `internal/notifications/repo.go`:116-131).
 
 ### vendor_orders
 - Per-vendor order snapshot produced after checkout converts a `cart_record` into `checkout_groups`/`vendor_orders`/`order_line_items`/`payment_intents` (pkg/migrate/migrations/20260124000004_create_checkout_order_tables.sql:84-205).
