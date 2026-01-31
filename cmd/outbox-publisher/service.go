@@ -11,11 +11,10 @@ import (
 
 	gcppubsub "cloud.google.com/go/pubsub/v2"
 	"github.com/angelmondragon/packfinderz-backend/pkg/config"
-	"github.com/angelmondragon/packfinderz-backend/pkg/db"
 	"github.com/angelmondragon/packfinderz-backend/pkg/db/models"
 	"github.com/angelmondragon/packfinderz-backend/pkg/logger"
 	"github.com/angelmondragon/packfinderz-backend/pkg/outbox"
-	pubsubclient "github.com/angelmondragon/packfinderz-backend/pkg/pubsub"
+	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
 
@@ -29,21 +28,46 @@ const (
 
 var jitterSource = rand.New(rand.NewSource(time.Now().UnixNano()))
 
+type dbClient interface {
+	Ping(context.Context) error
+	WithTx(context.Context, func(tx *gorm.DB) error) error
+}
+
+type pubSubClient interface {
+	Ping(context.Context) error
+	DomainPublisher() *gcppubsub.Publisher
+}
+
+type outboxRepository interface {
+	FetchUnpublishedForPublish(tx *gorm.DB, limit, maxAttempts int) ([]models.OutboxEvent, error)
+	MarkPublishedTx(tx *gorm.DB, id uuid.UUID) error
+	MarkFailedTx(tx *gorm.DB, id uuid.UUID, err error) error
+}
+
+type publisher interface {
+	Publish(context.Context, *gcppubsub.Message) publishResult
+}
+
+type publishResult interface {
+	Get(context.Context) (string, error)
+}
+
 type ServiceParams struct {
 	Config     *config.Config
 	Logger     *logger.Logger
-	DB         *db.Client
-	PubSub     *pubsubclient.Client
-	Repository *outbox.Repository
+	DB         dbClient
+	PubSub     pubSubClient
+	Repository outboxRepository
+	Publisher  publisher
 }
 
 type Service struct {
 	cfg          *config.Config
 	logg         *logger.Logger
-	db           *db.Client
-	repo         *outbox.Repository
-	pubsub       *pubsubclient.Client
-	publisher    *gcppubsub.Publisher
+	db           dbClient
+	repo         outboxRepository
+	pubsub       pubSubClient
+	publisher    publisher
 	batchSize    int
 	maxAttempts  int
 	pollInterval time.Duration
@@ -66,9 +90,15 @@ func NewService(params ServiceParams) (*Service, error) {
 		return nil, errors.New("outbox repository is required")
 	}
 
-	publisher := params.PubSub.DomainPublisher()
-	if publisher == nil {
-		return nil, errors.New("domain pubsub topic is not configured")
+	var publisher publisher
+	if params.Publisher != nil {
+		publisher = params.Publisher
+	} else {
+		domainPublisher := params.PubSub.DomainPublisher()
+		if domainPublisher == nil {
+			return nil, errors.New("domain pubsub topic is not configured")
+		}
+		publisher = newGCPPubPublisher(domainPublisher)
 	}
 
 	batch := params.Config.Outbox.BatchSize
@@ -178,6 +208,7 @@ func (s *Service) processBatch(ctx context.Context) (bool, error) {
 			envelope, err := s.publishRow(ctx, event)
 			fields := s.eventFields(event, envelope)
 			if err != nil {
+				fields["attempt_count"] = event.AttemptCount + 1
 				ctxWithFields := s.logg.WithFields(ctx, fields)
 				ctxWithFields = s.logg.WithField(ctxWithFields, "error", err.Error())
 				s.logg.Warn(ctxWithFields, "outbox publish failed")
@@ -216,7 +247,13 @@ func (s *Service) publishRow(ctx context.Context, event models.OutboxEvent) (out
 
 	publishCtx, cancel := context.WithTimeout(ctx, defaultPublishTimeout)
 	defer cancel()
+	if s.publisher == nil {
+		return envelope, errors.New("publisher is not configured")
+	}
 	result := s.publisher.Publish(publishCtx, msg)
+	if result == nil {
+		return envelope, errors.New("publisher did not return a result")
+	}
 	if _, err := result.Get(publishCtx); err != nil {
 		return envelope, fmt.Errorf("publish to topic: %w", err)
 	}
@@ -230,10 +267,14 @@ func (s *Service) eventFields(event models.OutboxEvent, envelope outbox.PayloadE
 		"aggregate_type": event.AggregateType,
 		"aggregate_id":   event.AggregateID.String(),
 		"batch_size":     s.batchSize,
+		"attempt_count":  event.AttemptCount,
 	}
 	if envelope.EventID != "" {
 		fields["event_id"] = envelope.EventID
 		fields["occurred_at"] = envelope.OccurredAt.Format(time.RFC3339Nano)
+	}
+	if event.LastError != nil {
+		fields["last_error"] = *event.LastError
 	}
 	return fields
 }
@@ -269,4 +310,33 @@ func withJitter(d time.Duration) time.Duration {
 	}
 	jitter := time.Duration(jitterSource.Int63n(int64(jitterWindow)))
 	return d + jitter
+}
+
+func newGCPPubPublisher(p *gcppubsub.Publisher) publisher {
+	if p == nil {
+		return nil
+	}
+	return &gcpPublisher{Publisher: p}
+}
+
+type gcpPublisher struct {
+	*gcppubsub.Publisher
+}
+
+func (p *gcpPublisher) Publish(ctx context.Context, msg *gcppubsub.Message) publishResult {
+	if p == nil || p.Publisher == nil {
+		return nil
+	}
+	return &gcpPublishResult{PublishResult: p.Publisher.Publish(ctx, msg)}
+}
+
+type gcpPublishResult struct {
+	*gcppubsub.PublishResult
+}
+
+func (r *gcpPublishResult) Get(ctx context.Context) (string, error) {
+	if r == nil || r.PublishResult == nil {
+		return "", errors.New("publish result is nil")
+	}
+	return r.PublishResult.Get(ctx)
 }
