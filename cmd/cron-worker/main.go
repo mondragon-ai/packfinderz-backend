@@ -13,6 +13,7 @@ import (
 	"github.com/angelmondragon/packfinderz-backend/internal/cron"
 	"github.com/angelmondragon/packfinderz-backend/internal/licenses"
 	"github.com/angelmondragon/packfinderz-backend/internal/media"
+	"github.com/angelmondragon/packfinderz-backend/internal/notifications"
 	"github.com/angelmondragon/packfinderz-backend/internal/orders"
 	"github.com/angelmondragon/packfinderz-backend/internal/stores"
 	"github.com/angelmondragon/packfinderz-backend/pkg/config"
@@ -132,6 +133,17 @@ func main() {
 		os.Exit(1)
 	}
 	registry.Register(orderTTLJob)
+	notificationRepo := notifications.NewRepository(dbClient.DB())
+	notificationCleanupJob, err := cron.NewNotificationCleanupJob(cron.NotificationCleanupJobParams{
+		Logger:     logg,
+		DB:         dbClient,
+		Repository: notificationRepo,
+	})
+	if err != nil {
+		logg.Error(context.Background(), "failed to create notification cleanup job", err)
+		os.Exit(1)
+	}
+	registry.Register(notificationCleanupJob)
 	service, err := cron.NewService(cron.ServiceParams{
 		Logger:   logg,
 		Registry: registry,

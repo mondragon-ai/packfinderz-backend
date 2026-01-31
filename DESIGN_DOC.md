@@ -3954,7 +3954,15 @@ WHERE published_at IS NOT NULL
 
 * Implementation: `cmd/cron-worker/main.go` registers both the license lifecycle and order TTL jobs; the latter uses `internal/cron/order_ttl_job.go` with `pendingNudgeDays=5`, `orderExpirationDays=10`, `orders.ReleaseLineItemInventory` for inventory release, and `order_pending_nudge`/`order_expired` enums defined in `pkg/enums/outbox.go` plus the `20260301000000_add_order_pending_nudge_event.sql` migration so the new events are durable.
 
-### 7.6 Orphaned media GC
+### 7.6 Notification retention cleanup (PF-139)
+
+* Daily:
+
+  * run `DELETE FROM notifications WHERE created_at < now() - interval '30 days'` so in-app notifications automatically expire after 30 days of age, keeping the table bounded without storing extra metadata.
+  * execute inside `internal/cron/notification_cleanup_job.go`: the job computes the cutoff, runs the delete via `notifications.Repository.DeleteOlderThan` inside `db.WithTx`, and logs the number of rows deleted along with the retention window, making the work idempotent.
+  * register the job from `cmd/cron-worker/main.go` after the order TTL job so the cron worker keeps metrics/logs for the notification cleanup run even if other jobs fail.
+
+### 7.7 Orphaned media GC
 
 **ASSUMPTION:** allow media deletion only when no attachments exist.
 
