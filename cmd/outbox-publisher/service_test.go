@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -57,7 +58,8 @@ func TestServiceProcessBatchContinuesAfterFailure(t *testing.T) {
 		Payload: &payloads.OrderCreatedEvent{},
 	}
 	eventRegistry := &fakeRegistry{resolved: resolved}
-	service := newTestService(t, repo, pub, eventRegistry)
+	dlqRepo := &fakeDLQRepo{}
+	service := newTestService(t, repo, pub, eventRegistry, dlqRepo, nil)
 
 	processed, err := service.processBatch(context.Background())
 	if err != nil {
@@ -80,13 +82,105 @@ func TestServiceProcessBatchContinuesAfterFailure(t *testing.T) {
 	}
 }
 
-func newTestService(t *testing.T, repo outboxRepository, pub publisher, registry registryResolver) *Service {
-	cfg := &config.Config{
-		Outbox: config.OutboxConfig{
-			BatchSize:      2,
-			PollIntervalMS: 100,
-			MaxAttempts:    5,
+func TestServiceProcessBatchWritesDLQOnNonRetryable(t *testing.T) {
+	event := models.OutboxEvent{
+		ID:            uuid.New(),
+		EventType:     enums.EventOrderCreated,
+		AggregateType: enums.AggregateCheckoutGroup,
+		AggregateID:   uuid.New(),
+		Payload:       mustEnvelopePayload(t, "nonretryable"),
+	}
+	repo := &fakeRepo{events: []models.OutboxEvent{event}}
+	registry := &fakeRegistry{err: registry.NewNonRetryableError(errors.New("invalid payload"))}
+	dlqRepo := &fakeDLQRepo{}
+	service := newTestService(t, repo, &fakePublisher{}, registry, dlqRepo, nil)
+
+	processed, err := service.processBatch(context.Background())
+	if err != nil {
+		t.Fatalf("process batch returned error: %v", err)
+	}
+	if !processed {
+		t.Fatalf("expected batch to report processed")
+	}
+	if got := len(dlqRepo.entries); got != 1 {
+		t.Fatalf("expected dlq entry, got %d", got)
+	}
+	entry := dlqRepo.entries[0]
+	if entry.EventID != event.ID {
+		t.Fatalf("dlq event_id mismatch: %s", entry.EventID)
+	}
+	if entry.Payload == nil || !bytes.Equal(entry.Payload, event.Payload) {
+		t.Fatalf("dlq payload mismatch")
+	}
+	if entry.ErrorReason != enums.OutboxDLQReasonNonRetryable {
+		t.Fatalf("unexpected error reason: %s", entry.ErrorReason)
+	}
+}
+
+func TestServiceProcessBatchWritesDLQOnMaxAttempts(t *testing.T) {
+	event := models.OutboxEvent{
+		ID:            uuid.New(),
+		EventType:     enums.EventOrderCreated,
+		AggregateType: enums.AggregateCheckoutGroup,
+		AggregateID:   uuid.New(),
+		Payload:       mustEnvelopePayload(t, "max-attempts"),
+		AttemptCount:  1,
+	}
+	repo := &fakeRepo{events: []models.OutboxEvent{event}}
+	pub := &fakePublisher{
+		results: []publishResult{
+			fakePublishResult{err: errors.New("transient")},
 		},
+	}
+	resolved := &registry.ResolvedEvent{
+		Descriptor: registry.EventDescriptor{
+			Topic:         "orders-topic",
+			AggregateType: enums.AggregateCheckoutGroup,
+		},
+		Envelope: outbox.PayloadEnvelope{
+			EventID:    event.ID.String(),
+			OccurredAt: time.Now(),
+		},
+		Payload: &payloads.OrderCreatedEvent{},
+	}
+	registry := &fakeRegistry{resolved: resolved}
+	dlqRepo := &fakeDLQRepo{}
+	service := newTestService(t, repo, pub, registry, dlqRepo, &config.OutboxConfig{
+		BatchSize:      1,
+		PollIntervalMS: 100,
+		MaxAttempts:    2,
+	})
+
+	processed, err := service.processBatch(context.Background())
+	if err != nil {
+		t.Fatalf("process batch returned error: %v", err)
+	}
+	if !processed {
+		t.Fatalf("expected batch to report processed")
+	}
+	if got := len(dlqRepo.entries); got != 1 {
+		t.Fatalf("expected dlq entry, got %d", got)
+	}
+	entry := dlqRepo.entries[0]
+	if entry.EventID != event.ID {
+		t.Fatalf("dlq event_id mismatch: %s", entry.EventID)
+	}
+	if entry.ErrorReason != enums.OutboxDLQReasonMaxAttempts {
+		t.Fatalf("unexpected error reason: %s", entry.ErrorReason)
+	}
+}
+
+func newTestService(t *testing.T, repo outboxRepository, pub publisher, registry registryResolver, dlq dlqRepository, outboxCfgOverride *config.OutboxConfig) *Service {
+	outboxCfg := config.OutboxConfig{
+		BatchSize:      2,
+		PollIntervalMS: 100,
+		MaxAttempts:    5,
+	}
+	if outboxCfgOverride != nil {
+		outboxCfg = *outboxCfgOverride
+	}
+	cfg := &config.Config{
+		Outbox: outboxCfg,
 	}
 	logg := logger.New(logger.Options{
 		ServiceName: "outbox-publisher-test",
@@ -100,7 +194,7 @@ func newTestService(t *testing.T, repo outboxRepository, pub publisher, registry
 		Repository:       repo,
 		Registry:         registry,
 		PublisherFactory: func(_ string) publisher { return pub },
-		DLQRepository:    &fakeDLQRepo{},
+		DLQRepository:    dlq,
 	})
 	if err != nil {
 		t.Fatalf("failed to construct service: %v", err)
