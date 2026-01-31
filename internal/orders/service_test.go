@@ -11,6 +11,7 @@ import (
 	"github.com/angelmondragon/packfinderz-backend/pkg/enums"
 	pkgerrors "github.com/angelmondragon/packfinderz-backend/pkg/errors"
 	"github.com/angelmondragon/packfinderz-backend/pkg/outbox"
+	"github.com/angelmondragon/packfinderz-backend/pkg/outbox/payloads"
 	"github.com/angelmondragon/packfinderz-backend/pkg/pagination"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
@@ -326,7 +327,7 @@ func TestVendorDecision(t *testing.T) {
 
 	err = svc.VendorDecision(context.Background(), VendorDecisionInput{
 		OrderID:      orderID,
-		Decision:     VendorOrderDecisionAccept,
+		Decision:     enums.VendorOrderDecisionAccept,
 		ActorUserID:  uuid.New(),
 		ActorStoreID: storeID,
 		ActorRole:    "owner",
@@ -359,7 +360,7 @@ func TestVendorDecisionIdempotent(t *testing.T) {
 	svc, _ := newTestOrdersService(repo, stubTxRunner{}, outbox, &stubInventoryReleaser{}, reserver)
 	err := svc.VendorDecision(context.Background(), VendorDecisionInput{
 		OrderID:      orderID,
-		Decision:     VendorOrderDecisionAccept,
+		Decision:     enums.VendorOrderDecisionAccept,
 		ActorUserID:  uuid.New(),
 		ActorStoreID: storeID,
 	})
@@ -386,7 +387,7 @@ func TestVendorDecisionInvalidState(t *testing.T) {
 	svc, _ := newTestOrdersService(repo, stubTxRunner{}, outbox, &stubInventoryReleaser{}, reserver)
 	err := svc.VendorDecision(context.Background(), VendorDecisionInput{
 		OrderID:      orderID,
-		Decision:     VendorOrderDecisionReject,
+		Decision:     enums.VendorOrderDecisionReject,
 		ActorUserID:  uuid.New(),
 		ActorStoreID: storeID,
 	})
@@ -637,7 +638,7 @@ func TestLineItemDecisionFulfillEmitsEvent(t *testing.T) {
 	if !outbox.called {
 		t.Fatal("expected outbox event")
 	}
-	event, ok := outbox.event.Data.(OrderFulfilledEvent)
+	event, ok := outbox.event.Data.(payloads.OrderFulfilledEvent)
 	if !ok {
 		t.Fatalf("unexpected event payload %T", outbox.event.Data)
 	}
@@ -718,7 +719,7 @@ func TestLineItemDecisionRejectReleasesInventory(t *testing.T) {
 	if !outbox.called {
 		t.Fatal("expected outbox event")
 	}
-	event, ok := outbox.event.Data.(OrderFulfilledEvent)
+	event, ok := outbox.event.Data.(payloads.OrderFulfilledEvent)
 	if !ok {
 		t.Fatalf("unexpected event payload %T", outbox.event.Data)
 	}
@@ -1113,7 +1114,7 @@ func TestService_ConfirmPayoutFinalizesOrder(t *testing.T) {
 	if !outbox.called || outbox.event.EventType != enums.EventOrderPaid {
 		t.Fatalf("expected order_paid event, got %v", outbox.event.EventType)
 	}
-	event, ok := outbox.event.Data.(OrderPaidEvent)
+	event, ok := outbox.event.Data.(payloads.OrderPaidEvent)
 	if !ok {
 		t.Fatalf("unexpected event payload %T", outbox.event.Data)
 	}

@@ -13,6 +13,7 @@ import (
 	"github.com/angelmondragon/packfinderz-backend/pkg/enums"
 	pkgerrors "github.com/angelmondragon/packfinderz-backend/pkg/errors"
 	"github.com/angelmondragon/packfinderz-backend/pkg/outbox"
+	"github.com/angelmondragon/packfinderz-backend/pkg/outbox/payloads"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
@@ -262,18 +263,13 @@ func (s *service) emitOrderCreatedEvent(ctx context.Context, tx *gorm.DB, checko
 		EventType:     enums.EventOrderCreated,
 		AggregateType: enums.AggregateCheckoutGroup,
 		AggregateID:   checkoutGroupID,
-		Data: OrderCreatedEvent{
+		Data: payloads.OrderCreatedEvent{
 			CheckoutGroupID: checkoutGroupID,
 			VendorOrderIDs:  append([]uuid.UUID{}, vendorOrderIDs...),
 		},
 		Version: 1,
 	}
 	return s.outbox.Emit(ctx, tx, event)
-}
-
-type OrderCreatedEvent struct {
-	CheckoutGroupID uuid.UUID   `json:"checkout_group_id"`
-	VendorOrderIDs  []uuid.UUID `json:"vendor_order_ids"`
 }
 
 func buildLineItem(orderID uuid.UUID, cartItem models.CartItem, product *models.Product, reservation reservation.InventoryReservationResult) models.OrderLineItem {

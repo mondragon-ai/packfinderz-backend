@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
@@ -14,6 +13,7 @@ import (
 	"github.com/angelmondragon/packfinderz-backend/pkg/db/models"
 	"github.com/angelmondragon/packfinderz-backend/pkg/logger"
 	"github.com/angelmondragon/packfinderz-backend/pkg/outbox"
+	"github.com/angelmondragon/packfinderz-backend/pkg/outbox/registry"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
@@ -36,13 +36,21 @@ type dbClient interface {
 type pubSubClient interface {
 	Ping(context.Context) error
 	DomainPublisher() *gcppubsub.Publisher
+	Publisher(name string) *gcppubsub.Publisher
 }
 
 type outboxRepository interface {
 	FetchUnpublishedForPublish(tx *gorm.DB, limit, maxAttempts int) ([]models.OutboxEvent, error)
 	MarkPublishedTx(tx *gorm.DB, id uuid.UUID) error
 	MarkFailedTx(tx *gorm.DB, id uuid.UUID, err error) error
+	MarkTerminalTx(tx *gorm.DB, id uuid.UUID, err error, terminalAttempts int) error
 }
+
+type registryResolver interface {
+	Resolve(models.OutboxEvent) (*registry.ResolvedEvent, error)
+}
+
+type publisherFactory func(topic string) publisher
 
 type publisher interface {
 	Publish(context.Context, *gcppubsub.Message) publishResult
@@ -53,24 +61,26 @@ type publishResult interface {
 }
 
 type ServiceParams struct {
-	Config     *config.Config
-	Logger     *logger.Logger
-	DB         dbClient
-	PubSub     pubSubClient
-	Repository outboxRepository
-	Publisher  publisher
+	Config           *config.Config
+	Logger           *logger.Logger
+	DB               dbClient
+	PubSub           pubSubClient
+	Repository       outboxRepository
+	Registry         registryResolver
+	PublisherFactory publisherFactory
 }
 
 type Service struct {
-	cfg          *config.Config
-	logg         *logger.Logger
-	db           dbClient
-	repo         outboxRepository
-	pubsub       pubSubClient
-	publisher    publisher
-	batchSize    int
-	maxAttempts  int
-	pollInterval time.Duration
+	cfg              *config.Config
+	logg             *logger.Logger
+	db               dbClient
+	repo             outboxRepository
+	pubsub           pubSubClient
+	registry         registryResolver
+	publisherFactory publisherFactory
+	batchSize        int
+	maxAttempts      int
+	pollInterval     time.Duration
 }
 
 func NewService(params ServiceParams) (*Service, error) {
@@ -89,16 +99,19 @@ func NewService(params ServiceParams) (*Service, error) {
 	if params.Repository == nil {
 		return nil, errors.New("outbox repository is required")
 	}
+	if params.Registry == nil {
+		return nil, errors.New("event registry is required")
+	}
 
-	var publisher publisher
-	if params.Publisher != nil {
-		publisher = params.Publisher
-	} else {
-		domainPublisher := params.PubSub.DomainPublisher()
-		if domainPublisher == nil {
-			return nil, errors.New("domain pubsub topic is not configured")
+	factory := params.PublisherFactory
+	if factory == nil {
+		factory = func(topic string) publisher {
+			publisher := params.PubSub.Publisher(topic)
+			if publisher == nil {
+				return nil
+			}
+			return newGCPPubPublisher(publisher)
 		}
-		publisher = newGCPPubPublisher(domainPublisher)
 	}
 
 	batch := params.Config.Outbox.BatchSize
@@ -115,15 +128,16 @@ func NewService(params ServiceParams) (*Service, error) {
 	}
 
 	return &Service{
-		cfg:          params.Config,
-		logg:         params.Logger,
-		db:           params.DB,
-		repo:         params.Repository,
-		pubsub:       params.PubSub,
-		publisher:    publisher,
-		batchSize:    batch,
-		maxAttempts:  maxAttempts,
-		pollInterval: time.Duration(pollMs) * time.Millisecond,
+		cfg:              params.Config,
+		logg:             params.Logger,
+		db:               params.DB,
+		repo:             params.Repository,
+		pubsub:           params.PubSub,
+		registry:         params.Registry,
+		publisherFactory: factory,
+		batchSize:        batch,
+		maxAttempts:      maxAttempts,
+		pollInterval:     time.Duration(pollMs) * time.Millisecond,
 	}, nil
 }
 
@@ -205,9 +219,23 @@ func (s *Service) processBatch(ctx context.Context) (bool, error) {
 
 		processed = true
 		for _, event := range events {
-			envelope, err := s.publishRow(ctx, event)
-			fields := s.eventFields(event, envelope)
+			resolved, err := s.registry.Resolve(event)
 			if err != nil {
+				if markErr := s.handleTerminal(ctx, tx, event, err, "", nil); markErr != nil {
+					return markErr
+				}
+				continue
+			}
+
+			fields := s.eventFields(event, resolved.Envelope, resolved.Descriptor.Topic)
+			if err := s.publishResolved(ctx, event, resolved); err != nil {
+				var nonRetry registry.NonRetryableError
+				if errors.As(err, &nonRetry) {
+					if markErr := s.handleTerminal(ctx, tx, event, err, resolved.Descriptor.Topic, fields); markErr != nil {
+						return markErr
+					}
+					continue
+				}
 				fields["attempt_count"] = event.AttemptCount + 1
 				ctxWithFields := s.logg.WithFields(ctx, fields)
 				ctxWithFields = s.logg.WithField(ctxWithFields, "error", err.Error())
@@ -228,16 +256,30 @@ func (s *Service) processBatch(ctx context.Context) (bool, error) {
 	return processed, err
 }
 
-func (s *Service) publishRow(ctx context.Context, event models.OutboxEvent) (outbox.PayloadEnvelope, error) {
-	var envelope outbox.PayloadEnvelope
-	if err := json.Unmarshal(event.Payload, &envelope); err != nil {
-		return envelope, fmt.Errorf("decode envelope: %w", err)
+func (s *Service) handleTerminal(ctx context.Context, tx *gorm.DB, event models.OutboxEvent, err error, topic string, fields map[string]any) error {
+	if fields == nil {
+		fields = s.eventFields(event, outbox.PayloadEnvelope{}, topic)
+	}
+	ctxWithFields := s.logg.WithFields(ctx, fields)
+	ctxWithFields = s.logg.WithField(ctxWithFields, "error", err.Error())
+	s.logg.Warn(ctxWithFields, "outbox event will not be retried")
+	if markErr := s.repo.MarkTerminalTx(tx, event.ID, err, s.maxAttempts); markErr != nil {
+		return fmt.Errorf("mark terminal %s: %w", event.ID, markErr)
+	}
+	return nil
+}
+
+func (s *Service) publishResolved(ctx context.Context, event models.OutboxEvent, resolved *registry.ResolvedEvent) error {
+	topic := resolved.Descriptor.Topic
+	pub := s.publisherFactory(topic)
+	if pub == nil {
+		return registry.NewNonRetryableError(fmt.Errorf("publisher not configured for topic %s", topic))
 	}
 
 	msg := &gcppubsub.Message{
 		Data: event.Payload,
 		Attributes: map[string]string{
-			"event_id":       envelope.EventID,
+			"event_id":       resolved.Envelope.EventID,
 			"event_type":     string(event.EventType),
 			"aggregate_type": string(event.AggregateType),
 			"aggregate_id":   event.AggregateID.String(),
@@ -247,20 +289,17 @@ func (s *Service) publishRow(ctx context.Context, event models.OutboxEvent) (out
 
 	publishCtx, cancel := context.WithTimeout(ctx, defaultPublishTimeout)
 	defer cancel()
-	if s.publisher == nil {
-		return envelope, errors.New("publisher is not configured")
-	}
-	result := s.publisher.Publish(publishCtx, msg)
+	result := pub.Publish(publishCtx, msg)
 	if result == nil {
-		return envelope, errors.New("publisher did not return a result")
+		return registry.NewNonRetryableError(fmt.Errorf("publisher returned nil for topic %s", topic))
 	}
 	if _, err := result.Get(publishCtx); err != nil {
-		return envelope, fmt.Errorf("publish to topic: %w", err)
+		return err
 	}
-	return envelope, nil
+	return nil
 }
 
-func (s *Service) eventFields(event models.OutboxEvent, envelope outbox.PayloadEnvelope) map[string]any {
+func (s *Service) eventFields(event models.OutboxEvent, envelope outbox.PayloadEnvelope, topic string) map[string]any {
 	fields := map[string]any{
 		"outbox_id":      event.ID.String(),
 		"event_type":     event.EventType,
@@ -272,6 +311,9 @@ func (s *Service) eventFields(event models.OutboxEvent, envelope outbox.PayloadE
 	if envelope.EventID != "" {
 		fields["event_id"] = envelope.EventID
 		fields["occurred_at"] = envelope.OccurredAt.Format(time.RFC3339Nano)
+	}
+	if topic != "" {
+		fields["topic"] = topic
 	}
 	if event.LastError != nil {
 		fields["last_error"] = *event.LastError

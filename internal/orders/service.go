@@ -11,6 +11,7 @@ import (
 	"github.com/angelmondragon/packfinderz-backend/pkg/enums"
 	pkgerrors "github.com/angelmondragon/packfinderz-backend/pkg/errors"
 	"github.com/angelmondragon/packfinderz-backend/pkg/outbox"
+	"github.com/angelmondragon/packfinderz-backend/pkg/outbox/payloads"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
@@ -53,18 +54,10 @@ type service struct {
 	ledger    ledger.Service
 }
 
-// VendorOrderDecision represents the high-level decision a vendor can take.
-type VendorOrderDecision string
-
-const (
-	VendorOrderDecisionAccept VendorOrderDecision = "accept"
-	VendorOrderDecisionReject VendorOrderDecision = "reject"
-)
-
 // VendorDecisionInput captures the data required to change an order's decision state.
 type VendorDecisionInput struct {
 	OrderID      uuid.UUID
-	Decision     VendorOrderDecision
+	Decision     enums.VendorOrderDecision
 	ActorUserID  uuid.UUID
 	ActorStoreID uuid.UUID
 	ActorRole    string
@@ -135,64 +128,6 @@ type ConfirmPayoutInput struct {
 	ActorUserID  uuid.UUID
 	ActorStoreID uuid.UUID
 	ActorRole    string
-}
-
-// OrderDecisionEvent is emitted when a vendor decides an order.
-type OrderDecisionEvent struct {
-	OrderID         uuid.UUID               `json:"order_id"`
-	CheckoutGroupID uuid.UUID               `json:"checkout_group_id"`
-	BuyerStoreID    uuid.UUID               `json:"buyer_store_id"`
-	VendorStoreID   uuid.UUID               `json:"vendor_store_id"`
-	Decision        VendorOrderDecision     `json:"decision"`
-	Status          enums.VendorOrderStatus `json:"status"`
-}
-
-// OrderFulfilledEvent surfaces the aggregated fields when fulfillment completes.
-type OrderFulfilledEvent struct {
-	OrderID            uuid.UUID                          `json:"order_id"`
-	CheckoutGroupID    uuid.UUID                          `json:"checkout_group_id"`
-	BuyerStoreID       uuid.UUID                          `json:"buyer_store_id"`
-	VendorStoreID      uuid.UUID                          `json:"vendor_store_id"`
-	FulfillmentStatus  enums.VendorOrderFulfillmentStatus `json:"fulfillment_status"`
-	ShippingStatus     enums.VendorOrderShippingStatus    `json:"shipping_status"`
-	RejectedItemCount  int                                `json:"rejected_item_count"`
-	ResolvedLineItemID uuid.UUID                          `json:"resolved_line_item_id"`
-}
-
-// OrderCanceledEvent is emitted whenever a buyer cancels a pre-transit order.
-type OrderCanceledEvent struct {
-	OrderID         uuid.UUID `json:"order_id"`
-	CheckoutGroupID uuid.UUID `json:"checkout_group_id"`
-	BuyerStoreID    uuid.UUID `json:"buyer_store_id"`
-	VendorStoreID   uuid.UUID `json:"vendor_store_id"`
-}
-
-// NotificationRequestedEvent tells downstream systems to alert a vendor.
-type NotificationRequestedEvent struct {
-	OrderID         uuid.UUID `json:"order_id"`
-	CheckoutGroupID uuid.UUID `json:"checkout_group_id"`
-	BuyerStoreID    uuid.UUID `json:"buyer_store_id"`
-	VendorStoreID   uuid.UUID `json:"vendor_store_id"`
-	Type            string    `json:"type"`
-}
-
-// OrderRetriedEvent reports that an expired order was replayed.
-type OrderRetriedEvent struct {
-	OriginalOrderID uuid.UUID `json:"original_order_id"`
-	OrderID         uuid.UUID `json:"order_id"`
-	CheckoutGroupID uuid.UUID `json:"checkout_group_id"`
-	BuyerStoreID    uuid.UUID `json:"buyer_store_id"`
-	VendorStoreID   uuid.UUID `json:"vendor_store_id"`
-}
-
-// OrderPaidEvent is emitted when admin confirms payout and the vendor has been paid.
-type OrderPaidEvent struct {
-	OrderID         uuid.UUID `json:"order_id"`
-	BuyerStoreID    uuid.UUID `json:"buyer_store_id"`
-	VendorStoreID   uuid.UUID `json:"vendor_store_id"`
-	PaymentIntentID uuid.UUID `json:"payment_intent_id"`
-	AmountCents     int       `json:"amount_cents"`
-	VendorPaidAt    time.Time `json:"vendor_paid_at"`
 }
 
 // NewService builds a vendor order service with the required dependencies.
@@ -271,7 +206,7 @@ func (s *service) VendorDecision(ctx context.Context, input VendorDecisionInput)
 			AggregateID:   order.ID,
 			Version:       1,
 			Actor:         buildActor(input.ActorUserID, input.ActorStoreID, input.ActorRole),
-			Data: OrderDecisionEvent{
+			Data: payloads.OrderDecisionEvent{
 				OrderID:         order.ID,
 				CheckoutGroupID: order.CheckoutGroupID,
 				BuyerStoreID:    order.BuyerStoreID,
@@ -410,7 +345,7 @@ func (s *service) LineItemDecision(ctx context.Context, input LineItemDecisionIn
 				AggregateID:   order.ID,
 				Version:       1,
 				Actor:         buildActor(input.ActorUserID, input.ActorStoreID, input.ActorRole),
-				Data: OrderFulfilledEvent{
+				Data: payloads.OrderFulfilledEvent{
 					OrderID:            order.ID,
 					CheckoutGroupID:    order.CheckoutGroupID,
 					BuyerStoreID:       order.BuyerStoreID,
@@ -489,7 +424,7 @@ func (s *service) CancelOrder(ctx context.Context, input BuyerCancelInput) error
 			AggregateID:   order.ID,
 			Version:       1,
 			Actor:         buildActor(input.ActorUserID, input.ActorStoreID, input.ActorRole),
-			Data: OrderCanceledEvent{
+			Data: payloads.OrderCanceledEvent{
 				OrderID:         order.ID,
 				CheckoutGroupID: order.CheckoutGroupID,
 				BuyerStoreID:    order.BuyerStoreID,
@@ -533,7 +468,7 @@ func (s *service) NudgeVendor(ctx context.Context, input BuyerNudgeInput) error 
 			AggregateID:   order.ID,
 			Version:       1,
 			Actor:         buildActor(input.ActorUserID, input.ActorStoreID, input.ActorRole),
-			Data: NotificationRequestedEvent{
+			Data: payloads.NotificationRequestedEvent{
 				OrderID:         order.ID,
 				CheckoutGroupID: order.CheckoutGroupID,
 				BuyerStoreID:    order.BuyerStoreID,
@@ -667,7 +602,7 @@ func (s *service) RetryOrder(ctx context.Context, input BuyerRetryInput) (*Buyer
 			AggregateID:   createdOrder.ID,
 			Version:       1,
 			Actor:         buildActor(input.ActorUserID, input.ActorStoreID, input.ActorRole),
-			Data: OrderRetriedEvent{
+			Data: payloads.OrderRetriedEvent{
 				OriginalOrderID: order.ID,
 				OrderID:         createdOrder.ID,
 				CheckoutGroupID: createdOrder.CheckoutGroupID,
@@ -806,11 +741,11 @@ func (s *service) AgentDeliver(ctx context.Context, input AgentDeliverInput) err
 	})
 }
 
-func mapDecisionToStatus(decision VendorOrderDecision) (enums.VendorOrderStatus, error) {
+func mapDecisionToStatus(decision enums.VendorOrderDecision) (enums.VendorOrderStatus, error) {
 	switch decision {
-	case VendorOrderDecisionAccept:
+	case enums.VendorOrderDecisionAccept:
 		return enums.VendorOrderStatusAccepted, nil
-	case VendorOrderDecisionReject:
+	case enums.VendorOrderDecisionReject:
 		return enums.VendorOrderStatusRejected, nil
 	default:
 		return "", pkgerrors.New(pkgerrors.CodeValidation, "invalid decision")
@@ -935,7 +870,7 @@ func (s *service) ConfirmPayout(ctx context.Context, input ConfirmPayoutInput) e
 			AggregateID:   input.OrderID,
 			Version:       1,
 			Actor:         buildActor(input.ActorUserID, input.ActorStoreID, input.ActorRole),
-			Data: OrderPaidEvent{
+			Data: payloads.OrderPaidEvent{
 				OrderID:         input.OrderID,
 				BuyerStoreID:    detail.BuyerStore.ID,
 				VendorStoreID:   detail.VendorStore.ID,

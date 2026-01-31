@@ -14,6 +14,7 @@ import (
 	"github.com/angelmondragon/packfinderz-backend/pkg/enums"
 	pkgerrors "github.com/angelmondragon/packfinderz-backend/pkg/errors"
 	"github.com/angelmondragon/packfinderz-backend/pkg/outbox"
+	"github.com/angelmondragon/packfinderz-backend/pkg/outbox/payloads"
 	"github.com/angelmondragon/packfinderz-backend/pkg/pagination"
 	"github.com/angelmondragon/packfinderz-backend/pkg/types"
 	"github.com/google/uuid"
@@ -132,7 +133,7 @@ func TestServiceExecuteSuccess(t *testing.T) {
 	if event.AggregateID != group.ID {
 		t.Fatalf("unexpected aggregate id: %s", event.AggregateID)
 	}
-	payload, ok := event.Data.(OrderCreatedEvent)
+	payload, ok := event.Data.(payloads.OrderCreatedEvent)
 	if !ok {
 		t.Fatalf("event payload type mismatch")
 	}

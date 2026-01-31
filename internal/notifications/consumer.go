@@ -12,6 +12,7 @@ import (
 	"github.com/angelmondragon/packfinderz-backend/pkg/logger"
 	"github.com/angelmondragon/packfinderz-backend/pkg/outbox"
 	"github.com/angelmondragon/packfinderz-backend/pkg/outbox/idempotency"
+	"github.com/angelmondragon/packfinderz-backend/pkg/outbox/payloads"
 	"github.com/google/uuid"
 )
 
@@ -103,7 +104,7 @@ func (c *Consumer) process(ctx context.Context, msg *pubsub.Message) processResu
 		return processResult{ack: true}
 	}
 
-	var payload licenseStatusChangedPayload
+	var payload payloads.LicenseStatusChangedEvent
 	if err := json.Unmarshal(envelope.Data, &payload); err != nil {
 		c.logg.Error(logCtx, "failed to parse payload", err)
 		_ = c.idempotency.Delete(ctx, licenseNotificationConsumer, eventID)
@@ -125,7 +126,7 @@ func (c *Consumer) process(ctx context.Context, msg *pubsub.Message) processResu
 	return processResult{ack: true}
 }
 
-func (c *Consumer) handlePayload(ctx context.Context, payload licenseStatusChangedPayload, logCtx context.Context) error {
+func (c *Consumer) handlePayload(ctx context.Context, payload payloads.LicenseStatusChangedEvent, logCtx context.Context) error {
 	switch payload.Status {
 	case enums.LicenseStatusPending:
 		return c.createAdminNotification(ctx, payload, logCtx)
@@ -137,7 +138,7 @@ func (c *Consumer) handlePayload(ctx context.Context, payload licenseStatusChang
 	}
 }
 
-func (c *Consumer) createStoreNotification(ctx context.Context, payload licenseStatusChangedPayload, logCtx context.Context) error {
+func (c *Consumer) createStoreNotification(ctx context.Context, payload payloads.LicenseStatusChangedEvent, logCtx context.Context) error {
 	if payload.StoreID == uuid.Nil {
 		return fmt.Errorf("store id missing")
 	}
@@ -166,7 +167,7 @@ func (c *Consumer) createStoreNotification(ctx context.Context, payload licenseS
 	return nil
 }
 
-func (c *Consumer) createAdminNotification(ctx context.Context, payload licenseStatusChangedPayload, logCtx context.Context) error {
+func (c *Consumer) createAdminNotification(ctx context.Context, payload payloads.LicenseStatusChangedEvent, logCtx context.Context) error {
 	if payload.StoreID == uuid.Nil {
 		return fmt.Errorf("store id missing")
 	}
@@ -188,11 +189,4 @@ func (c *Consumer) createAdminNotification(ctx context.Context, payload licenseS
 
 func stringPtr(value string) *string {
 	return &value
-}
-
-type licenseStatusChangedPayload struct {
-	LicenseID uuid.UUID           `json:"licenseId"`
-	StoreID   uuid.UUID           `json:"storeId"`
-	Status    enums.LicenseStatus `json:"status"`
-	Reason    string              `json:"reason,omitempty"`
 }

@@ -478,12 +478,12 @@ type vendorOrderDecisionRequest struct {
 	Decision string `json:"decision" validate:"required"`
 }
 
-func parseVendorOrderDecision(raw string) (internalorders.VendorOrderDecision, error) {
+func parseVendorOrderDecision(raw string) (enums.VendorOrderDecision, error) {
 	switch strings.ToLower(strings.TrimSpace(raw)) {
 	case "accept":
-		return internalorders.VendorOrderDecisionAccept, nil
+		return enums.VendorOrderDecisionAccept, nil
 	case "reject":
-		return internalorders.VendorOrderDecisionReject, nil
+		return enums.VendorOrderDecisionReject, nil
 	default:
 		return "", pkgerrors.New(pkgerrors.CodeValidation, "decision must be accept or reject")
 	}

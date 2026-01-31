@@ -136,6 +136,10 @@ sequenceDiagram
   end
 ```
 
+### Event registry validation
+
+The publisher no longer guesses topics or payload contracts at runtime. Before constructing the Pub/Sub message it consults `pkg/outbox/registry`, which defines a single topic, the expected `aggregate_type`, and the typed payload struct (stored under `pkg/outbox/payloads`) for every `event_type`. The registry decodes the stored `payload_json`, ensures the payload is not `null`, and reinforces the envelope invariants (`aggregate_id` present, matching aggregate). Only then will the dispatcher fetch the publisher for the resolved topic and emit the unchanged row bytes to Pub/Sub. Unknown event types or invalid payloads become non-retryable failures (the future DLQ plumbing will capture them) so the job marks the row and moves on, keeping every dispatch scoped to the authoritative outbox row.
+
 ---
 
 ## Configuration knobs

@@ -11,6 +11,7 @@ import (
 	"github.com/angelmondragon/packfinderz-backend/pkg/enums"
 	pkgerrors "github.com/angelmondragon/packfinderz-backend/pkg/errors"
 	"github.com/angelmondragon/packfinderz-backend/pkg/outbox"
+	"github.com/angelmondragon/packfinderz-backend/pkg/outbox/payloads"
 	pkgpagination "github.com/angelmondragon/packfinderz-backend/pkg/pagination"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
@@ -340,7 +341,7 @@ func (s *service) emitLicenseStatusEvent(ctx context.Context, tx *gorm.DB, licen
 		return fmt.Errorf("license is required for outbox event")
 	}
 	trimmedReason := strings.TrimSpace(reason)
-	payload := LicenseStatusChangedEvent{
+	payload := payloads.LicenseStatusChangedEvent{
 		LicenseID: license.ID,
 		StoreID:   license.StoreID,
 		Status:    status,
@@ -374,14 +375,6 @@ func isAllowedLicenseMime(mimeType string) bool {
 
 func isDeletableLicenseStatus(status enums.LicenseStatus) bool {
 	return status == enums.LicenseStatusExpired || status == enums.LicenseStatusRejected
-}
-
-type LicenseStatusChangedEvent struct {
-	LicenseID   uuid.UUID           `json:"licenseId"`
-	StoreID     uuid.UUID           `json:"storeId"`
-	Status      enums.LicenseStatus `json:"status"`
-	Reason      string              `json:"reason,omitempty"`
-	WarningType string              `json:"warningType,omitempty"`
 }
 
 func (s *service) reconcileStoreKYC(ctx context.Context, tx *gorm.DB, storeID uuid.UUID) error {

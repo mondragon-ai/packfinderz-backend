@@ -14,6 +14,8 @@ import (
 	"github.com/angelmondragon/packfinderz-backend/pkg/enums"
 	"github.com/angelmondragon/packfinderz-backend/pkg/logger"
 	"github.com/angelmondragon/packfinderz-backend/pkg/outbox"
+	"github.com/angelmondragon/packfinderz-backend/pkg/outbox/payloads"
+	"github.com/angelmondragon/packfinderz-backend/pkg/outbox/registry"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
@@ -37,13 +39,25 @@ func TestServiceProcessBatchContinuesAfterFailure(t *testing.T) {
 			},
 		},
 	}
-	publisher := &fakePublisher{
+	pub := &fakePublisher{
 		results: []publishResult{
 			fakePublishResult{err: errors.New("transient")},
 			fakePublishResult{},
 		},
 	}
-	service := newTestService(t, repo, publisher)
+	resolved := &registry.ResolvedEvent{
+		Descriptor: registry.EventDescriptor{
+			Topic:         "orders-topic",
+			AggregateType: enums.AggregateCheckoutGroup,
+		},
+		Envelope: outbox.PayloadEnvelope{
+			EventID:    uuid.NewString(),
+			OccurredAt: time.Now(),
+		},
+		Payload: &payloads.OrderCreatedEvent{},
+	}
+	eventRegistry := &fakeRegistry{resolved: resolved}
+	service := newTestService(t, repo, pub, eventRegistry)
 
 	processed, err := service.processBatch(context.Background())
 	if err != nil {
@@ -66,7 +80,7 @@ func TestServiceProcessBatchContinuesAfterFailure(t *testing.T) {
 	}
 }
 
-func newTestService(t *testing.T, repo outboxRepository, publisher publisher) *Service {
+func newTestService(t *testing.T, repo outboxRepository, pub publisher, registry registryResolver) *Service {
 	cfg := &config.Config{
 		Outbox: config.OutboxConfig{
 			BatchSize:      2,
@@ -79,12 +93,13 @@ func newTestService(t *testing.T, repo outboxRepository, publisher publisher) *S
 		Output:      io.Discard,
 	})
 	service, err := NewService(ServiceParams{
-		Config:     cfg,
-		Logger:     logg,
-		DB:         &fakeDB{},
-		PubSub:     &fakePubSubClient{},
-		Repository: repo,
-		Publisher:  publisher,
+		Config:           cfg,
+		Logger:           logg,
+		DB:               &fakeDB{},
+		PubSub:           &fakePubSubClient{},
+		Repository:       repo,
+		Registry:         registry,
+		PublisherFactory: func(_ string) publisher { return pub },
 	})
 	if err != nil {
 		t.Fatalf("failed to construct service: %v", err)
@@ -127,6 +142,11 @@ func (f *fakeRepo) MarkFailedTx(tx *gorm.DB, id uuid.UUID, err error) error {
 	return nil
 }
 
+func (f *fakeRepo) MarkTerminalTx(tx *gorm.DB, id uuid.UUID, err error, terminalAttempts int) error {
+	f.failed = append(f.failed, id)
+	return nil
+}
+
 type fakeDB struct{}
 
 func (f *fakeDB) Ping(context.Context) error {
@@ -144,6 +164,10 @@ func (f *fakePubSubClient) Ping(context.Context) error {
 }
 
 func (f *fakePubSubClient) DomainPublisher() *gcppubsub.Publisher {
+	return nil
+}
+
+func (f *fakePubSubClient) Publisher(name string) *gcppubsub.Publisher {
 	return nil
 }
 
@@ -166,4 +190,20 @@ type fakePublishResult struct {
 
 func (f fakePublishResult) Get(context.Context) (string, error) {
 	return "", f.err
+}
+
+type fakeRegistry struct {
+	resolved *registry.ResolvedEvent
+	err      error
+}
+
+func (f *fakeRegistry) Resolve(event models.OutboxEvent) (*registry.ResolvedEvent, error) {
+	if f.resolved == nil {
+		return nil, f.err
+	}
+	resolved := *f.resolved
+	resolved.Descriptor.AggregateType = event.AggregateType
+	resolved.Envelope.EventID = event.ID.String()
+	resolved.Envelope.OccurredAt = time.Now()
+	return &resolved, f.err
 }

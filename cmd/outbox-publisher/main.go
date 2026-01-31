@@ -13,6 +13,7 @@ import (
 	"github.com/angelmondragon/packfinderz-backend/pkg/logger"
 	"github.com/angelmondragon/packfinderz-backend/pkg/migrate"
 	"github.com/angelmondragon/packfinderz-backend/pkg/outbox"
+	"github.com/angelmondragon/packfinderz-backend/pkg/outbox/registry"
 	"github.com/angelmondragon/packfinderz-backend/pkg/pubsub"
 )
 
@@ -65,12 +66,18 @@ func main() {
 	}()
 
 	repo := outbox.NewRepository(dbClient.DB())
+	eventRegistry, err := registry.NewEventRegistry(cfg.PubSub)
+	if err != nil {
+		logg.Error(context.Background(), "failed to build event registry", err)
+		os.Exit(1)
+	}
 	service, err := NewService(ServiceParams{
 		Config:     cfg,
 		Logger:     logg,
 		DB:         dbClient,
 		PubSub:     pubsubClient,
 		Repository: repo,
+		Registry:   eventRegistry,
 	})
 	if err != nil {
 		logg.Error(context.Background(), "failed to create outbox publisher", err)
