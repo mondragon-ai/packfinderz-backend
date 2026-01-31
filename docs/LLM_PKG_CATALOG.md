@@ -36,6 +36,7 @@
 - `ActorRef` + `PayloadEnvelope` describe stored envelopes that wrap `DomainEvent.Data` with version, event ID, actor, and timestamps before persistence (pkg/outbox/envelope.go:9-21).
 - `DomainEvent` carries aggregate/type/actor/data metadata and `Service.Emit(ctx, tx, event)` marshals it into `OutboxEvent` rows while logging the queued event (pkg/outbox/service.go:1-98).
 - `Repository` supports `Insert`, `FetchUnpublishedForPublish`, `MarkPublishedTx`, and `MarkFailedTx`, handling locking, attempt counts, and truncated `last_error` fields (pkg/outbox/repository.go:20-101).
+- `Repository.DeletePublishedBefore` filters on `published_at` + `attempt_count >= 5` so the PF-140 cron job can delete published records older than the 30-day cutoff without touching active batches (`pkg/outbox/repository.go`:119-137; `internal/cron/outbox_retention_job.go`:1-102).
 - `DecoderRegistry` lets consumers register versioned decoders for published payloads (pkg/outbox/registry.go:1-32).
 
 ## pkg/outbox/idempotency

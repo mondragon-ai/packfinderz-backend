@@ -144,6 +144,17 @@ func main() {
 		os.Exit(1)
 	}
 	registry.Register(notificationCleanupJob)
+
+	outboxRetentionJob, err := cron.NewOutboxRetentionJob(cron.OutboxRetentionJobParams{
+		Logger:     logg,
+		DB:         dbClient,
+		Repository: outboxRepo,
+	})
+	if err != nil {
+		logg.Error(context.Background(), "failed to create outbox retention job", err)
+		os.Exit(1)
+	}
+	registry.Register(outboxRetentionJob)
 	service, err := cron.NewService(cron.ServiceParams{
 		Logger:   logg,
 		Registry: registry,

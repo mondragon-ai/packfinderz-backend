@@ -87,7 +87,7 @@ The worker also consumes the `gcp-meda-sub` Pub/Sub subscription for GCS `OBJECT
 
 The first job running today enforces the license lifecycle: it issues the `license_expiring_soon` warning 14 days before expiration, marks verified licenses as `expired` and re-evaluates store KYC, and finally removes license+media/attachment rows (plus their GCS objects) when the expiration date is more than 30 days in the past so the compliance tables stay bounded while the cron worker emits deterministic outbox events for observability.
 
-The cron worker also runs the order TTL scheduler (PF-138), nudging vendors with `order_pending_nudge` once orders hit five days pending and expiring them after ten days while releasing inventory and emitting `order_expired` events so downstream consumers can notify both buyer and vendor deterministically. It additionally runs the notification cleanup job (PF-139) so `notifications` rows older than 30 days are purged daily, keeping the table size bounded without manual intervention.
+The cron worker also runs the order TTL scheduler (PF-138), nudging vendors with `order_pending_nudge` once orders hit five days pending and expiring them after ten days while releasing inventory and emitting `order_expired` events so downstream consumers can notify both buyer and vendor deterministically. It additionally runs the notification cleanup job (PF-139) so `notifications` rows older than 30 days are purged daily, keeping the table size bounded without manual intervention, and the outbox retention job (PF-140) which removes published `outbox_events` older than 30 days whose `attempt_count` already indicates they have been retried via the DLQ.
 
 ### Outbox Publisher
 

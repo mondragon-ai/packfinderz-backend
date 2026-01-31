@@ -3962,7 +3962,15 @@ WHERE published_at IS NOT NULL
   * execute inside `internal/cron/notification_cleanup_job.go`: the job computes the cutoff, runs the delete via `notifications.Repository.DeleteOlderThan` inside `db.WithTx`, and logs the number of rows deleted along with the retention window, making the work idempotent.
   * register the job from `cmd/cron-worker/main.go` after the order TTL job so the cron worker keeps metrics/logs for the notification cleanup run even if other jobs fail.
 
-### 7.7 Orphaned media GC
+### 7.7 Outbox retention cleanup (PF-140)
+
+* Daily:
+
+  * delete `outbox_events` rows whose `published_at IS NOT NULL`, `published_at < now() - interval '30 days'`, and `attempt_count >= 5`, keeping the table bounded while preserving a short audit trail for events already pushed through the DLQ.
+  * run through `internal/cron/outbox_retention_job.go`: the job computes the cutoff, calls `outbox.Repository.DeletePublishedBefore` inside `db.WithTx`, logs the number of rows deleted plus the retention/attempt thresholds, and keeps duplicates safe when jobs rerun.
+  * register the job after notification cleanup so the cron metrics/logs reflect license lifecycle → order TTL → notification cleanup → outbox retention sequentially.
+
+### 7.8 Orphaned media GC
 
 **ASSUMPTION:** allow media deletion only when no attachments exist.
 
