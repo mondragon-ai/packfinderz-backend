@@ -142,13 +142,19 @@ The publisher no longer guesses topics or payload contracts at runtime. Before c
 
 ---
 
+### Dead-letter queue persistence
+
+Terminal failures are written to the `outbox_dlq` table in the same transaction that marks the `outbox_events` row as terminal. Each DLQ row stores the exact `payload_json`/envelope plus the `error_reason` (e.g., `max_attempts` or `non_retryable`) and a short `error_message`, so auditing or manual remediation tooling can replay the original episode without refetching or enriching data. The dispatcher uses `pkg/outbox/DLQRepository` to insert these rows, ensuring an append-only archive that downstream consumers never re-evaluate.
+
+---
+
 ## Configuration knobs
 
 | Env var                                 | Default            | Description                       |
 | --------------------------------------- | ------------------ | --------------------------------- |
 | `PACKFINDERZ_OUTBOX_PUBLISH_BATCH_SIZE` | `50`               | Rows claimed per poll             |
 | `PACKFINDERZ_OUTBOX_PUBLISH_POLL_MS`    | `500`              | Base sleep between polls          |
-| `PACKFINDERZ_OUTBOX_MAX_ATTEMPTS`       | `25`               | Rows at or above this are skipped |
+| `PACKFINDERZ_OUTBOX_MAX_ATTEMPTS`       | `10`               | Rows at or above this are skipped |
 | `PACKFINDERZ_PUBSUB_DOMAIN_TOPIC`       | `pf-domain-events` | Topic to publish to               |
 | `PACKFINDERZ_EVENTING_IDEMPOTENCY_TTL`  | `720h`             | Redis TTL for processed events    |
 

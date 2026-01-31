@@ -100,6 +100,7 @@ func newTestService(t *testing.T, repo outboxRepository, pub publisher, registry
 		Repository:       repo,
 		Registry:         registry,
 		PublisherFactory: func(_ string) publisher { return pub },
+		DLQRepository:    &fakeDLQRepo{},
 	})
 	if err != nil {
 		t.Fatalf("failed to construct service: %v", err)
@@ -206,4 +207,13 @@ func (f *fakeRegistry) Resolve(event models.OutboxEvent) (*registry.ResolvedEven
 	resolved.Envelope.EventID = event.ID.String()
 	resolved.Envelope.OccurredAt = time.Now()
 	return &resolved, f.err
+}
+
+type fakeDLQRepo struct {
+	entries []models.OutboxDLQ
+}
+
+func (f *fakeDLQRepo) InsertTx(tx *gorm.DB, entry models.OutboxDLQ) error {
+	f.entries = append(f.entries, entry)
+	return nil
 }

@@ -565,7 +565,7 @@ These knobs control the publisher worker that reads `outbox_events` and pushes d
 
 * `PACKFINDERZ_OUTBOX_PUBLISH_BATCH_SIZE` (default `50`) – how many rows to claim in each fetch.
 * `PACKFINDERZ_OUTBOX_PUBLISH_POLL_MS` (default `500`) – base sleep when no rows are claimed; applies between healthy loops.
-* `PACKFINDERZ_OUTBOX_MAX_ATTEMPTS` (default `25`) – stop claiming rows once they hit this attempt count so failing rows can be audited.
+* `PACKFINDERZ_OUTBOX_MAX_ATTEMPTS` (default `10`) – stop claiming rows once they hit this attempt count so failing rows can be audited.
 * `PACKFINDERZ_PUBSUB_DOMAIN_TOPIC` (default `pf-domain-events`) – the Pub/Sub topic that the worker publishes to; events flow through this topic plus the `event_type` attribute.
 * `PACKFINDERZ_PUBSUB_DOMAIN_SUBSCRIPTION` (required) – the subscription the worker listens to for domain events such as `license_status_changed`.
 

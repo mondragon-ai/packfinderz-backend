@@ -3,6 +3,7 @@ package registry
 import (
 	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -132,6 +133,51 @@ func TestEventRegistryResolveNullPayload(t *testing.T) {
 	var nonRetry NonRetryableError
 	if !errors.As(err, &nonRetry) {
 		t.Fatalf("expected non-retryable error")
+	}
+}
+
+func TestNewEventRegistryMissingTopics(t *testing.T) {
+	testCases := []struct {
+		name   string
+		cfg    config.PubSubConfig
+		expect string
+	}{
+		{
+			name: "orders topic",
+			cfg: config.PubSubConfig{
+				BillingTopic:      "billing-topic",
+				NotificationTopic: "notification-topic",
+			},
+			expect: "orders topic is required",
+		},
+		{
+			name: "billing topic",
+			cfg: config.PubSubConfig{
+				OrdersTopic:       "orders-topic",
+				NotificationTopic: "notification-topic",
+			},
+			expect: "billing topic is required",
+		},
+		{
+			name: "notification topic",
+			cfg: config.PubSubConfig{
+				OrdersTopic:  "orders-topic",
+				BillingTopic: "billing-topic",
+			},
+			expect: "notification topic is required",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := NewEventRegistry(tc.cfg)
+			if err == nil {
+				t.Fatalf("expected error for %s", tc.name)
+			}
+			if !strings.Contains(err.Error(), tc.expect) {
+				t.Fatalf("expected %q error, got %v", tc.expect, err)
+			}
+		})
 	}
 }
 

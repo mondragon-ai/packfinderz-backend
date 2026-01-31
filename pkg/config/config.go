@@ -187,7 +187,7 @@ type BigQueryConfig struct {
 type OutboxConfig struct {
 	BatchSize      int `envconfig:"PACKFINDERZ_OUTBOX_PUBLISH_BATCH_SIZE" default:"50"`
 	PollIntervalMS int `envconfig:"PACKFINDERZ_OUTBOX_PUBLISH_POLL_MS" default:"500"`
-	MaxAttempts    int `envconfig:"PACKFINDERZ_OUTBOX_MAX_ATTEMPTS" default:"25"`
+	MaxAttempts    int `envconfig:"PACKFINDERZ_OUTBOX_MAX_ATTEMPTS" default:"10"`
 }
 
 type StripeConfig struct {
