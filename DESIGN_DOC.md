@@ -1920,6 +1920,7 @@ Headers:
 * Filters: `state` (required), `query`, `category`, `strain`, `priceMin/Max`, `vendorStoreId`, pagination.
 * Enforces vendor visibility via `pkg/visibility.EnsureVendorVisible`: vendor stores must be `kyc_status=verified`, `subscription_active=true`, and their `address.state` must match the requested `state` (and the buyer's store state when provided); violations produce `422` (state mismatch) or `404` (hidden vendors). PF-118 verified every browse/search helper still calls `EnsureVendorVisible` so `stores.subscription_active=false` vendors remain hidden while paid stores stay discoverable (`api/controllers/products.go:8-244`; `pkg/visibility/visibility.go:11-46`).
   * `internal/cart.Service` and checkout now reuse `internal/checkout/helpers.ValidateVendorStore`, which delegates to `EnsureVendorVisible`, so the same gating applies when buyers add products to the cart or reach checkout, preventing unpaid vendors from appearing anywhere in the marketplace flow (internal/cart/service.go:109-180; internal/checkout/helpers/validation.go:1-57).
+  * PF-147 ensures the ORM models (`pkg/db/models/cart_record.go`, `pkg/db/models/cart_item.go`, and the new `CartVendorGroup` struct) match `pkg/migrate/migrations/20260306000000_cart_modifications.sql`, covering `checkout_group_id`, `valid_until`, `discounts_cents`, renamed item columns (`quantity`, `line_subtotal_cents`), JSON blobs (`warnings`, `promo`, `applied_volume_discount`), and the cart vendor group status/enum fields so persistence code stays aligned with the authoritative quote schema.
   * Success: `200`
   * Errors: `401, 422`
 
@@ -2020,7 +2021,7 @@ Headers:
 
 * Implementation note: `cart_records`/`cart_items` (see sections 2.9 & 2.10) serve as the authoritative snapshot for each buyer store, and the `internal/cart` repository enforces `buyer_store_id` ownership plus the `CartStatus` (`active|converted`) before handing the data to the checkout flow.
 
-* The `PUT /api/v1/cart` endpoint now relies on `internal/cart.Service.UpsertCart` to gate the request: the buyer store must be type `buyer` and `kyc_status=verified`, each vendor store must be verified, subscribed, and share the buyer’s state, every product SKU/unit ties back to the active vendor listing, MOQ/inventory limits and volume tiers are rechecked, and the submitted `subtotal`/`total`/`total_discount` values must match the line-item snapshots before the cart record and its items are persisted. Idempotent requests reuse the same Redis key for 24h while the stored record (with `cart_level_discount[]`) is returned as the canonical summary.
+* The `PUT /api/v1/cart` endpoint now relies on `internal/cart.Service.UpsertCart` to gate the request: the buyer store must be type `buyer` and `kyc_status=verified`, each vendor store must be verified, subscribed, and share the buyer’s state, every product SKU/unit ties back to the active vendor listing, MOQ/inventory limits and volume tiers are rechecked, and the submitted `subtotal`/`total`/`discounts_cents` values must match the line-item snapshots before the cart record and its items are persisted. Idempotent requests reuse the same Redis key for 24h while the stored authoritative cart quote (including per-vendor `cart_vendor_groups`, item warnings, and any `ad_tokens` attribution) is returned as the canonical summary.
 
 ---
 
@@ -2957,29 +2958,31 @@ Fields
 
 * `id uuid pk`
 * `buyer_store_id uuid not null`
-* `session_id text null` (**ASSUMPTION:** supports guest-ish continuity; still login-gated for catalog)
-* `status ENUM not null` (**ASSUMPTION:** `active|converted`; keep simple)
-* `shipping_address address_t null` (**ASSUMPTION:** in B2B usually store address; can be null -> added/confirmed on next step)
-* `total_discount int not null`
-* `fees int not null`
+* `checkout_group_id uuid null` (reference to the checkout bundle once conversion occurs)
+* `status ENUM not null` (`active|converted`)
+* `shipping_address address_t null` (quote can surface an address but the DB keeps it optional)
+* `currency text not null default 'USD'`
+* `valid_until timestamptz not null`
 * `subtotal_cents int not null`
+* `discounts_cents int not null`
 * `total_cents int not null`
-* `cart_level_discount cart_level_discount[] null`
+* `ad_tokens text[] null`
 * `created_at timestamptz not null default now()`
 * `updated_at timestamptz not null default now()`
 
 Indexes
 
 * `(buyer_store_id, status)`
-* `(session_id)` (nullable)
+* `(checkout_group_id)`
 
 **Routes**
 
-* `GET /api/v1/cart` returns the buyer store's active `cart_record` plus its `cart_items` for UI recovery or retry, or `404` if no active cart exists.
+* `GET /api/v1/cart` returns the buyer store's active `cart_record` plus its `cart_items` and `cart_vendor_groups` for UI recovery or retry, or `404` if no active cart exists.
 
 FKs
 
 * `buyer_store_id -> stores(id) on delete cascade`
+* `checkout_group_id -> checkout_groups(id) on delete set null`
 
 **Repositories**
 
@@ -3000,25 +3003,25 @@ FKs
 
 ### 2.10 `cart_items`
 
-**Purpose:** normalized cart lines; snapshot enough fields to survive price changes.
+**Purpose:** normalized cart lines; snapshot enough fields to survive price changes while capturing vendor group metadata, pricing, and warnings.
 
 Fields
 
 * `id uuid pk`
+* `cart_id uuid not null`
 * `product_id uuid not null`
 * `vendor_store_id uuid not null`
-* `qty int not null`
-* `product_sku text not null`
+* `quantity int not null`
+* `moq int not null` (default `1`)
+* `max_qty int null`
 * `unit Unit Enum not null`
 * `unit_price_cents int not null`
 * `compare_at_unit_price_cents int null`
-* `applied_volume_tier_min_qty int null`
-* `applied_volume_tier_unit_price_cents int null`
-* `discounted_price int null`
-* `sub_total_price int null`
+* `applied_volume_discount jsonb null`
+* `line_subtotal_cents int not null`
+* `status cart_item_status not null default 'ok'`
+* `warnings jsonb null`
 * `featured_image text null`
-* `moq int null`
-  * (Assumption) Persisting the product's MOQ snapshot so the checkout validation helper can enforce the same rule that the client sees; any violation returns `422` with `violations` details.
 * `thc_percent numeric(5,2) null`
 * `cbd_percent numeric(5,2) null`
 * `created_at timestamptz not null default now()`
@@ -3028,11 +3031,43 @@ Indexes
 
 * `(cart_id)`
 * `(vendor_store_id)`
+* `(product_id)`
 
 FKs
 
 * `cart_id -> cart_records(id) on delete cascade`
 * `product_id -> products(id) on delete restrict`
+* `vendor_store_id -> stores(id) on delete restrict`
+
+### 2.10.a `cart_vendor_groups`
+
+**Purpose:** vendor-level aggregation for the authoritative cart quote so per-vendor promos, status, and warnings are auditable.
+
+Fields
+
+* `id uuid pk`
+* `cart_id uuid not null`
+* `vendor_store_id uuid not null`
+* `status vendor_group_status not null default 'ok'`
+* `warnings jsonb null`
+* `subtotal_cents int not null default 0`
+* `promo jsonb null`
+* `total_cents int not null default 0`
+* `created_at timestamptz not null default now()`
+* `updated_at timestamptz not null default now()`
+
+Indexes
+
+* `(cart_id)`
+* `(vendor_store_id)`
+
+Constraints
+
+* unique `(cart_id, vendor_store_id)`
+
+FKs
+
+* `cart_id -> cart_records(id) on delete cascade`
 * `vendor_store_id -> stores(id) on delete restrict`
 
 ---

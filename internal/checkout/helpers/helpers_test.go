@@ -39,17 +39,16 @@ func TestComputeVendorTotals(t *testing.T) {
 	vendor := uuid.New()
 	items := []models.CartItem{
 		{
-			VendorStoreID:   vendor,
-			UnitPriceCents:  1000,
-			Qty:             2,
-			SubTotalPrice:   intPtr(1800),
-			DiscountedPrice: intPtr(900),
+			VendorStoreID:     vendor,
+			UnitPriceCents:    1000,
+			Quantity:          2,
+			LineSubtotalCents: 1800,
 		},
 		{
-			VendorStoreID:  vendor,
-			UnitPriceCents: 500,
-			Qty:            1,
-			SubTotalPrice:  intPtr(500),
+			VendorStoreID:     vendor,
+			UnitPriceCents:    500,
+			Quantity:          1,
+			LineSubtotalCents: 500,
 		},
 	}
 
@@ -179,8 +178,4 @@ func newStore(storeType enums.StoreType, status enums.KYCStatus, state string) *
 			State: state,
 		},
 	}
-}
-
-func intPtr(value int) *int {
-	return &value
 }

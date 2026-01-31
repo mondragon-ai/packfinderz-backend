@@ -69,15 +69,12 @@ func ComputeTotalsByVendor(items []models.CartItem) map[uuid.UUID]VendorCartTota
 }
 
 func lineSubtotal(item models.CartItem) int {
-	return item.UnitPriceCents * item.Qty
+	return item.UnitPriceCents * item.Quantity
 }
 
 func lineTotal(item models.CartItem) int {
-	if item.SubTotalPrice != nil {
-		return *item.SubTotalPrice
-	}
-	if item.DiscountedPrice != nil {
-		return (*item.DiscountedPrice) * item.Qty
+	if item.LineSubtotalCents != 0 {
+		return item.LineSubtotalCents
 	}
 	return lineSubtotal(item)
 }

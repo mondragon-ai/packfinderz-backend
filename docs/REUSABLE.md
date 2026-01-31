@@ -138,11 +138,12 @@ Cursor-based limit/cursor helpers reused across list endpoints.
 
 ### `cart`
 
-* `internal/cart.Repository` orchestrates `CartRecord` + `CartItem` persistence during checkout staging.
+* `internal/cart.Repository` orchestrates `CartRecord`, `CartItem`, and the new `CartVendorGroup` persistence shapes during checkout staging.
 * Methods such as `FindActiveByBuyerStore`, `ReplaceItems`, `UpdateStatus`, and `DeleteByBuyerStore` enforce `buyer_store_id` ownership.
-* Stored cart-level discounts map to the `cart_level_discount[]` column via `pkg/types.CartLevelDiscounts`.
-* `cart_records` rows mirror `models.CartRecord` (`buyer_store_id`, optional `session_id`, `status cart_status`, `shipping_address`, subtotal/total/fees/total_discount, `cart_level_discount[]`, timestamps) while `cart_items` captures every product snapshot (product/vendor IDs, sku, unit, unit price, optional compare/unit tier data, discounted/subtotal, featured image, moq, thc/cbd) so checkout can replay pricing without recomputing (pkg/db/models/cart_record.go:12-41; pkg/db/models/cart_item.go:11-37; pkg/migrate/migrations/20260124000003_create_cart_records.sql).
-* `GET /api/v1/cart` fetches the active `cart_record` (plus line items) for the buyer store so the UI can recover an in-progress checkout without mutating state.
+* PF-147 keeps the GORM models in lockstep with `pkg/migrate/migrations/20260306000000_cart_modifications.sql`: `cart_records` now include `buyer_store_id`, `checkout_group_id`, `status cart_status`, `currency default 'USD'`, `valid_until`, `subtotal_cents`, `discounts_cents`, `total_cents`, `ad_tokens text[]`, and timestamps so totals, attributions, and conversion refs live on the parent record.
+* `cart_items` persists the vendor-level snapshot (`product_id`, `vendor_store_id`, `quantity`, `moq`, optional `max_qty`, `unit_price_cents`, `applied_volume_discount jsonb`, `line_subtotal_cents`, `status cart_item_status`, `warnings jsonb`, `created_at`, `updated_at`) to capture inventory rules, authoritative pricing, and warning metadata; renamed columns and enums now mirror the migration, so the upcoming models must match exactly.
+* `cart_vendor_groups` (new table) holds vendor aggregates (`cart_id`, `vendor_store_id`, `status vendor_group_status`, `warnings jsonb`, `subtotal_cents`, `promo jsonb`, `total_cents`) with a `(cart_id, vendor_store_id)` unique constraint for auditing vendor-level decisions, and the future `CartVendorGroup` model tracks the same JSONB promo/warnings payloads.
+* `GET /api/v1/cart` fetches the active `cart_record` (plus line items and vendor groups) for the buyer store so the UI can recover an in-progress checkout without mutating state.
 
 ### `orders`
 
@@ -374,11 +375,12 @@ type Ratings map[string]int
 
 ---
 
-### `CartLevelDiscounts` (`cart_level_discount[]`)
+### Cart quote JSON helpers
 
-* Represents the Postgres composite array attached to `cart_records.cart_level_discount`.
-* `pkg/types.CartLevelDiscounts` implements `driver.Valuer`/`sql.Scanner` and validates required fields (`title`, `id`, `value`, `value_type`, `vendor_id`).
-* The cart repository writes/reads this element when persisting buyer snapshots via `internal/cart.Repository`.
+* `CartItemWarnings` (`cart_item_warning` objects) store a `type` (`clamped_to_moq`, `price_changed`, `vendor_invalid`, etc.) alongside a `message`; the helper implements `driver.Valuer`/`sql.Scanner` so GORM persists the JSONB array in `cart_items.warnings`.
+* `AppliedVolumeDiscount` mirrors the `label`/`amount_cents` payload clients send when a tiered discount applies; it’s stored in `cart_items.applied_volume_discount`.
+* `VendorGroupWarnings` and `VendorGroupPromo` are the JSONB shapes persisted by the new `cart_vendor_groups` table so each vendor attribution can log warnings, promos, and totals.
+* `internal/cart.Repository` now hydrates `CartRecord.VendorGroups` + `CartItem.Warnings` during fetches so services can inspect the authoritative quote before checkout conversion.
 
 ## Security
 

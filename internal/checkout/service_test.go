@@ -36,8 +36,8 @@ func TestServiceExecuteSuccess(t *testing.T) {
 			BuyerStoreID: buyerStoreID,
 			Status:       enums.CartStatusActive,
 			Items: []models.CartItem{
-				{ID: lineA, ProductID: uuid.New(), VendorStoreID: vendorStoreID, Qty: 2, UnitPriceCents: 1000},
-				{ID: lineB, ProductID: uuid.New(), VendorStoreID: vendorStoreID, Qty: 1, UnitPriceCents: 500},
+				{ID: lineA, ProductID: uuid.New(), VendorStoreID: vendorStoreID, Quantity: 2, UnitPriceCents: 1000, LineSubtotalCents: 1800},
+				{ID: lineB, ProductID: uuid.New(), VendorStoreID: vendorStoreID, Quantity: 1, UnitPriceCents: 500, LineSubtotalCents: 500},
 			},
 		},
 	}
