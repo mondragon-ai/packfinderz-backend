@@ -1,4 +1,4 @@
-package controllers
+package cart
 
 import (
 	"context"
@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	cartdto "github.com/angelmondragon/packfinderz-backend/api/controllers/cart/dto"
 	"github.com/angelmondragon/packfinderz-backend/api/middleware"
 	cartsvc "github.com/angelmondragon/packfinderz-backend/internal/cart"
 	"github.com/angelmondragon/packfinderz-backend/pkg/db/models"
@@ -48,7 +49,7 @@ func TestCartFetchSuccess(t *testing.T) {
 	}
 
 	var envelope struct {
-		Data cartRecordResponse `json:"data"`
+		Data cartdto.CartQuote `json:"data"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&envelope); err != nil {
 		t.Fatalf("decode response: %v", err)

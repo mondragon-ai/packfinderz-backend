@@ -9,6 +9,7 @@ import (
 	"github.com/angelmondragon/packfinderz-backend/api/controllers"
 	analysiscontrollers "github.com/angelmondragon/packfinderz-backend/api/controllers/analytics"
 	billingcontrollers "github.com/angelmondragon/packfinderz-backend/api/controllers/billing"
+	cartcontrollers "github.com/angelmondragon/packfinderz-backend/api/controllers/cart"
 	ordercontrollers "github.com/angelmondragon/packfinderz-backend/api/controllers/orders"
 	subscriptionControllers "github.com/angelmondragon/packfinderz-backend/api/controllers/subscriptions"
 	webhookcontrollers "github.com/angelmondragon/packfinderz-backend/api/controllers/webhooks"
@@ -171,8 +172,8 @@ func NewRouter(
 			})
 
 			r.Route("/v1/cart", func(r chi.Router) {
-				r.Get("/", controllers.CartFetch(cartService, logg))
-				r.Put("/", controllers.CartUpsert(cartService, logg))
+				r.Get("/", cartcontrollers.CartFetch(cartService, logg))
+				r.Put("/", cartcontrollers.CartUpsert(cartService, logg))
 			})
 			r.Route("/v1/orders", func(r chi.Router) {
 				r.Get("/", ordercontrollers.List(ordersRepo, logg))

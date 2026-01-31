@@ -6,12 +6,14 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/angelmondragon/packfinderz-backend/api/middleware"
 	"github.com/angelmondragon/packfinderz-backend/api/responses"
 	"github.com/angelmondragon/packfinderz-backend/api/validators"
 	checkoutsvc "github.com/angelmondragon/packfinderz-backend/internal/checkout"
 	"github.com/angelmondragon/packfinderz-backend/internal/stores"
 	"github.com/angelmondragon/packfinderz-backend/pkg/db/models"
 	"github.com/angelmondragon/packfinderz-backend/pkg/enums"
+
 	pkgerrors "github.com/angelmondragon/packfinderz-backend/pkg/errors"
 	"github.com/angelmondragon/packfinderz-backend/pkg/logger"
 )
@@ -60,6 +62,21 @@ func Checkout(svc checkoutsvc.Service, storeSvc stores.Service, logg *logger.Log
 
 		responses.WriteSuccessStatus(w, http.StatusCreated, newCheckoutResponse(group))
 	}
+}
+
+func buyerStoreIDFromContext(r *http.Request) (uuid.UUID, error) {
+	if r == nil {
+		return uuid.Nil, pkgerrors.New(pkgerrors.CodeForbidden, "store context missing")
+	}
+	storeID := middleware.StoreIDFromContext(r.Context())
+	if storeID == "" {
+		return uuid.Nil, pkgerrors.New(pkgerrors.CodeForbidden, "store context missing")
+	}
+	buyerStoreID, err := uuid.Parse(storeID)
+	if err != nil {
+		return uuid.Nil, pkgerrors.Wrap(pkgerrors.CodeValidation, err, "invalid buyer store id")
+	}
+	return buyerStoreID, nil
 }
 
 type checkoutRequest struct {
