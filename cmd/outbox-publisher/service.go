@@ -4,13 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math"
 	"math/rand"
 	"time"
 
 	gcppubsub "cloud.google.com/go/pubsub/v2"
 	"github.com/angelmondragon/packfinderz-backend/pkg/config"
 	"github.com/angelmondragon/packfinderz-backend/pkg/db/models"
+	"github.com/angelmondragon/packfinderz-backend/pkg/enums"
 	"github.com/angelmondragon/packfinderz-backend/pkg/logger"
 	"github.com/angelmondragon/packfinderz-backend/pkg/outbox"
 	"github.com/angelmondragon/packfinderz-backend/pkg/outbox/registry"
@@ -22,6 +22,7 @@ const (
 	defaultBatchSize      = 50
 	defaultPollMs         = 500
 	defaultPublishTimeout = 15 * time.Second
+	defaultMaxAttempts    = 10
 	maxBackoff            = 10 * time.Second
 	jitterWindow          = 250 * time.Millisecond
 )
@@ -46,6 +47,10 @@ type outboxRepository interface {
 	MarkTerminalTx(tx *gorm.DB, id uuid.UUID, err error, terminalAttempts int) error
 }
 
+type dlqRepository interface {
+	InsertTx(tx *gorm.DB, entry models.OutboxDLQ) error
+}
+
 type registryResolver interface {
 	Resolve(models.OutboxEvent) (*registry.ResolvedEvent, error)
 }
@@ -68,6 +73,7 @@ type ServiceParams struct {
 	Repository       outboxRepository
 	Registry         registryResolver
 	PublisherFactory publisherFactory
+	DLQRepository    dlqRepository
 }
 
 type Service struct {
@@ -77,6 +83,7 @@ type Service struct {
 	repo             outboxRepository
 	pubsub           pubSubClient
 	registry         registryResolver
+	dlq              dlqRepository
 	publisherFactory publisherFactory
 	batchSize        int
 	maxAttempts      int
@@ -102,6 +109,9 @@ func NewService(params ServiceParams) (*Service, error) {
 	if params.Registry == nil {
 		return nil, errors.New("event registry is required")
 	}
+	if params.DLQRepository == nil {
+		return nil, errors.New("dlq repository is required")
+	}
 
 	factory := params.PublisherFactory
 	if factory == nil {
@@ -124,7 +134,7 @@ func NewService(params ServiceParams) (*Service, error) {
 	}
 	maxAttempts := params.Config.Outbox.MaxAttempts
 	if maxAttempts <= 0 {
-		maxAttempts = math.MaxInt32
+		maxAttempts = defaultMaxAttempts
 	}
 
 	return &Service{
@@ -134,6 +144,7 @@ func NewService(params ServiceParams) (*Service, error) {
 		repo:             params.Repository,
 		pubsub:           params.PubSub,
 		registry:         params.Registry,
+		dlq:              params.DLQRepository,
 		publisherFactory: factory,
 		batchSize:        batch,
 		maxAttempts:      maxAttempts,
@@ -221,7 +232,7 @@ func (s *Service) processBatch(ctx context.Context) (bool, error) {
 		for _, event := range events {
 			resolved, err := s.registry.Resolve(event)
 			if err != nil {
-				if markErr := s.handleTerminal(ctx, tx, event, err, "", nil); markErr != nil {
+				if markErr := s.handleTerminal(ctx, tx, event, enums.OutboxDLQReasonNonRetryable, err, "", nil); markErr != nil {
 					return markErr
 				}
 				continue
@@ -231,12 +242,24 @@ func (s *Service) processBatch(ctx context.Context) (bool, error) {
 			if err := s.publishResolved(ctx, event, resolved); err != nil {
 				var nonRetry registry.NonRetryableError
 				if errors.As(err, &nonRetry) {
-					if markErr := s.handleTerminal(ctx, tx, event, err, resolved.Descriptor.Topic, fields); markErr != nil {
+					if markErr := s.handleTerminal(ctx, tx, event, enums.OutboxDLQReasonNonRetryable, err, resolved.Descriptor.Topic, fields); markErr != nil {
 						return markErr
 					}
 					continue
 				}
-				fields["attempt_count"] = event.AttemptCount + 1
+
+				nextAttempt := event.AttemptCount + 1
+				fields["attempt_count"] = nextAttempt
+
+				if nextAttempt >= s.maxAttempts {
+					fields["terminal_reason"] = "max_attempts"
+					terminalErr := fmt.Errorf("max publish attempts reached: %w", err)
+					if markErr := s.handleTerminal(ctx, tx, event, enums.OutboxDLQReasonMaxAttempts, terminalErr, resolved.Descriptor.Topic, fields); markErr != nil {
+						return markErr
+					}
+					continue
+				}
+
 				ctxWithFields := s.logg.WithFields(ctx, fields)
 				ctxWithFields = s.logg.WithField(ctxWithFields, "error", err.Error())
 				s.logg.Warn(ctxWithFields, "outbox publish failed")
@@ -256,17 +279,41 @@ func (s *Service) processBatch(ctx context.Context) (bool, error) {
 	return processed, err
 }
 
-func (s *Service) handleTerminal(ctx context.Context, tx *gorm.DB, event models.OutboxEvent, err error, topic string, fields map[string]any) error {
+func (s *Service) handleTerminal(ctx context.Context, tx *gorm.DB, event models.OutboxEvent, reason enums.OutboxDLQErrorReason, err error, topic string, fields map[string]any) error {
 	if fields == nil {
 		fields = s.eventFields(event, outbox.PayloadEnvelope{}, topic)
 	}
+	fields["error_reason"] = reason
 	ctxWithFields := s.logg.WithFields(ctx, fields)
 	ctxWithFields = s.logg.WithField(ctxWithFields, "error", err.Error())
 	s.logg.Warn(ctxWithFields, "outbox event will not be retried")
+
+	dlqEntry := models.OutboxDLQ{
+		EventID:       event.ID,
+		EventType:     event.EventType,
+		AggregateType: event.AggregateType,
+		AggregateID:   event.AggregateID,
+		Payload:       event.Payload,
+		ErrorReason:   reason,
+		ErrorMessage:  dlqErrorMessage(err),
+		AttemptCount:  event.AttemptCount,
+		FailedAt:      time.Now().UTC(),
+	}
+	if dlqErr := s.dlq.InsertTx(tx, dlqEntry); dlqErr != nil {
+		return fmt.Errorf("insert dlq %s: %w", event.ID, dlqErr)
+	}
 	if markErr := s.repo.MarkTerminalTx(tx, event.ID, err, s.maxAttempts); markErr != nil {
 		return fmt.Errorf("mark terminal %s: %w", event.ID, markErr)
 	}
 	return nil
+}
+
+func dlqErrorMessage(err error) *string {
+	if err == nil {
+		return nil
+	}
+	msg := err.Error()
+	return &msg
 }
 
 func (s *Service) publishResolved(ctx context.Context, event models.OutboxEvent, resolved *registry.ResolvedEvent) error {

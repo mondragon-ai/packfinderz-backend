@@ -66,18 +66,20 @@ func main() {
 	}()
 
 	repo := outbox.NewRepository(dbClient.DB())
+	dlqRepo := outbox.NewDLQRepository(dbClient.DB())
 	eventRegistry, err := registry.NewEventRegistry(cfg.PubSub)
 	if err != nil {
 		logg.Error(context.Background(), "failed to build event registry", err)
 		os.Exit(1)
 	}
 	service, err := NewService(ServiceParams{
-		Config:     cfg,
-		Logger:     logg,
-		DB:         dbClient,
-		PubSub:     pubsubClient,
-		Repository: repo,
-		Registry:   eventRegistry,
+		Config:        cfg,
+		Logger:        logg,
+		DB:            dbClient,
+		PubSub:        pubsubClient,
+		Repository:    repo,
+		Registry:      eventRegistry,
+		DLQRepository: dlqRepo,
 	})
 	if err != nil {
 		logg.Error(context.Background(), "failed to create outbox publisher", err)
