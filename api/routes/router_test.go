@@ -230,6 +230,10 @@ func (s stubCartService) UpsertCart(ctx context.Context, buyerStoreID uuid.UUID,
 	panic("unimplemented")
 }
 
+func (s stubCartService) QuoteCart(ctx context.Context, buyerStoreID uuid.UUID, input cart.QuoteCartInput) (*models.CartRecord, error) {
+	panic("unimplemented")
+}
+
 // GetActiveCart implements [cart.Service].
 func (s stubCartService) GetActiveCart(ctx context.Context, buyerStoreID uuid.UUID) (*models.CartRecord, error) {
 	panic("unimplemented")

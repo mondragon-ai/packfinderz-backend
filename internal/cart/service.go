@@ -35,6 +35,7 @@ type productLoader interface {
 // Service exposes cart persistence operations.
 type Service interface {
 	UpsertCart(ctx context.Context, buyerStoreID uuid.UUID, input UpsertCartInput) (*models.CartRecord, error)
+	QuoteCart(ctx context.Context, buyerStoreID uuid.UUID, input QuoteCartInput) (*models.CartRecord, error)
 	GetActiveCart(ctx context.Context, buyerStoreID uuid.UUID) (*models.CartRecord, error)
 }
 
@@ -280,6 +281,106 @@ func (s *service) GetActiveCart(ctx context.Context, buyerStoreID uuid.UUID) (*m
 		return nil, err
 	}
 	return record, nil
+}
+
+// QuoteCart builds a runnable quote intent from the minimal request shape and persists it via UpsertCart.
+func (s *service) QuoteCart(ctx context.Context, buyerStoreID uuid.UUID, input QuoteCartInput) (*models.CartRecord, error) {
+	if buyerStoreID == uuid.Nil {
+		return nil, pkgerrors.New(pkgerrors.CodeValidation, "buyer store id is required")
+	}
+	if len(input.Items) == 0 {
+		return nil, pkgerrors.New(pkgerrors.CodeValidation, "cart must contain at least one item")
+	}
+
+	_, buyerState, err := s.validateBuyerStore(ctx, buyerStoreID)
+	if err != nil {
+		return nil, err
+	}
+
+	vendorCache := map[uuid.UUID]*stores.StoreDTO{}
+	items := make([]CartItemInput, 0, len(input.Items))
+	var subtotalSum int64
+
+	for _, payload := range input.Items {
+		if payload.Quantity <= 0 {
+			return nil, pkgerrors.New(pkgerrors.CodeValidation, "item quantity must be positive")
+		}
+
+		if _, err := s.ensureVendor(ctx, payload.VendorStoreID, buyerState, vendorCache); err != nil {
+			return nil, err
+		}
+
+		product, _, err := s.productRepo.GetProductDetail(ctx, payload.ProductID)
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return nil, pkgerrors.New(pkgerrors.CodeNotFound, "product not found")
+			}
+			return nil, pkgerrors.Wrap(pkgerrors.CodeDependency, err, "load product")
+		}
+
+		if product.StoreID != payload.VendorStoreID {
+			return nil, pkgerrors.New(pkgerrors.CodeValidation, "product vendor mismatch")
+		}
+		if !product.IsActive {
+			return nil, pkgerrors.New(pkgerrors.CodeValidation, "product is not available")
+		}
+
+		availableQty := 0
+		if product.Inventory != nil {
+			availableQty = product.Inventory.AvailableQty
+		}
+		if payload.Quantity > 0 && availableQty < payload.Quantity {
+			return nil, pkgerrors.New(pkgerrors.CodeConflict, "insufficient inventory for product")
+		}
+
+		tier := selectVolumeDiscount(payload.Quantity, product.VolumeDiscounts)
+		linePrice := product.PriceCents
+		var discountedPrice *int
+		var tierMinQty *int
+		var tierUnitPrice *int
+		if tier != nil {
+			minQty := tier.MinQty
+			tierMinQty = &minQty
+			unitPrice := tier.UnitPriceCents
+			tierUnitPrice = &unitPrice
+			discountedPrice = &unitPrice
+			linePrice = unitPrice
+		}
+
+		lineTotal := linePrice * payload.Quantity
+		subtotalSum += int64(lineTotal)
+		lineSubtotal := lineTotal
+
+		items = append(items, CartItemInput{
+			ProductID:                       product.ID,
+			VendorStoreID:                   product.StoreID,
+			Qty:                             payload.Quantity,
+			ProductSKU:                      product.SKU,
+			Unit:                            product.Unit,
+			UnitPriceCents:                  product.PriceCents,
+			CompareAtUnitPriceCents:         product.CompareAtPriceCents,
+			AppliedVolumeTierMinQty:         tierMinQty,
+			AppliedVolumeTierUnitPriceCents: tierUnitPrice,
+			DiscountedPrice:                 discountedPrice,
+			SubTotalPrice:                   &lineSubtotal,
+			AppliedVolumeDiscount:           nil,
+			FeaturedImage:                   nil,
+			THCPercent:                      product.THCPercent,
+			CBDPercent:                      product.CBDPercent,
+		})
+	}
+
+	upsertInput := UpsertCartInput{
+		Currency:       "",
+		ValidUntil:     nil,
+		DiscountsCents: 0,
+		SubtotalCents:  int(subtotalSum),
+		TotalCents:     int(subtotalSum),
+		AdTokens:       input.AdTokens,
+		Items:          items,
+	}
+
+	return s.UpsertCart(ctx, buyerStoreID, upsertInput)
 }
 
 func (s *service) validateBuyerStore(ctx context.Context, buyerStoreID uuid.UUID) (*stores.StoreDTO, string, error) {
