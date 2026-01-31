@@ -10,6 +10,7 @@ import (
 	"github.com/angelmondragon/packfinderz-backend/pkg/enums"
 	"github.com/angelmondragon/packfinderz-backend/pkg/logger"
 	"github.com/angelmondragon/packfinderz-backend/pkg/outbox"
+	"github.com/angelmondragon/packfinderz-backend/pkg/outbox/payloads"
 	"github.com/google/uuid"
 	"go.uber.org/multierr"
 	"gorm.io/gorm"
@@ -170,7 +171,7 @@ func (j *licenseLifecycleJob) warnExpiring(ctx context.Context) error {
 				EventType:     enums.EventLicenseExpiringSoon,
 				AggregateType: enums.AggregateLicense,
 				AggregateID:   lic.ID,
-				Data: LicenseExpiringSoonEvent{
+				Data: payloads.LicenseExpiringSoonEvent{
 					LicenseID:           lic.ID,
 					StoreID:             lic.StoreID,
 					ExpirationDate:      *lic.ExpirationDate,
@@ -230,7 +231,7 @@ func (j *licenseLifecycleJob) expireLicense(ctx context.Context, lic models.Lice
 			EventType:     enums.EventLicenseExpired,
 			AggregateType: enums.AggregateLicense,
 			AggregateID:   lic.ID,
-			Data: LicenseExpiredEvent{
+			Data: payloads.LicenseExpiredEvent{
 				LicenseID:      lic.ID,
 				StoreID:        lic.StoreID,
 				ExpirationDate: *lic.ExpirationDate,
@@ -293,20 +294,4 @@ func (j *licenseLifecycleJob) deleteLicense(ctx context.Context, lic models.Lice
 		}
 		return nil
 	})
-}
-
-// LicenseExpiringSoonEvent describes the payload for the warning.
-type LicenseExpiringSoonEvent struct {
-	LicenseID           uuid.UUID `json:"licenseId"`
-	StoreID             uuid.UUID `json:"storeId"`
-	ExpirationDate      time.Time `json:"expirationDate"`
-	DaysUntilExpiration int       `json:"daysUntilExpiration"`
-}
-
-// LicenseExpiredEvent describes the payload for expired licenses.
-type LicenseExpiredEvent struct {
-	LicenseID      uuid.UUID `json:"licenseId"`
-	StoreID        uuid.UUID `json:"storeId"`
-	ExpirationDate time.Time `json:"expirationDate"`
-	ExpiredAt      time.Time `json:"expiredAt"`
 }

@@ -104,6 +104,32 @@ func (r *Repository) MarkFailedTx(tx *gorm.DB, id uuid.UUID, err error) error {
 		}).Error
 }
 
+func (r *Repository) MarkTerminalTx(tx *gorm.DB, id uuid.UUID, err error, terminalAttempts int) error {
+	if tx == nil {
+		return errors.New("transaction required")
+	}
+	if terminalAttempts <= 0 {
+		terminalAttempts = 1
+	}
+
+	lastErr := ""
+	if err != nil {
+		lastErr = truncateError(err.Error())
+	}
+	var lastErrPtr *string
+	if lastErr != "" {
+		lastErrPtr = new(string)
+		*lastErrPtr = lastErr
+	}
+
+	return tx.Model(&models.OutboxEvent{}).
+		Where("id = ?", id).
+		Updates(map[string]any{
+			"last_error":    lastErrPtr,
+			"attempt_count": gorm.Expr("GREATEST(attempt_count, ?)", terminalAttempts),
+		}).Error
+}
+
 func (r *Repository) Exists(ctx context.Context, eventType enums.OutboxEventType, aggregateType enums.OutboxAggregateType, aggregateID uuid.UUID) (bool, error) {
 	if ctx == nil {
 		ctx = context.Background()

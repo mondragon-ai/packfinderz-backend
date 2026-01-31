@@ -9,6 +9,7 @@ import (
 	"github.com/angelmondragon/packfinderz-backend/pkg/db/models"
 	"github.com/angelmondragon/packfinderz-backend/pkg/enums"
 	"github.com/angelmondragon/packfinderz-backend/pkg/logger"
+	"github.com/angelmondragon/packfinderz-backend/pkg/outbox/payloads"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
@@ -42,7 +43,7 @@ func TestOrderTTLJob_nudgeEmitsPendingEvent(t *testing.T) {
 	if event.EventType != enums.EventOrderPendingNudge {
 		t.Fatalf("unexpected event type: %s", event.EventType)
 	}
-	payload, ok := event.Data.(OrderPendingNudgeEvent)
+	payload, ok := event.Data.(payloads.OrderPendingNudgeEvent)
 	if !ok {
 		t.Fatal("expected pending nudge event payload")
 	}
@@ -99,7 +100,7 @@ func TestOrderTTLJob_expireReleasesInventoryAndEmitsEvent(t *testing.T) {
 	if event.EventType != enums.EventOrderExpired {
 		t.Fatalf("unexpected event type: %s", event.EventType)
 	}
-	payload, ok := event.Data.(OrderExpiredEvent)
+	payload, ok := event.Data.(payloads.OrderExpiredEvent)
 	if !ok {
 		t.Fatal("expected expiration event payload")
 	}

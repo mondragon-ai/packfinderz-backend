@@ -9,6 +9,7 @@ import (
 	"github.com/angelmondragon/packfinderz-backend/pkg/enums"
 	pkgerrors "github.com/angelmondragon/packfinderz-backend/pkg/errors"
 	"github.com/angelmondragon/packfinderz-backend/pkg/outbox"
+	"github.com/angelmondragon/packfinderz-backend/pkg/outbox/payloads"
 	"github.com/angelmondragon/packfinderz-backend/pkg/pagination"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
@@ -277,7 +278,7 @@ func TestCreateLicenseSuccess(t *testing.T) {
 	if event.EventType != enums.EventLicenseStatusChanged {
 		t.Fatalf("unexpected event type %s", event.EventType)
 	}
-	payload, ok := event.Data.(LicenseStatusChangedEvent)
+	payload, ok := event.Data.(payloads.LicenseStatusChangedEvent)
 	if !ok {
 		t.Fatalf("expected license status payload, got %T", event.Data)
 	}
@@ -580,7 +581,7 @@ func TestVerifyLicenseSuccess(t *testing.T) {
 	}
 	if event := pub.events[0]; event.EventType != enums.EventLicenseStatusChanged {
 		t.Fatalf("unexpected event type %s", event.EventType)
-	} else if payload, ok := event.Data.(LicenseStatusChangedEvent); !ok {
+	} else if payload, ok := event.Data.(payloads.LicenseStatusChangedEvent); !ok {
 		t.Fatalf("unexpected payload type %T", event.Data)
 	} else {
 		if payload.Status != enums.LicenseStatusVerified {

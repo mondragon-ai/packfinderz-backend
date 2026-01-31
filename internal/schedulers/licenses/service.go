@@ -14,6 +14,7 @@ import (
 	"github.com/angelmondragon/packfinderz-backend/pkg/enums"
 	"github.com/angelmondragon/packfinderz-backend/pkg/logger"
 	"github.com/angelmondragon/packfinderz-backend/pkg/outbox"
+	"github.com/angelmondragon/packfinderz-backend/pkg/outbox/payloads"
 )
 
 const (
@@ -139,7 +140,7 @@ func (s *Service) emitWarning(ctx context.Context, license models.License) error
 			EventType:     enums.EventLicenseStatusChanged,
 			AggregateType: enums.AggregateLicense,
 			AggregateID:   license.ID,
-			Data: licdomain.LicenseStatusChangedEvent{
+			Data: payloads.LicenseStatusChangedEvent{
 				LicenseID:   license.ID,
 				StoreID:     license.StoreID,
 				Status:      license.Status,
@@ -186,7 +187,7 @@ func (s *Service) expireLicense(ctx context.Context, license models.License) err
 			EventType:     enums.EventLicenseStatusChanged,
 			AggregateType: enums.AggregateLicense,
 			AggregateID:   license.ID,
-			Data: licdomain.LicenseStatusChangedEvent{
+			Data: payloads.LicenseStatusChangedEvent{
 				LicenseID: license.ID,
 				StoreID:   license.StoreID,
 				Status:    enums.LicenseStatusExpired,

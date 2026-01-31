@@ -507,11 +507,11 @@ seperate webhook endpoint we can link or subscribe to
 
 Most services, repos, etc live and new ones will also live here `pkg/outbox/**/*`
 
-* [ ] **Ticket:** Finalize `cmd/outbox-publisher` binary
-* [ ] **Ticket:** Event → topic routing registry switch case per event_type & Typed payload validation per event_type
-* [ ] **Ticket:** Retry + max-attempt policy defined
-* [ ] **Ticket:** DLQ model + migration + repo defined
-* [ ] **Ticket:** DLQ publish on terminal failure
+* [X] **Ticket:** Finalize `cmd/outbox-publisher` binary
+* [X] **Ticket:** Event → topic routing registry switch case per event_type & Typed payload validation per event_type
+* [X] **Ticket:** Retry + max-attempt policy defined
+* [X] **Ticket:** DLQ model + migration + repo defined
+* [X] **Ticket:** DLQ publish on terminal failure
 
 ---
 
@@ -547,9 +547,8 @@ Most services, repos, etc live and new ones will also live here `pkg/outbox/**/*
 ### 16A) Analytics Worker
 
 * [ ] **Ticket:** Create `cmd/analytics-worker` binary
-* [ ] **Ticket:** Finalize BigQuery schemas (marketplace_events + ad_events)
-* [ ] **Ticket:** Order event ingestion (geo, category, product, )
-* [ ] **Ticket:** ZIP/geo derivation strategy (documented)
+* [ ] **Ticket:** Finalize BigQuery schemas (marketplace_events + ad_events) + integration + repos & helpers
+* [ ] **Ticket:** Order event ingestion (geo (lat/long and default for zip for now), category, product, )
 * [ ] **Ticket:** Ad impression/click ingestion 
 * [ ] **Ticket:** Aggregated KPI derivation (AOV, ROAS, top ZIPs)
 * [ ] **Ticket:** Admin analytics endpoint (non-MVP)

@@ -10,6 +10,7 @@ import (
 	"github.com/angelmondragon/packfinderz-backend/pkg/enums"
 	"github.com/angelmondragon/packfinderz-backend/pkg/logger"
 	"github.com/angelmondragon/packfinderz-backend/pkg/outbox"
+	"github.com/angelmondragon/packfinderz-backend/pkg/outbox/payloads"
 	"github.com/google/uuid"
 	"go.uber.org/multierr"
 	"gorm.io/gorm"
@@ -141,7 +142,7 @@ func (j *orderTTLJob) emitPendingNudge(ctx context.Context, order models.VendorO
 			AggregateID:   order.ID,
 			Version:       1,
 			OccurredAt:    j.now().UTC(),
-			Data: OrderPendingNudgeEvent{
+			Data: payloads.OrderPendingNudgeEvent{
 				OrderID:         order.ID,
 				CheckoutGroupID: order.CheckoutGroupID,
 				BuyerStoreID:    order.BuyerStoreID,
@@ -213,7 +214,7 @@ func (j *orderTTLJob) expireOrder(ctx context.Context, order models.VendorOrder)
 			AggregateID:   order.ID,
 			Version:       1,
 			OccurredAt:    now,
-			Data: OrderExpiredEvent{
+			Data: payloads.OrderExpiredEvent{
 				OrderID:         order.ID,
 				CheckoutGroupID: order.CheckoutGroupID,
 				BuyerStoreID:    order.BuyerStoreID,
@@ -223,22 +224,4 @@ func (j *orderTTLJob) expireOrder(ctx context.Context, order models.VendorOrder)
 		}
 		return j.outbox.Emit(ctx, tx, event)
 	})
-}
-
-// OrderPendingNudgeEvent carries the payload for nudges.
-type OrderPendingNudgeEvent struct {
-	OrderID         uuid.UUID `json:"orderId"`
-	CheckoutGroupID uuid.UUID `json:"checkoutGroupId"`
-	BuyerStoreID    uuid.UUID `json:"buyerStoreId"`
-	VendorStoreID   uuid.UUID `json:"vendorStoreId"`
-	PendingDays     int       `json:"pendingDays"`
-}
-
-// OrderExpiredEvent describes the payload when orders expire.
-type OrderExpiredEvent struct {
-	OrderID         uuid.UUID `json:"orderId"`
-	CheckoutGroupID uuid.UUID `json:"checkoutGroupId"`
-	BuyerStoreID    uuid.UUID `json:"buyerStoreId"`
-	VendorStoreID   uuid.UUID `json:"vendorStoreId"`
-	ExpiredAt       time.Time `json:"expiredAt"`
 }

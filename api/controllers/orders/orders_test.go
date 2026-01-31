@@ -355,7 +355,7 @@ func TestVendorOrderDecisionSuccess(t *testing.T) {
 			if input.OrderID != orderID {
 				t.Fatalf("unexpected order id %s", input.OrderID)
 			}
-			if input.Decision != internalorders.VendorOrderDecisionAccept {
+			if input.Decision != enums.VendorOrderDecisionAccept {
 				t.Fatalf("unexpected decision %s", input.Decision)
 			}
 			if input.ActorStoreID != storeID {
