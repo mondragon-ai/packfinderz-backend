@@ -860,6 +860,11 @@ func releaseLineItem(item models.OrderLineItem, releaser InventoryReleaser, ctx 
 	return nil
 }
 
+// ReleaseLineItemInventory exposes the shared inventory release helper.
+func ReleaseLineItemInventory(ctx context.Context, tx *gorm.DB, item models.OrderLineItem, releaser InventoryReleaser) error {
+	return releaseLineItem(item, releaser, ctx, tx)
+}
+
 func (s *service) ConfirmPayout(ctx context.Context, input ConfirmPayoutInput) error {
 	if input.OrderID == uuid.Nil {
 		return pkgerrors.New(pkgerrors.CodeValidation, "order id required")

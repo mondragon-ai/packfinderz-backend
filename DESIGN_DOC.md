@@ -3943,7 +3943,18 @@ WHERE published_at IS NOT NULL
 * Idempotency: `expireLicense` reloads the license inside the same transaction, skips updates if the status is already `expired`, and clears the `pf:evt:processed` guard by letting the outbox handle duplicates so rerunning the job on the same calendar day is safe (`internal/schedulers/licenses/service.go`:183-210).
 * HARD DELETE `UNKNOWN`: the service currently stops after `reconcileKYC`, so PF-137 must add the >30-day cleanup that detaches `entity_type='license'` attachments, removes `media` rows, and deletes the license only after the GCS object is gone; the cron worker must keep that job ordered after the warning/expiration steps so metrics/logs still cover the full lifecycle (`internal/schedulers/licenses/service.go`:174-210; `docs/media_attachments_lifecycle.md`).
 
-### 7.5 Orphaned media GC
+### 7.5 Order TTL scheduler (PF-138)
+
+* Daily:
+
+  * find vendor orders whose `status = 'created_pending'` and `created_at` is ≥5 days ago, emit `order_pending_nudge` once per aggregate, and log the cadence so nudges never duplicate even if the cron job re-runs later in the same window.
+  * find vendor orders still pending ≥10 days, release reserved inventory for every non-fulfilled line item, mark them `rejected`, set `status = 'expired'`, zero `balance_due_cents`, populate `expired_at`, and emit `order_expired` events (one per aggregate) so buyers/vendors and analytics know the TTL guard fired.
+  * emit deterministic `order_pending_nudge` + `order_expired` outbox rows while keeping the mutation + event inside `db.WithTx` so duplicates are idempotent and downstream consumers can guard via `pf:evt:processed:*`.
+  * reuse the shared `orders.ReleaseLineItemInventory` helper (`internal/orders/service.go`) when releasing inventory and execute this job after the license job so the cron metrics always reflect the license TTL work before the order TTL work in `cmd/cron-worker/main.go`.
+
+* Implementation: `cmd/cron-worker/main.go` registers both the license lifecycle and order TTL jobs; the latter uses `internal/cron/order_ttl_job.go` with `pendingNudgeDays=5`, `orderExpirationDays=10`, `orders.ReleaseLineItemInventory` for inventory release, and `order_pending_nudge`/`order_expired` enums defined in `pkg/enums/outbox.go` plus the `20260301000000_add_order_pending_nudge_event.sql` migration so the new events are durable.
+
+### 7.6 Orphaned media GC
 
 **ASSUMPTION:** allow media deletion only when no attachments exist.
 

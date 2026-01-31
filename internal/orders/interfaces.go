@@ -2,6 +2,7 @@ package orders
 
 import (
 	"context"
+	"time"
 
 	"github.com/angelmondragon/packfinderz-backend/pkg/db/models"
 	"github.com/angelmondragon/packfinderz-backend/pkg/enums"
@@ -28,6 +29,7 @@ type Repository interface {
 	ListAssignedOrders(ctx context.Context, agentID uuid.UUID, params pagination.Params) (*AgentOrderQueueList, error)
 	ListPayoutOrders(ctx context.Context, params pagination.Params) (*PayoutOrderList, error)
 	FindOrderDetail(ctx context.Context, orderID uuid.UUID) (*OrderDetail, error)
+	FindPendingOrdersBefore(ctx context.Context, cutoff time.Time) ([]models.VendorOrder, error)
 	FindVendorOrder(ctx context.Context, orderID uuid.UUID) (*models.VendorOrder, error)
 	UpdateVendorOrderStatus(ctx context.Context, orderID uuid.UUID, status enums.VendorOrderStatus) error
 	UpdateOrderLineItemStatus(ctx context.Context, lineItemID uuid.UUID, status enums.LineItemStatus, notes *string) error

@@ -13,6 +13,7 @@ import (
 	"github.com/angelmondragon/packfinderz-backend/internal/cron"
 	"github.com/angelmondragon/packfinderz-backend/internal/licenses"
 	"github.com/angelmondragon/packfinderz-backend/internal/media"
+	"github.com/angelmondragon/packfinderz-backend/internal/orders"
 	"github.com/angelmondragon/packfinderz-backend/internal/stores"
 	"github.com/angelmondragon/packfinderz-backend/pkg/config"
 	"github.com/angelmondragon/packfinderz-backend/pkg/db"
@@ -116,6 +117,21 @@ func main() {
 		os.Exit(1)
 	}
 	registry.Register(licenseJob)
+
+	ordersRepo := orders.NewRepository(dbClient.DB())
+	orderTTLJob, err := cron.NewOrderTTLJob(cron.OrderTTLJobParams{
+		Logger:        logg,
+		DB:            dbClient,
+		PendingReader: ordersRepo,
+		Inventory:     orders.NewInventoryReleaser(),
+		Outbox:        outboxSvc,
+		OutboxRepo:    outboxRepo,
+	})
+	if err != nil {
+		logg.Error(context.Background(), "failed to create order ttl job", err)
+		os.Exit(1)
+	}
+	registry.Register(orderTTLJob)
 	service, err := cron.NewService(cron.ServiceParams{
 		Logger:   logg,
 		Registry: registry,

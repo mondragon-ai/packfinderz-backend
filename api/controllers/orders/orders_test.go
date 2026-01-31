@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -24,6 +25,11 @@ type stubControllerOrdersRepo struct {
 	listVendor func(ctx context.Context, vendorStoreID uuid.UUID, params pagination.Params, filters internalorders.VendorOrderFilters) (*internalorders.VendorOrderList, error)
 	payoutList func(ctx context.Context, params pagination.Params) (*internalorders.PayoutOrderList, error)
 	detail     func(ctx context.Context, orderID uuid.UUID) (*internalorders.OrderDetail, error)
+}
+
+// FindPendingOrdersBefore implements [orders.Repository].
+func (s *stubControllerOrdersRepo) FindPendingOrdersBefore(ctx context.Context, cutoff time.Time) ([]models.VendorOrder, error) {
+	panic("unimplemented")
 }
 
 // ListAssignedOrders implements [orders.Repository].

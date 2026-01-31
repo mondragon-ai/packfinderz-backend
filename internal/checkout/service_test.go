@@ -3,6 +3,7 @@ package checkout
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/angelmondragon/packfinderz-backend/internal/cart"
 	"github.com/angelmondragon/packfinderz-backend/internal/checkout/reservation"
@@ -191,6 +192,11 @@ type stubOrdersRepo struct {
 	orderSequence  []uuid.UUID
 	lineItems      map[uuid.UUID][]models.OrderLineItem
 	paymentIntents map[uuid.UUID]*models.PaymentIntent
+}
+
+// FindPendingOrdersBefore implements [orders.Repository].
+func (s *stubOrdersRepo) FindPendingOrdersBefore(ctx context.Context, cutoff time.Time) ([]models.VendorOrder, error) {
+	panic("unimplemented")
 }
 
 // ListAssignedOrders implements [orders.Repository].

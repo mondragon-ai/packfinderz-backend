@@ -87,6 +87,8 @@ The worker also consumes the `gcp-meda-sub` Pub/Sub subscription for GCS `OBJECT
 
 The first job running today enforces the license lifecycle: it issues the `license_expiring_soon` warning 14 days before expiration, marks verified licenses as `expired` and re-evaluates store KYC, and finally removes license+media/attachment rows (plus their GCS objects) when the expiration date is more than 30 days in the past so the compliance tables stay bounded while the cron worker emits deterministic outbox events for observability.
 
+The cron worker also runs the order TTL scheduler (PF-138), nudging vendors with `order_pending_nudge` once orders hit five days pending and expiring them after ten days while releasing inventory and emitting `order_expired` events so downstream consumers can notify both buyer and vendor deterministically.
+
 ### Outbox Publisher
 
 `cmd/outbox-publisher` is the dedicated outbox publisher that polls `outbox_events` with `FOR UPDATE SKIP LOCKED`, publishes domain envelopes to `PACKFINDERZ_PUBSUB_DOMAIN_TOPIC`, and marks `published_at` or increments `attempt_count`/`last_error` before committing the transaction. Run it locally with `make run-outbox-publisher`, build it via `make build-outbox-publisher`, and run the `outbox-publisher` dyno in Heroku alongside `api`/`worker`. The operational guide in `docs/outbox.md` explains claiming, at-least-once semantics, retry expectations, and consumer idempotency requirements. When the API completes checkout it writes an `order_created` outbox row (payload includes `checkout_group_id` plus the `vendor_order_ids`) so analytics and notification consumers can react to the same transactional split recorded in Postgres.

@@ -111,6 +111,9 @@
 - `ConfirmPayout` (internal/orders/service.go:847-940) validates delivered + settled orders, updates the payment intent to `paid`, closes the vendor order, appends a `vendor_payout` ledger event, and emits the `order_paid` outbox event inside a single transaction so payouts stay atomic and idempotent.
 - `ConfirmPayout` trails vendor payout confirmation: it updates payout/order status, writes the payout entry, and reuses `ledger.Service.RecordEvent` under the same transaction so every payout produces an append-only ledger row (`internal/orders/service.go:871-888`; internal/ledger/service.go:22-64).
 
+- `internal/cron/order_ttl_job.go` (PF-138) runs after the license scheduler: it calls `orders.Repository.FindPendingOrdersBefore` (`status=created_pending`, `created_at` ASC, cutoff at 5/10 days) to deliver `order_pending_nudge` when orders hit 5 days and `order_expired` once they cross 10, reusing `orders.ReleaseLineItemInventory` so eligible `inventory_items` rows return reserved quantities before the vendor order shifts to `VendorOrderStatusExpired` with `balance_due_cents=0` and both outbox events are emitted inside the same transaction (`internal/cron/order_ttl_job.go`:44-208; `internal/orders/repo.go`:131-150; `internal/orders/service.go`:853-975; `pkg/db/models/inventory_item.go`:9-24; `pkg/enums/outbox.go`:5-84; `pkg/enums/vendor_order_status.go`:5-26`). Cron metrics/logs still emit the `job`/`duration_ms`/`event` fields so sequential TTL jobs remain observable (`internal/cron/service.go`:90-122; `pkg/metrics/cron.go`:16-40).
+
+
 ## internal/ledger
 - `Repository` exposes only `Create` and `ListByOrderID`, so ledger rows are append-only (internal/ledger/repo.go:11-38).
 - `Service.RecordEvent` enforces a valid `LedgerEventType`, builds the event, and writes it via the repository so every ledger row is created centrally and never updated/deleted (internal/ledger/service.go:22-64).
