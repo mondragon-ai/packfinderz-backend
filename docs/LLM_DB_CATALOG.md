@@ -84,6 +84,7 @@
 
 ### outbox_events
 - Append-only stream with `id`, `event_type event_type_enum`, `aggregate_type aggregate_type_enum`, `aggregate_id`, `payload jsonb`, `created_at` default now, nullable `published_at`, `attempt_count` default 0, `last_error` text; indexes on `published_at`, `event_type`, `(aggregate_type,aggregate_id)` (pkg/migrate/migrations/20260123000001_create_outbox_events.sql:1-39; pkg/db/models/outbox_event.go:12-23).
+- Retention: `internal/cron/outbox_retention_job.go` (PF-140) deletes rows where `published_at IS NOT NULL`, `published_at < now() - interval '30 days'`, and `attempt_count >= 5` (the `outbox.Repository.DeletePublishedBefore` helpers enforces the filters inside `db.WithTx`) so published events older than 30 days stay bounded without touching in-flight records (`internal/cron/outbox_retention_job.go`:1-102; `pkg/outbox/repository.go`:119-137).
 
 ### notifications
 - `id`, `store_id`, `type notification_type`, `title`, `message`, optional `link`, `read_at`, `created_at` default `now()` (pkg/migrate/migrations/20260124000000_create_notifications.sql:1-41; pkg/db/models/notification.go:10-24).

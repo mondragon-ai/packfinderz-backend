@@ -116,6 +116,24 @@ func (r *Repository) Exists(ctx context.Context, eventType enums.OutboxEventType
 	return count > 0, err
 }
 
+func (r *Repository) DeletePublishedBefore(ctx context.Context, tx *gorm.DB, cutoff time.Time, minAttemptCount int) (int64, error) {
+	db := r.db
+	if tx != nil {
+		db = tx
+	}
+	query := db.WithContext(ctx).Model(&models.OutboxEvent{}).
+		Where("published_at IS NOT NULL").
+		Where("published_at < ?", cutoff)
+	if minAttemptCount > 0 {
+		query = query.Where("attempt_count >= ?", minAttemptCount)
+	}
+	result := query.Delete(&models.OutboxEvent{})
+	if result.Error != nil {
+		return 0, result.Error
+	}
+	return result.RowsAffected, nil
+}
+
 func truncateError(message string) string {
 	if len(message) <= maxLastErrorLen {
 		return message
