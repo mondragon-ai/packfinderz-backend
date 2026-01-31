@@ -23,7 +23,7 @@ type Store struct {
 	SubscriptionActive   bool                 `gorm:"column:subscription_active;not null;default:false"`
 	DeliveryRadiusMeters int                  `gorm:"column:delivery_radius_meters;not null;default:0"`
 	Address              types.Address        `gorm:"column:address;type:address_t;not null"`
-	Geom                 types.GeographyPoint `gorm:"column:geom;type:geography(Point,4326);not null"`
+	Geom                 types.GeographyPoint `gorm:"column:geom;type:geography(Point,4326);not null"` // REMOVE THIS
 	Social               *types.Social        `gorm:"column:social;type:social_t"`
 	BannerURL            *string              `gorm:"column:banner_url"`
 	LogoURL              *string              `gorm:"column:logo_url"`
@@ -34,3 +34,10 @@ type Store struct {
 	CreatedAt            time.Time            `gorm:"column:created_at;autoCreateTime"`
 	UpdatedAt            time.Time            `gorm:"column:updated_at;autoUpdateTime"`
 }
+
+// Add These as an array to the store.
+// type StoreMedia struct {
+// 	GCS     string
+// 	URL     string
+// 	MediaId uuid.UUID
+// }

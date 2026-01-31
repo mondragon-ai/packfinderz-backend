@@ -283,7 +283,7 @@ Re-running the migration is safe because the statements use `CREATE EXTENSION IF
 * Products + `product_media` attachments (category/classification/unit/flavors/feelings/usage enums govern vendor listings)
 * Volume discounts (`product_volume_discounts`) for deterministic tiered pricing per product
 * Inventory (`inventory_items` tracks available/reserved counts per product), orders
-* Cart staging tables (`cart_records`, `cart_items`) persist buyer snapshots at checkout confirmation (status `active|converted`) before creating checkout groups
+* Cart staging tables (`cart_records`, `cart_items`, `cart_vendor_groups`) persist the authoritative quote (cart totals, vendor aggregates, item warnings) at checkout confirmation (status `active|converted`) before creating checkout groups
 * Checkout tables (`checkout_groups`, `vendor_orders`, `order_line_items`, `payment_intents`) capture the per-vendor order state, line items, and payment intent before checkout execution hands off to fulfillment
 * Payments, ledger events, and Stripe billing tables (`subscriptions`, `payment_methods`, `charges`, `usage_charges`)
 * Ads, subscriptions

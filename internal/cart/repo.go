@@ -51,6 +51,7 @@ func (r *Repository) FindActiveByBuyerStore(ctx context.Context, buyerStoreID uu
 	var record models.CartRecord
 	err := r.db.WithContext(ctx).
 		Preload("Items").
+		Preload("VendorGroups").
 		Where("buyer_store_id = ? AND status = ?", buyerStoreID, enums.CartStatusActive).
 		Order("created_at DESC").
 		First(&record).Error
@@ -65,6 +66,7 @@ func (r *Repository) FindByIDAndBuyerStore(ctx context.Context, id, buyerStoreID
 	var record models.CartRecord
 	err := r.db.WithContext(ctx).
 		Preload("Items").
+		Preload("VendorGroups").
 		Where("id = ? AND buyer_store_id = ?", id, buyerStoreID).
 		First(&record).Error
 	if err != nil {

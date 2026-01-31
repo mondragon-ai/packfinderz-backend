@@ -1,10 +1,18 @@
 -- +goose Up
 -- +goose StatementBegin
 
-CREATE TYPE IF NOT EXISTS outbox_dlq_error_reason_enum AS ENUM (
-  'max_attempts',
-  'non_retryable'
-);
+-- Create enum type if it doesn't exist (works across PG versions)
+DO $$
+BEGIN
+  CREATE TYPE outbox_dlq_error_reason_enum AS ENUM (
+    'max_attempts',
+    'non_retryable'
+  );
+EXCEPTION
+  WHEN duplicate_object THEN
+    NULL;
+END
+$$;
 
 CREATE TABLE IF NOT EXISTS outbox_dlq (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -28,6 +36,15 @@ CREATE UNIQUE INDEX IF NOT EXISTS ux_outbox_dlq_event_id ON outbox_dlq(event_id)
 -- +goose StatementBegin
 
 DROP TABLE IF EXISTS outbox_dlq;
-DROP TYPE IF EXISTS outbox_dlq_error_reason_enum;
+
+-- Drop enum type if it exists
+DO $$
+BEGIN
+  DROP TYPE outbox_dlq_error_reason_enum;
+EXCEPTION
+  WHEN undefined_object THEN
+    NULL;
+END
+$$;
 
 -- +goose StatementEnd

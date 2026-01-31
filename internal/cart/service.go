@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	checkouthelpers "github.com/angelmondragon/packfinderz-backend/internal/checkout/helpers"
 	product "github.com/angelmondragon/packfinderz-backend/internal/products"
@@ -15,13 +16,9 @@ import (
 	pkgerrors "github.com/angelmondragon/packfinderz-backend/pkg/errors"
 	"github.com/angelmondragon/packfinderz-backend/pkg/types"
 	"github.com/google/uuid"
+	"github.com/lib/pq"
 	"gorm.io/gorm"
 )
-
-var validCartLevelDiscountTypes = map[string]struct{}{
-	"percentage": {},
-	"fixed":      {},
-}
 
 type txRunner interface {
 	WithTx(ctx context.Context, fn func(tx *gorm.DB) error) error
@@ -72,14 +69,14 @@ func NewService(repo CartRepository, tx txRunner, store storeLoader, productRepo
 
 // UpsertCartInput captures the payload required to create or refresh a cart record.
 type UpsertCartInput struct {
-	SessionID          *string
-	ShippingAddress    *types.Address
-	TotalDiscount      int
-	Fees               int
-	SubtotalCents      int
-	TotalCents         int
-	CartLevelDiscounts types.CartLevelDiscounts
-	Items              []CartItemInput
+	ShippingAddress *types.Address
+	Currency        string
+	ValidUntil      *time.Time
+	DiscountsCents  int
+	SubtotalCents   int
+	TotalCents      int
+	AdTokens        []string
+	Items           []CartItemInput
 }
 
 // CartItemInput mirrors the data stored for each cart item.
@@ -95,6 +92,7 @@ type CartItemInput struct {
 	AppliedVolumeTierUnitPriceCents *int
 	DiscountedPrice                 *int
 	SubTotalPrice                   *int
+	AppliedVolumeDiscount           *types.AppliedVolumeDiscount
 	FeaturedImage                   *string
 	THCPercent                      *float64
 	CBDPercent                      *float64
@@ -108,7 +106,7 @@ func (s *service) UpsertCart(ctx context.Context, buyerStoreID uuid.UUID, input 
 	if len(input.Items) == 0 {
 		return nil, pkgerrors.New(pkgerrors.CodeValidation, "cart must contain at least one item")
 	}
-	if input.SubtotalCents < 0 || input.TotalCents < 0 || input.TotalDiscount < 0 || input.Fees < 0 {
+	if input.SubtotalCents < 0 || input.TotalCents < 0 || input.DiscountsCents < 0 {
 		return nil, pkgerrors.New(pkgerrors.CodeValidation, "cart totals must be non-negative")
 	}
 
@@ -186,7 +184,7 @@ func (s *service) UpsertCart(ctx context.Context, buyerStoreID uuid.UUID, input 
 			Quantity:    payload.Qty,
 		})
 
-		items = append(items, buildCartItem(payload, product, linePrice, lineTotal))
+		items = append(items, buildCartItem(payload, product, lineTotal))
 	}
 
 	if err := checkout.ValidateMOQ(moqInputs); err != nil {
@@ -194,10 +192,6 @@ func (s *service) UpsertCart(ctx context.Context, buyerStoreID uuid.UUID, input 
 	}
 
 	if err := verifyTotals(input, subtotalSum); err != nil {
-		return nil, err
-	}
-
-	if err := validateCartLevelDiscounts(input.CartLevelDiscounts, vendorIDs); err != nil {
 		return nil, err
 	}
 
@@ -210,28 +204,39 @@ func (s *service) UpsertCart(ctx context.Context, buyerStoreID uuid.UUID, input 
 		}
 
 		var targetID uuid.UUID
+		validUntil := time.Now().Add(15 * time.Minute)
+		if input.ValidUntil != nil {
+			validUntil = *input.ValidUntil
+		}
+
 		if record != nil {
-			record.SessionID = input.SessionID
 			record.ShippingAddress = input.ShippingAddress
-			record.TotalDiscount = input.TotalDiscount
-			record.Fees = input.Fees
+			if strings.TrimSpace(input.Currency) != "" {
+				record.Currency = input.Currency
+			}
+			record.ValidUntil = validUntil
 			record.SubtotalCents = input.SubtotalCents
+			record.DiscountsCents = input.DiscountsCents
 			record.TotalCents = input.TotalCents
-			record.CartLevelDiscounts = input.CartLevelDiscounts
+			record.AdTokens = pq.StringArray(input.AdTokens)
 			if _, err := txRepo.Update(ctx, record); err != nil {
 				return err
 			}
 			targetID = record.ID
 		} else {
+			currency := strings.TrimSpace(input.Currency)
+			if currency == "" {
+				currency = "USD"
+			}
 			record = &models.CartRecord{
-				BuyerStoreID:       buyerStoreID,
-				SessionID:          input.SessionID,
-				ShippingAddress:    input.ShippingAddress,
-				TotalDiscount:      input.TotalDiscount,
-				Fees:               input.Fees,
-				SubtotalCents:      input.SubtotalCents,
-				TotalCents:         input.TotalCents,
-				CartLevelDiscounts: input.CartLevelDiscounts,
+				BuyerStoreID:    buyerStoreID,
+				ShippingAddress: input.ShippingAddress,
+				Currency:        currency,
+				ValidUntil:      validUntil,
+				SubtotalCents:   input.SubtotalCents,
+				DiscountsCents:  input.DiscountsCents,
+				TotalCents:      input.TotalCents,
+				AdTokens:        pq.StringArray(input.AdTokens),
 			}
 			created, err := txRepo.Create(ctx, record)
 			if err != nil {
@@ -336,57 +341,26 @@ func verifyTotals(input UpsertCartInput, subtotal int64) error {
 	if int64(input.SubtotalCents) != subtotal {
 		return pkgerrors.New(pkgerrors.CodeValidation, "cart subtotal mismatch")
 	}
-	if input.TotalDiscount > input.SubtotalCents {
-		return pkgerrors.New(pkgerrors.CodeValidation, "total discount exceeds subtotal")
+	if input.DiscountsCents > input.SubtotalCents {
+		return pkgerrors.New(pkgerrors.CodeValidation, "discounts exceed subtotal")
 	}
-	if input.SubtotalCents+input.Fees-input.TotalDiscount != input.TotalCents {
+	if input.SubtotalCents-input.DiscountsCents != input.TotalCents {
 		return pkgerrors.New(pkgerrors.CodeValidation, "cart total mismatch")
 	}
 	return nil
 }
 
-func validateCartLevelDiscounts(levels types.CartLevelDiscounts, vendorIDs map[uuid.UUID]struct{}) error {
-	for _, entry := range levels {
-		valueType := strings.ToLower(strings.TrimSpace(entry.ValueType))
-		if _, ok := validCartLevelDiscountTypes[valueType]; !ok {
-			return pkgerrors.New(pkgerrors.CodeValidation, "invalid cart level discount type")
-		}
-		if strings.TrimSpace(entry.Title) == "" {
-			return pkgerrors.New(pkgerrors.CodeValidation, "discount title is required")
-		}
-		if entry.ID == uuid.Nil {
-			return pkgerrors.New(pkgerrors.CodeValidation, "discount id is required")
-		}
-		if strings.TrimSpace(entry.Value) == "" {
-			return pkgerrors.New(pkgerrors.CodeValidation, "discount value is required")
-		}
-		if entry.VendorID == uuid.Nil {
-			return pkgerrors.New(pkgerrors.CodeValidation, "discount vendor is required")
-		}
-		if _, ok := vendorIDs[entry.VendorID]; !ok {
-			return pkgerrors.New(pkgerrors.CodeValidation, "discount references unknown vendor")
-		}
-	}
-	return nil
-}
-
-func buildCartItem(input CartItemInput, product *models.Product, discountedPrice, lineTotal int) models.CartItem {
+func buildCartItem(input CartItemInput, product *models.Product, lineTotal int) models.CartItem {
 	return models.CartItem{
-		ProductID:                       product.ID,
-		VendorStoreID:                   product.StoreID,
-		Qty:                             input.Qty,
-		ProductSKU:                      product.SKU,
-		Unit:                            input.Unit,
-		UnitPriceCents:                  input.UnitPriceCents,
-		CompareAtUnitPriceCents:         copyIntPtr(input.CompareAtUnitPriceCents, product.CompareAtPriceCents),
-		AppliedVolumeTierMinQty:         copyIntPtr(input.AppliedVolumeTierMinQty),
-		AppliedVolumeTierUnitPriceCents: copyIntPtr(input.AppliedVolumeTierUnitPriceCents),
-		DiscountedPrice:                 intPtr(discountedPrice),
-		SubTotalPrice:                   intPtr(lineTotal),
-		FeaturedImage:                   input.FeaturedImage,
-		MOQ:                             intPtr(product.MOQ),
-		THCPercent:                      copyFloatPtr(input.THCPercent),
-		CBDPercent:                      copyFloatPtr(input.CBDPercent),
+		ProductID:             product.ID,
+		VendorStoreID:         product.StoreID,
+		Quantity:              input.Qty,
+		MOQ:                   product.MOQ,
+		UnitPriceCents:        input.UnitPriceCents,
+		AppliedVolumeDiscount: input.AppliedVolumeDiscount,
+		LineSubtotalCents:     lineTotal,
+		Status:                enums.CartItemStatusOK,
+		Warnings:              nil,
 	}
 }
 
@@ -405,30 +379,4 @@ func selectVolumeDiscount(qty int, tiers []models.ProductVolumeDiscount) *models
 
 func normalizeState(value string) string {
 	return strings.ToUpper(strings.TrimSpace(value))
-}
-
-func intPtr(value int) *int {
-	return &value
-}
-
-func copyIntPtr(src *int, fallback ...*int) *int {
-	if src != nil {
-		val := *src
-		return &val
-	}
-	for _, ptr := range fallback {
-		if ptr != nil {
-			val := *ptr
-			return &val
-		}
-	}
-	return nil
-}
-
-func copyFloatPtr(src *float64) *float64 {
-	if src == nil {
-		return nil
-	}
-	val := *src
-	return &val
 }

@@ -140,7 +140,7 @@ func (s *service) Execute(ctx context.Context, buyerStoreID, cartID uuid.UUID, i
 			requests[i] = reservation.InventoryReservationRequest{
 				CartItemID: item.ID,
 				ProductID:  item.ProductID,
-				Qty:        item.Qty,
+				Qty:        item.Quantity,
 			}
 		}
 
@@ -273,12 +273,10 @@ func (s *service) emitOrderCreatedEvent(ctx context.Context, tx *gorm.DB, checko
 }
 
 func buildLineItem(orderID uuid.UUID, cartItem models.CartItem, product *models.Product, reservation reservation.InventoryReservationResult) models.OrderLineItem {
-	subtotal := cartItem.UnitPriceCents * cartItem.Qty
-	total := subtotal
-	if cartItem.SubTotalPrice != nil {
-		total = *cartItem.SubTotalPrice
-	} else if cartItem.DiscountedPrice != nil {
-		total = (*cartItem.DiscountedPrice) * cartItem.Qty
+	subtotal := cartItem.UnitPriceCents * cartItem.Quantity
+	total := cartItem.LineSubtotalCents
+	if total == 0 {
+		total = subtotal
 	}
 	discount := subtotal - total
 	if discount < 0 {
@@ -303,9 +301,20 @@ func buildLineItem(orderID uuid.UUID, cartItem models.CartItem, product *models.
 		classification = &val
 	}
 
-	name := cartItem.ProductSKU
-	if product != nil && product.Title != "" {
-		name = product.Title
+	name := ""
+	if product != nil {
+		name = product.SKU
+		if product.Title != "" {
+			name = product.Title
+		}
+	}
+	if name == "" {
+		name = cartItem.ProductID.String()
+	}
+
+	unit := enums.ProductUnit("")
+	if product != nil {
+		unit = product.Unit
 	}
 
 	return models.OrderLineItem{
@@ -315,9 +324,9 @@ func buildLineItem(orderID uuid.UUID, cartItem models.CartItem, product *models.
 		Category:       category,
 		Strain:         product.Strain,
 		Classification: classification,
-		Unit:           cartItem.Unit,
+		Unit:           unit,
 		UnitPriceCents: cartItem.UnitPriceCents,
-		Qty:            cartItem.Qty,
+		Qty:            cartItem.Quantity,
 		DiscountCents:  discount,
 		TotalCents:     total,
 		Status:         status,
