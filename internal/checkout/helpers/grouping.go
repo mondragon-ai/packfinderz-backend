@@ -16,11 +16,11 @@ func GroupCartItemsByVendor(items []models.CartItem) map[uuid.UUID][]models.Cart
 
 // VendorCartTotals captures pre-calculated totals for a vendor.
 type VendorCartTotals struct {
-	VendorStoreID uuid.UUID
-	SubtotalCents int
-	DiscountCents int
-	TotalCents    int
-	ItemCount     int
+	VendorStoreID  uuid.UUID
+	SubtotalCents  int
+	DiscountsCents int
+	TotalCents     int
+	ItemCount      int
 }
 
 // ComputeVendorTotals computes the subtotal, discount, and total for a vendor's cart items.
@@ -39,7 +39,7 @@ func ComputeVendorTotals(items []models.CartItem) VendorCartTotals {
 		}
 		totals.SubtotalCents += subtotal
 		totals.TotalCents += total
-		totals.DiscountCents += discount
+		totals.DiscountsCents += discount
 		totals.ItemCount++
 	}
 	return totals
@@ -61,7 +61,7 @@ func ComputeTotalsByVendor(items []models.CartItem) map[uuid.UUID]VendorCartTota
 		}
 		vendorTotals.SubtotalCents += subtotal
 		vendorTotals.TotalCents += total
-		vendorTotals.DiscountCents += discount
+		vendorTotals.DiscountsCents += discount
 		vendorTotals.ItemCount++
 		results[item.VendorStoreID] = vendorTotals
 	}

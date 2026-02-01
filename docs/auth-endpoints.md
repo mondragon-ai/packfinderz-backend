@@ -331,6 +331,181 @@ curl -X POST "{{API_BASE_URL}}/api/v1/checkout" \
 - Each line item includes `line_item_id`, `product_id` (nullable), `product_name`, `qty`, `unit`, `unit_price_cents`, `discount_cents`, `total_cents`, `status`, and optional `notes`.
 - `rejected_vendors`: appears when one or more vendors reject items their order; each entry provides `vendor_store_id` and the rejected line items.
 
+## Order endpoints
+
+Every `/api/v1/orders*` route runs under the authenticated store context (`middleware.RequireStore` / `StoreTypeFromContext`) so the bearer token must carry the store you intend to operate on. All requests require `Authorization: Bearer {{access_token}}`. The POST routes listed below are also guarded by `middleware.Idempotency` (`api/middleware/idempotency.go`), which enforces a non-empty `Idempotency-Key` header before allowing retries. The TTL varies: the **critical 7-day** TTL applies to `/api/v1/orders/{orderId}/cancel`, `/api/v1/orders/{orderId}/retry`, and `/api/v1/vendor/orders/{orderId}/decision`, while the **default 24-hour** TTL covers `/api/v1/orders/{orderId}/nudge`, every `/api/v1/agent/orders/*` route, and `/api/admin/orders/*`.
+
+### GET /api/v1/orders
+Returns either the buyer (`internal/orders.BuyerOrderList`) or vendor (`internal/orders.VendorOrderList`) perspective depending on `StoreType` stored in the JWT. The handler reconciles `internal/orders.BuyerOrderFilters` / `internal/orders.VendorOrderFilters` (`internal/orders/dto.go`) with the columns in `pkg/db/models/vendor_order.go` (`status`, `fulfillment_status`, `shipping_status`, `total_cents`, `discount_cents`, `order_number`, etc.).
+
+Supported query parameters:
+
+  * `limit` (optional, defaults to `25`, max `100`; enforced by `pkg/pagination.NormalizeLimit`)
+  * `cursor` (optional pagination cursor tied to `vendor_orders.created_at` + `id`)
+  * `order_status` (optional enum from `pkg/db/models/vendor_order.go` / `enums.VendorOrderStatus`)
+  * `fulfillment_status` (optional enum from `enums.VendorOrderFulfillmentStatus`)
+  * `shipping_status` (optional enum from `enums.VendorOrderShippingStatus`)
+  * `payment_status` (optional enum from `pkg/db/models/payment_intent.go` / `enums.PaymentStatus`)
+  * `actionable_statuses` (vendor-only, comma-separated `enums.VendorOrderStatus`)
+  * `date_from` / `date_to` (optional ISO-8601 / `time.RFC3339` range filters)
+  * `q` (optional case-insensitive search across buyer and vendor `company_name`)
+
+Response rows include `order_number`, totals, `payment_status`, `fulfillment_status`, `shipping_status`, and the related store summaries so the UI reflects exactly what is persisted on `vendor_orders`.
+
+#### cURL
+```bash
+curl -G "{{API_BASE_URL}}/api/v1/orders" \
+  -H "Authorization: Bearer {{access_token}}" \
+  --data-urlencode "limit=25" \
+  --data-urlencode "order_status=created_pending" \
+  --data-urlencode "fulfillment_status=pending" \
+  --data-urlencode "shipping_status=pending" \
+  --data-urlencode "actionable_statuses=created_pending,accepted" \
+  --data-urlencode "date_from=2025-01-01T00:00:00Z" \
+  --data-urlencode "date_to=2025-01-31T23:59:59Z" \
+  --data-urlencode "q=rivera"
+```
+
+### GET /api/v1/orders/{orderId}
+Returns the shared `internal/orders.OrderDetail` assembled from `pkg/db/models/vendor_order.go`, `pkg/db/models/order_line_item.go`, `pkg/db/models/payment_intent.go`, and the active `pkg/db/models/order_assignment.go` row. The controller verifies the caller’s `buyer_store_id` or `vendor_store_id` owns the order before returning the detail.
+
+#### cURL
+```bash
+curl -X GET "{{API_BASE_URL}}/api/v1/orders/{{order_id}}" \
+  -H "Authorization: Bearer {{access_token}}"
+```
+
+### POST /api/v1/orders/{orderId}/cancel
+Buyer-only action (`StoreType=buyer`). No request body—just the UUID path param, the caller’s store context, and an `Idempotency-Key` with the 7-day TTL. `internal/orders.Service.CancelOrder` releases inventory (line items from `pkg/db/models/order_line_item.go`) and marks the parent `vendor_orders.status` as `canceled`.
+
+#### cURL
+```bash
+curl -X POST "{{API_BASE_URL}}/api/v1/orders/{{order_id}}/cancel" \
+  -H "Authorization: Bearer {{access_token}}" \
+  -H "Idempotency-Key: cancel-{{uuid}}"
+```
+
+### POST /api/v1/orders/{orderId}/nudge
+Buyer-only POST that fires `internal/orders.Service.NudgeVendor`. No body is accepted; the route simply verifies the UUID and the store context. Include an `Idempotency-Key` (24-hour TTL) to keep retries safe.
+
+#### cURL
+```bash
+curl -X POST "{{API_BASE_URL}}/api/v1/orders/{{order_id}}/nudge" \
+  -H "Authorization: Bearer {{access_token}}" \
+  -H "Idempotency-Key: nudge-{{uuid}}"
+```
+
+### POST /api/v1/orders/{orderId}/retry
+Buyer-only action that reconstructs the expired order snapshot, re-reserves inventory, and returns `internal/orders.BuyerRetryResult` containing the new `order_id`. The request requires an `Idempotency-Key` with the critical 7-day TTL.
+
+#### cURL
+```bash
+curl -X POST "{{API_BASE_URL}}/api/v1/orders/{{order_id}}/retry" \
+  -H "Authorization: Bearer {{access_token}}" \
+  -H "Idempotency-Key: retry-{{uuid}}"
+```
+
+### POST /api/v1/vendor/orders/{orderId}/decision
+Vendor-only endpoint. The controller decodes `vendorOrderDecisionRequest` (`decision` required) and converts it into `enums.VendorOrderDecision`. Only `vendor_orders.status = created_pending` rows (see `pkg/db/models/vendor_order.go`) may transition to `accepted` or `rejected`; the service enforces that before patching the `status` column and emitting `order_decided`.
+
+#### Request body
+```json
+{
+  "decision": "accept"
+}
+```
+
+`decision` must be either `accept` or `reject` or the validator returns `pkg/errors.CodeValidation`.
+
+#### cURL
+```bash
+curl -X POST "{{API_BASE_URL}}/api/v1/vendor/orders/{{order_id}}/decision" \
+  -H "Authorization: Bearer {{access_token}}" \
+  -H "Idempotency-Key: decision-{{uuid}}" \
+  -d '{
+    "decision": "accept"
+  }'
+```
+
+### POST /api/v1/vendor/orders/{orderId}/line-items/decision
+Vendor-only POST that decodes `vendorLineItemDecisionRequest` (`line_item_id`, `decision`, optional `notes`). The handler validates `line_item_id` as a UUID, and the service updates `pkg/db/models/order_line_item.go` (`status`, `notes`) before recomputing the parent `vendor_order` totals. `decision` must be `fulfill` or `reject`, and `notes` is optional explanatory text stored with the line item.
+
+#### Request body
+```json
+{
+  "line_item_id": "a0b1c2d3-4e5f-6789-abcd-1234567890ab",
+  "decision": "fulfill",
+  "notes": "Picked this up curbside"
+}
+```
+
+#### cURL
+```bash
+curl -X POST "{{API_BASE_URL}}/api/v1/vendor/orders/{{order_id}}/line-items/decision" \
+  -H "Authorization: Bearer {{access_token}}" \
+  -H "Idempotency-Key: line-item-{{uuid}}" \
+  -d '{
+    "line_item_id": "{{line_item_id}}",
+    "decision": "fulfill",
+    "notes": "Fulfilled via curbside"
+  }'
+```
+
+## Agent dispatch endpoints
+
+All `/api/v1/agent/orders*` routes require `RequireRole("agent")` from the JWT (`api/middleware/require_role.go`). GET endpoints support the standard cursor/limit pagination, and the POST actions (`pickup`/`deliver`) require `Idempotency-Key` (24-hour TTL) thanks to `middleware.Idempotency`. Agent requests always carry `Authorization: Bearer {{agent_access_token}}`.
+
+### GET /api/v1/agent/orders
+Returns the agent’s assigned orders (`internal/orders.AgentOrderQueueList`) by joining `vendor_orders` with `order_assignments` rows where `active = true` and `agent_user_id` matches the caller. Each `AgentOrderQueueSummary` mirrors what is stored in `pkg/db/models/vendor_order.go` and the buyer/vendor summaries from `pkg/db/models/store.go`.
+
+#### cURL
+```bash
+curl -G "{{API_BASE_URL}}/api/v1/agent/orders" \
+  -H "Authorization: Bearer {{agent_access_token}}" \
+  --data-urlencode "limit=25" \
+  --data-urlencode "cursor={{optional_cursor}}"
+```
+
+### GET /api/v1/agent/orders/queue
+Returns the unassigned dispatch queue. The repository filters for `vendor_orders.status = hold` and `order_assignments.active IS NULL`, so every order is ready for assignment and the response uses `internal/orders.AgentOrderQueueSummary`.
+
+#### cURL
+```bash
+curl -G "{{API_BASE_URL}}/api/v1/agent/orders/queue" \
+  -H "Authorization: Bearer {{agent_access_token}}" \
+  --data-urlencode "limit=25" \
+  --data-urlencode "cursor={{optional_cursor}}"
+```
+
+### GET /api/v1/agent/orders/{orderId}
+Returns `internal/orders.OrderDetail`, but the controller rejects requests when `ActiveAssignment.AgentUserID` differs from the caller or when there is no active assignment (`pkg/db/models/order_assignment.go`). The payload includes the assignment’s `pickup_time`, `delivery_time`, and signature keys, so the app knows whether the order is still on the way.
+
+#### cURL
+```bash
+curl -X GET "{{API_BASE_URL}}/api/v1/agent/orders/{{order_id}}" \
+  -H "Authorization: Bearer {{agent_access_token}}"
+```
+
+### POST /api/v1/agent/orders/{orderId}/pickup
+Marks the assigned order as `status=in_transit`, `shipping_status=in_transit`, and records `order_assignments.pickup_time`. Returns `{"status":"in_transit"}`; repeated calls are safe because the service treats already-in-transit orders as idempotent.
+
+#### cURL
+```bash
+curl -X POST "{{API_BASE_URL}}/api/v1/agent/orders/{{order_id}}/pickup" \
+  -H "Authorization: Bearer {{agent_access_token}}" \
+  -H "Idempotency-Key: pickup-{{uuid}}"
+```
+
+### POST /api/v1/agent/orders/{orderId}/deliver
+Transitions the order to `vendor_orders.status = delivered`, `shipping_status = delivered`, and fills `order_assignments.delivery_time`. Success returns `{"status":"delivered"}`.
+
+#### cURL
+```bash
+curl -X POST "{{API_BASE_URL}}/api/v1/agent/orders/{{order_id}}/deliver" \
+  -H "Authorization: Bearer {{agent_access_token}}" \
+  -H "Idempotency-Key: deliver-{{uuid}}"
+```
+
 ## Product & inventory endpoints
 
 Vendor product management lives under the authenticated store context, so every request requires `Authorization: Bearer {{access_token}}` and the store in the JWT must be a **vendor** store. Only vendor members with roles `owner`, `admin`, `manager`, `staff`, `agent`, or `ops` can use these routes. `POST /api/v1/vendor/products` additionally requires an `Idempotency-Key` header (24‑hour TTL) because it creates inventory, media, and volume discount rows in a single transaction.

@@ -95,7 +95,7 @@ type vendorOrderResponse struct {
 	VendorStoreID     uuid.UUID          `json:"vendor_store_id"`
 	Status            string             `json:"status"`
 	SubtotalCents     int                `json:"subtotal_cents"`
-	DiscountCents     int                `json:"discount_cents"`
+	DiscountsCents    int                `json:"discount_cents"`
 	TaxCents          int                `json:"tax_cents"`
 	TransportFeeCents int                `json:"transport_fee_cents"`
 	TotalCents        int                `json:"total_cents"`
@@ -141,7 +141,7 @@ func newCheckoutResponse(group *models.CheckoutGroup) checkoutResponse {
 			VendorStoreID:     order.VendorStoreID,
 			Status:            string(order.Status),
 			SubtotalCents:     order.SubtotalCents,
-			DiscountCents:     order.DiscountCents,
+			DiscountsCents:    order.DiscountsCents,
 			TaxCents:          order.TaxCents,
 			TransportFeeCents: order.TransportFeeCents,
 			TotalCents:        order.TotalCents,

@@ -157,6 +157,10 @@ func (s *service) Execute(ctx context.Context, buyerStoreID, cartID uuid.UUID, i
 		vendorCache := map[uuid.UUID]*stores.StoreDTO{}
 		totalsByVendor := helpers.ComputeTotalsByVendor(record.Items)
 		grouped := helpers.GroupCartItemsByVendor(record.Items)
+		vendorGroups := map[uuid.UUID]models.CartVendorGroup{}
+		for _, group := range record.VendorGroups {
+			vendorGroups[group.VendorStoreID] = group
+		}
 		vendorOrderIDs := make([]uuid.UUID, 0, len(grouped))
 
 		checkoutGroup := &models.CheckoutGroup{
@@ -175,16 +179,23 @@ func (s *service) Execute(ctx context.Context, buyerStoreID, cartID uuid.UUID, i
 			}
 
 			totals := totalsByVendor[vendorID]
+			cartGroup := vendorGroups[vendorID]
 			order := &models.VendorOrder{
+				CartID:            record.ID,
 				CheckoutGroupID:   createdGroup.ID,
 				BuyerStoreID:      buyerStoreID,
 				VendorStoreID:     vendorID,
+				Currency:          record.Currency,
+				ShippingAddress:   record.ShippingAddress,
 				SubtotalCents:     totals.SubtotalCents,
-				DiscountCents:     totals.DiscountCents,
+				DiscountsCents:    totals.DiscountsCents,
 				TaxCents:          0,
 				TransportFeeCents: 0,
+				PaymentMethod:     enums.PaymentMethodCash,
 				TotalCents:        totals.TotalCents,
 				BalanceDueCents:   totals.TotalCents,
+				Warnings:          cartGroup.Warnings,
+				Promo:             cartGroup.Promo,
 			}
 			createdOrder, err := ordersRepo.CreateVendorOrder(ctx, order)
 			if err != nil {
@@ -318,18 +329,25 @@ func buildLineItem(orderID uuid.UUID, cartItem models.CartItem, product *models.
 	}
 
 	return models.OrderLineItem{
-		OrderID:        orderID,
-		ProductID:      &cartItem.ProductID,
-		Name:           name,
-		Category:       category,
-		Strain:         product.Strain,
-		Classification: classification,
-		Unit:           unit,
-		UnitPriceCents: cartItem.UnitPriceCents,
-		Qty:            cartItem.Quantity,
-		DiscountCents:  discount,
-		TotalCents:     total,
-		Status:         status,
-		Notes:          notes,
+		CartItemID:            &cartItem.ID,
+		OrderID:               orderID,
+		ProductID:             &cartItem.ProductID,
+		Name:                  name,
+		Category:              category,
+		Strain:                product.Strain,
+		Classification:        classification,
+		Unit:                  unit,
+		UnitPriceCents:        cartItem.UnitPriceCents,
+		MOQ:                   cartItem.MOQ,
+		MaxQty:                cartItem.MaxQty,
+		Qty:                   cartItem.Quantity,
+		DiscountCents:         discount,
+		LineSubtotalCents:     cartItem.LineSubtotalCents,
+		TotalCents:            total,
+		Warnings:              cartItem.Warnings,
+		AppliedVolumeDiscount: cartItem.AppliedVolumeDiscount,
+		AttributedToken:       nil,
+		Status:                status,
+		Notes:                 notes,
 	}
 }

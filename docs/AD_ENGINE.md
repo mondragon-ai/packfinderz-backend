@@ -1,4 +1,4 @@
-````md
+
 # PackFinderz Ads Engine — Hybrid Attribution + Server-Truth Billing (Phase 19 Source of Truth)
 
 This document defines the **ad serving + tracking + attribution + billing** mental model for PackFinderz Phase 19.

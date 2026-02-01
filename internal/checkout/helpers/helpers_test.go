@@ -59,8 +59,8 @@ func TestComputeVendorTotals(t *testing.T) {
 	if totals.TotalCents != 2300 {
 		t.Fatalf("expected total 2300, got %d", totals.TotalCents)
 	}
-	if totals.DiscountCents != 200 {
-		t.Fatalf("expected discount 200, got %d", totals.DiscountCents)
+	if totals.DiscountsCents != 200 {
+		t.Fatalf("expected discount 200, got %d", totals.DiscountsCents)
 	}
 	if totals.ItemCount != 2 {
 		t.Fatalf("expected item count 2, got %d", totals.ItemCount)
