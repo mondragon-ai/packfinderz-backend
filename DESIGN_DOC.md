@@ -226,7 +226,7 @@ If a **vendor subscription is inactive/canceled**:
 
   * order becomes `expired` and effectively canceled
   * inventory reservation released
-  * PF-079 introduces the atomic reservation helper that conditionally updates `inventory_items` (ensuring `available_qty >= qty`, incrementing `reserved_qty`, returning per-line success/failure) so checkout can avoid overdrafts while allowing partial success.
+  * PF-079 introduces the atomic reservation helper that conditionally updates `inventory_items` (ensuring `available_qty >= qty`, incrementing `reserved_qty`, returning per-line success/failure) so checkout can avoid overdrafts while allowing partial success; failed reservations mark the corresponding line item as rejected and flip the vendor order to `rejected` when no line reserves succeed so vendors with entirely failed carts are surfaced in the response.
   * buyer can “retry order” from expired order (creates a new checkout attempt)
 * Future ACH note: if buyer was charged, refund flow applies; for cash MVP no refund needed.
 
@@ -2049,7 +2049,7 @@ Headers:
 
 **Order Data Models (PF-077)**
 
-* `checkout_groups`, `vendor_orders`, `order_line_items`, and `payment_intents` map the `CartRecord` snapshot into durable checkout entities before inventory/reservations execute; their columns/status enums should match the master definitions in Doc 4, and cash remains the default payment method.
+* `checkout_groups`, `vendor_orders`, `order_line_items`, and `payment_intents` map the `CartRecord` snapshot into durable checkout entities before inventory/reservations execute; their columns/status enums should match the master definitions in Doc 4, cash remains the default payment method, and each payment intent uses the checkout-selected payment method plus the vendor order total so tracking stays vendor-scoped.
 * The accompanying repositories provide CRUD helpers per table so subsequent tickets can build checkout flows without embedding migrations or business logic in this layer.
 
 ---
