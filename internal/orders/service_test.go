@@ -504,7 +504,7 @@ func TestRetryOrderCreatesNewOrder(t *testing.T) {
 			BuyerStoreID:      buyerStore,
 			VendorStoreID:     vendorStore,
 			SubtotalCents:     2000,
-			DiscountCents:     0,
+			DiscountsCents:    0,
 			TaxCents:          0,
 			TransportFeeCents: 0,
 			TotalCents:        2000,

@@ -2961,11 +2961,14 @@ Fields
 * `checkout_group_id uuid null` (reference to the checkout bundle once conversion occurs)
 * `status ENUM not null` (`active|converted`)
 * `shipping_address address_t null` (quote can surface an address but the DB keeps it optional)
+* `payment_method payment_method null` (selected payment method captured at checkout)
+* `shipping_line jsonb null` (selected shipping option serialized as `types.ShippingLine`)
 * `currency text not null default 'USD'`
 * `valid_until timestamptz not null`
 * `subtotal_cents int not null`
 * `discounts_cents int not null`
 * `total_cents int not null`
+* `converted_at timestamptz null` (timestamp when the cart transitions to `converted`)
 * `ad_tokens text[] null`
 * `created_at timestamptz not null default now()`
 * `updated_at timestamptz not null default now()`
@@ -2982,7 +2985,11 @@ Indexes
 FKs
 
 * `buyer_store_id -> stores(id) on delete cascade`
-* `checkout_group_id -> checkout_groups(id) on delete set null`
+
+Notes
+
+* `checkout_group_id` is now just a UUID stored on `cart_records` (and shared with every `vendor_order`) since the standalone `checkout_groups` table was removed; the cart row itself becomes the canonical grouping anchor.
+* `payment_method`, `shipping_line`, and `converted_at` capture the checkout selections plus the moment the cart flips to `converted`, ensuring downstream analytics or audits can rebuild the exact decision.
 
 **Repositories**
 
@@ -3103,15 +3110,23 @@ FKs
 Fields
 
 * `id uuid pk`
-* `checkout_group_id uuid not null`
+* `cart_id uuid not null`
+* `checkout_group_id uuid not null` (identifier for the checkout attempt; the old `checkout_groups` table has been dropped so this is now just a UUID stored on both carts and vendor orders)
 * `buyer_store_id uuid not null`
 * `vendor_store_id uuid not null`
+* `currency text not null default 'USD'`
+* `shipping_address address_t null`
 * `status vendor_order_status not null default 'created_pending'`
 * `refund_status refund_status not null default 'none'`
 * `subtotal_cents int not null`
-* `discount_cents int not null default 0`
+* `discounts_cents int not null default 0`
 * `tax_cents int not null default 0`
 * `transport_fee_cents int not null default 0`
+* `warnings jsonb null`
+* `promo jsonb null`
+* `payment_method payment_method not null default 'cash'`
+* `shipping_line jsonb null`
+* `attributed_token jsonb null`
 * `total_cents int not null`
 * `balance_due_cents int not null` (updated after partial accept)
 * `fulfillment_status vendor_order_fulfillment_status not null default 'pending'`
@@ -3137,9 +3152,9 @@ Indexes
 
 FKs
 
-* `checkout_group_id -> checkout_groups(id) on delete cascade`
 * `buyer_store_id -> stores(id) on delete restrict`
 * `vendor_store_id -> stores(id) on delete restrict`
+* `cart_id -> cart_records(id) on delete cascade`
 
 Constraints
 
@@ -3156,15 +3171,22 @@ Fields
 * `id uuid pk`
 * `order_id uuid not null`
 * `product_id uuid null` (set null if product deleted)
+* `cart_item_id uuid null` (ties back to the canonical cart line that produced this snapshot)
 * `name text not null` (snapshot)
 * `category text not null` (snapshot)
 * `strain text null`
 * `classification text null`
 * `unit text not null`
 * `unit_price_cents int not null`
+* `moq int not null`
+* `max_qty int null`
 * `qty int not null`
 * `discount_cents int not null default 0`
+* `line_subtotal_cents int not null`
+* `warnings jsonb null`
+* `applied_volume_discount jsonb null`
 * `total_cents int not null`
+* `attributed_token jsonb null`
 * `status line_item_status not null default 'pending'`
 * `notes text null`
 * `created_at timestamptz not null default now()`

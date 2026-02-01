@@ -200,7 +200,7 @@ func (r *repository) ListBuyerOrders(ctx context.Context, buyerStoreID uuid.UUID
 			vo.created_at,
 			vo.order_number,
 			vo.total_cents,
-			vo.discount_cents,
+			vo.discounts_cents,
 			vo.fulfillment_status,
 			vo.shipping_status,
 			pi.status AS payment_status,
@@ -268,7 +268,7 @@ func (r *repository) ListBuyerOrders(ctx context.Context, buyerStoreID uuid.UUID
 			CreatedAt:         record.CreatedAt,
 			OrderNumber:       record.OrderNumber,
 			TotalCents:        record.TotalCents,
-			DiscountCents:     record.DiscountCents,
+			DiscountsCents:    record.DiscountsCents,
 			TotalItems:        record.TotalItems,
 			PaymentStatus:     record.PaymentStatus,
 			FulfillmentStatus: record.FulfillmentStatus,
@@ -305,7 +305,7 @@ func (r *repository) ListVendorOrders(ctx context.Context, vendorStoreID uuid.UU
 			vo.created_at,
 			vo.order_number,
 			vo.total_cents,
-			vo.discount_cents,
+			vo.discounts_cents,
 			vo.fulfillment_status,
 			vo.shipping_status,
 			pi.status AS payment_status,
@@ -376,7 +376,7 @@ func (r *repository) ListVendorOrders(ctx context.Context, vendorStoreID uuid.UU
 			CreatedAt:         record.CreatedAt,
 			OrderNumber:       record.OrderNumber,
 			TotalCents:        record.TotalCents,
-			DiscountCents:     record.DiscountCents,
+			DiscountsCents:    record.DiscountsCents,
 			TotalItems:        record.TotalItems,
 			PaymentStatus:     record.PaymentStatus,
 			FulfillmentStatus: record.FulfillmentStatus,
@@ -413,7 +413,7 @@ func (r *repository) ListAssignedOrders(ctx context.Context, agentID uuid.UUID, 
 			vo.created_at,
 			vo.order_number,
 			vo.total_cents,
-			vo.discount_cents,
+			vo.discounts_cents,
 			vo.fulfillment_status,
 			vo.shipping_status,
 			pi.status AS payment_status,
@@ -458,7 +458,7 @@ func (r *repository) ListAssignedOrders(ctx context.Context, agentID uuid.UUID, 
 			OrderNumber:       record.OrderNumber,
 			CreatedAt:         record.CreatedAt,
 			TotalCents:        record.TotalCents,
-			DiscountCents:     record.DiscountCents,
+			DiscountsCents:    record.DiscountsCents,
 			TotalItems:        record.TotalItems,
 			PaymentStatus:     record.PaymentStatus,
 			FulfillmentStatus: record.FulfillmentStatus,
@@ -501,7 +501,7 @@ func (r *repository) ListUnassignedHoldOrders(ctx context.Context, params pagina
 			vo.created_at,
 			vo.order_number,
 			vo.total_cents,
-			vo.discount_cents,
+			vo.discounts_cents,
 			vo.fulfillment_status,
 			vo.shipping_status,
 			pi.status AS payment_status,
@@ -547,7 +547,7 @@ func (r *repository) ListUnassignedHoldOrders(ctx context.Context, params pagina
 			OrderNumber:       record.OrderNumber,
 			CreatedAt:         record.CreatedAt,
 			TotalCents:        record.TotalCents,
-			DiscountCents:     record.DiscountCents,
+			DiscountsCents:    record.DiscountsCents,
 			TotalItems:        record.TotalItems,
 			PaymentStatus:     record.PaymentStatus,
 			FulfillmentStatus: record.FulfillmentStatus,
@@ -693,7 +693,7 @@ type buyerOrderRecord struct {
 	CreatedAt         time.Time
 	OrderNumber       int64
 	TotalCents        int
-	DiscountCents     int
+	DiscountsCents    int
 	FulfillmentStatus enums.VendorOrderFulfillmentStatus
 	ShippingStatus    enums.VendorOrderShippingStatus
 	PaymentStatus     enums.PaymentStatus
@@ -709,7 +709,7 @@ type vendorOrderRecord struct {
 	CreatedAt         time.Time
 	OrderNumber       int64
 	TotalCents        int
-	DiscountCents     int
+	DiscountsCents    int
 	FulfillmentStatus enums.VendorOrderFulfillmentStatus
 	ShippingStatus    enums.VendorOrderShippingStatus
 	PaymentStatus     enums.PaymentStatus
@@ -725,7 +725,7 @@ type agentOrderQueueRecord struct {
 	CreatedAt         time.Time
 	OrderNumber       int64
 	TotalCents        int
-	DiscountCents     int
+	DiscountsCents    int
 	FulfillmentStatus enums.VendorOrderFulfillmentStatus
 	ShippingStatus    enums.VendorOrderShippingStatus
 	PaymentStatus     enums.PaymentStatus
@@ -749,7 +749,7 @@ func buildVendorOrderSummary(order *models.VendorOrder) *VendorOrderSummary {
 		OrderNumber:       order.OrderNumber,
 		CreatedAt:         order.CreatedAt,
 		TotalCents:        order.TotalCents,
-		DiscountCents:     order.DiscountCents,
+		DiscountsCents:    order.DiscountsCents,
 		TotalItems:        sumOrderItems(order.Items),
 		PaymentStatus:     paymentStatus(order.PaymentIntent),
 		FulfillmentStatus: order.FulfillmentStatus,

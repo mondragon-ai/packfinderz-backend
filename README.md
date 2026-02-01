@@ -238,7 +238,7 @@ Re-running the migration is safe because the statements use `CREATE EXTENSION IF
 * Atomic inventory reservation helper (PF-079) conditionally updates `inventory_items.available_qty`/`reserved_qty` and returns per-line results so checkout can continue with other vendors even when a line item cannot be reserved.
 * Checkout enforces every product's MOQ (Catalog `products.moq`) and now returns `422` plus a `violations` detail array when a line item falls short so clients can display the same failure reason.
 * PF-080 describes the `internal/checkout/service` orchestrator that runs the transaction converting a `CartRecord` → `CheckoutGroup` + `VendorOrders` + `OrderLineItems` while handling reservation-driven partial success semantics.
-* Order data models (`checkout_groups`, `vendor_orders`, `order_line_items`, `payment_intents`) persist the CartRecord snapshot before inventory/reservations run; these tables (PF-077) back the checkout group/vendor order abstractions.
+* Order data models (`vendor_orders`, `order_line_items`, `payment_intents`) persist the CartRecord snapshot before inventory/reservations run; the grouping ID (`checkout_group_id`) now lives on both `cart_records` and `vendor_orders` while the dedicated `checkout_groups` table has been removed, so each vendor order stays anchored to the canonical cart snapshot, and the cart also records the selected `payment_method`, `shipping_line`, and `converted_at` timestamp so the checkout decision remains auditable.
 * The checkout helpers (`internal/checkout/helpers`) provide deterministic grouping, totals recomputation, and buyer/vendor validation logic that the orchestration layer reuses without hitting the database.
 * `internal/checkout/reservation` runs the `inventory_items` conditional update (`available_qty >= qty`), increments `reserved_qty`, and returns per-line reservation results so checkout can report partial success.
 * `internal/checkout/service.go` orchestrates the checkout transaction, creates the `CheckoutGroup` + `VendorOrder`s, converts `CartRecord` to orders, and marks the cart `converted` while reusing the helpers/reservation logic.
@@ -284,7 +284,7 @@ Re-running the migration is safe because the statements use `CREATE EXTENSION IF
 * Volume discounts (`product_volume_discounts`) for deterministic tiered pricing per product
 * Inventory (`inventory_items` tracks available/reserved counts per product), orders
 * Cart staging tables (`cart_records`, `cart_items`, `cart_vendor_groups`) persist the authoritative quote (cart totals, vendor aggregates, item warnings) at checkout confirmation (status `active|converted`) before creating checkout groups
-* Checkout tables (`checkout_groups`, `vendor_orders`, `order_line_items`, `payment_intents`) capture the per-vendor order state, line items, and payment intent before checkout execution hands off to fulfillment
+* Checkout tables (`vendor_orders`, `order_line_items`, `payment_intents`) capture the per-vendor order state, line items, and payment intent before checkout execution hands off to fulfillment while `checkout_group_id` remains the shared anchor stored on carts/orders.
 * Payments, ledger events, and Stripe billing tables (`subscriptions`, `payment_methods`, `charges`, `usage_charges`)
 * Ads, subscriptions
 * Outbox events

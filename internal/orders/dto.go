@@ -43,7 +43,7 @@ type BuyerOrderSummary struct {
 	OrderNumber       int64                              `json:"order_number"`
 	CreatedAt         time.Time                          `json:"created_at"`
 	TotalCents        int                                `json:"total_cents"`
-	DiscountCents     int                                `json:"discount_cents"`
+	DiscountsCents    int                                `json:"discount_cents"`
 	TotalItems        int                                `json:"total_items"`
 	PaymentStatus     enums.PaymentStatus                `json:"payment_status"`
 	FulfillmentStatus enums.VendorOrderFulfillmentStatus `json:"fulfillment_status"`
@@ -63,7 +63,7 @@ type VendorOrderSummary struct {
 	OrderNumber       int64                              `json:"order_number"`
 	CreatedAt         time.Time                          `json:"created_at"`
 	TotalCents        int                                `json:"total_cents"`
-	DiscountCents     int                                `json:"discount_cents"`
+	DiscountsCents    int                                `json:"discount_cents"`
 	TotalItems        int                                `json:"total_items"`
 	PaymentStatus     enums.PaymentStatus                `json:"payment_status"`
 	FulfillmentStatus enums.VendorOrderFulfillmentStatus `json:"fulfillment_status"`
@@ -78,7 +78,7 @@ type AgentOrderQueueSummary struct {
 	OrderNumber       int64                              `json:"order_number"`
 	CreatedAt         time.Time                          `json:"created_at"`
 	TotalCents        int                                `json:"total_cents"`
-	DiscountCents     int                                `json:"discount_cents"`
+	DiscountsCents    int                                `json:"discount_cents"`
 	TotalItems        int                                `json:"total_items"`
 	PaymentStatus     enums.PaymentStatus                `json:"payment_status"`
 	FulfillmentStatus enums.VendorOrderFulfillmentStatus `json:"fulfillment_status"`

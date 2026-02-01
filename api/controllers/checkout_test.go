@@ -68,7 +68,7 @@ func TestCheckoutSuccess(t *testing.T) {
 				VendorStoreID:     vendorID,
 				Status:            enums.VendorOrderStatusCreatedPending,
 				SubtotalCents:     3000,
-				DiscountCents:     200,
+				DiscountsCents:    200,
 				TaxCents:          0,
 				TransportFeeCents: 0,
 				TotalCents:        2800,
