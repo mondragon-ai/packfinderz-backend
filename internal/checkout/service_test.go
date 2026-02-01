@@ -207,6 +207,9 @@ func TestServiceUsesVendorGroupTotals(t *testing.T) {
 	if len(orderRepo.vendorOrders) != 1 {
 		t.Fatalf("unexpected vendor order count in repo: %d", len(orderRepo.vendorOrders))
 	}
+	if len(result.CartVendorGroups) != len(cartRecord.VendorGroups) {
+		t.Fatalf("expected %d vendor groups in response, got %d", len(cartRecord.VendorGroups), len(result.CartVendorGroups))
+	}
 }
 
 func ptrString(value string) *string {

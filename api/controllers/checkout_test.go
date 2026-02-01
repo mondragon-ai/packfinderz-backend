@@ -220,6 +220,44 @@ func ptrString(value string) *string {
 	return &value
 }
 
+func TestCheckoutResponseIncludesVendorWarnings(t *testing.T) {
+	t.Parallel()
+
+	vendorID := uuid.New()
+	message := "no eligible items for vendor"
+	group := &models.CheckoutGroup{
+		ID: uuid.New(),
+		CartVendorGroups: []models.CartVendorGroup{
+			{
+				VendorStoreID: vendorID,
+				Status:        enums.VendorGroupStatusInvalid,
+				Warnings: types.VendorGroupWarnings{
+					{
+						Type:    enums.VendorGroupWarningTypeVendorInvalid,
+						Message: message,
+					},
+				},
+			},
+		},
+	}
+
+	response := newCheckoutResponse(group)
+	if len(response.RejectedVendors) != 1 {
+		t.Fatalf("expected 1 rejected vendor, got %d", len(response.RejectedVendors))
+	}
+
+	rejected := response.RejectedVendors[0]
+	if rejected.VendorStoreID != vendorID {
+		t.Fatalf("unexpected vendor id: %s", rejected.VendorStoreID)
+	}
+	if len(rejected.LineItems) != 0 {
+		t.Fatalf("expected no line items, got %d", len(rejected.LineItems))
+	}
+	if len(rejected.Warnings) != 1 || rejected.Warnings[0].Message != message {
+		t.Fatalf("vendor warning missing or mismatch: %#v", rejected.Warnings)
+	}
+}
+
 func validCheckoutRequest(cartID uuid.UUID) string {
 	return fmt.Sprintf(`{
 		"cart_id":"%s",

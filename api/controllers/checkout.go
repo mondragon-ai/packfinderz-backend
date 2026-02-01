@@ -133,8 +133,9 @@ type lineItemResponse struct {
 }
 
 type rejectedVendorReport struct {
-	VendorStoreID uuid.UUID          `json:"vendor_store_id"`
-	LineItems     []lineItemResponse `json:"line_items"`
+	VendorStoreID uuid.UUID                 `json:"vendor_store_id"`
+	LineItems     []lineItemResponse        `json:"line_items"`
+	Warnings      types.VendorGroupWarnings `json:"warnings,omitempty"`
 }
 
 func newCheckoutResponse(group *models.CheckoutGroup) checkoutResponse {
@@ -142,14 +143,19 @@ func newCheckoutResponse(group *models.CheckoutGroup) checkoutResponse {
 		return checkoutResponse{}
 	}
 	vendorOrders := make([]vendorOrderResponse, 0, len(group.VendorOrders))
-	rejections := map[uuid.UUID][]lineItemResponse{}
+	rejections := map[uuid.UUID]*rejectedVendorReport{}
 	for _, order := range group.VendorOrders {
 		items := make([]lineItemResponse, 0, len(order.Items))
 		for _, item := range order.Items {
 			resp := newLineItemResponse(item)
 			items = append(items, resp)
 			if item.Status == enums.LineItemStatusRejected {
-				rejections[order.VendorStoreID] = append(rejections[order.VendorStoreID], resp)
+				report := rejections[order.VendorStoreID]
+				if report == nil {
+					report = &rejectedVendorReport{VendorStoreID: order.VendorStoreID}
+					rejections[order.VendorStoreID] = report
+				}
+				report.LineItems = append(report.LineItems, resp)
 			}
 		}
 		vendorOrders = append(vendorOrders, vendorOrderResponse{
@@ -171,10 +177,19 @@ func newCheckoutResponse(group *models.CheckoutGroup) checkoutResponse {
 	})
 
 	rejected := make([]rejectedVendorReport, 0, len(rejections))
-	for vendorID, items := range rejections {
+	for _, report := range rejections {
+		rejected = append(rejected, *report)
+	}
+	for _, group := range group.CartVendorGroups {
+		if group.Status == enums.VendorGroupStatusOK {
+			continue
+		}
+		if _, exists := rejections[group.VendorStoreID]; exists {
+			continue
+		}
 		rejected = append(rejected, rejectedVendorReport{
-			VendorStoreID: vendorID,
-			LineItems:     items,
+			VendorStoreID: group.VendorStoreID,
+			Warnings:      group.Warnings,
 		})
 	}
 	sort.Slice(rejected, func(i, j int) bool {

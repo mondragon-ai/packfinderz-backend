@@ -116,7 +116,10 @@ func (s *service) Execute(ctx context.Context, buyerStoreID, cartID uuid.UUID, i
 		return nil, pkgerrors.New(pkgerrors.CodeValidation, "cart id required")
 	}
 
-	var result *models.CheckoutGroup
+	var (
+		result               *models.CheckoutGroup
+		vendorGroupSnapshots []models.CartVendorGroup
+	)
 	err := s.tx.WithTx(ctx, func(tx *gorm.DB) error {
 		cartRepo := s.cartRepo.WithTx(tx)
 		ordersRepo := s.ordersRepo.WithTx(tx)
@@ -205,6 +208,8 @@ func (s *service) Execute(ctx context.Context, buyerStoreID, cartID uuid.UUID, i
 			return err
 		}
 
+		vendorGroupSnapshots = append([]models.CartVendorGroup(nil), record.VendorGroups...)
+
 		for vendorID, items := range grouped {
 			if _, err := s.loadVendorStore(ctx, vendorID, buyerState, vendorCache); err != nil {
 				return err
@@ -275,7 +280,11 @@ func (s *service) Execute(ctx context.Context, buyerStoreID, cartID uuid.UUID, i
 		}
 
 		result, err = ordersRepo.FindCheckoutGroupByID(ctx, createdGroup.ID)
-		return err
+		if err != nil {
+			return err
+		}
+		result.CartVendorGroups = vendorGroupSnapshots
+		return nil
 	})
 	if err != nil {
 		return nil, err
