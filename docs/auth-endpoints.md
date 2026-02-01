@@ -246,10 +246,10 @@ If the media row was already marked deleted or belongs to a different store, the
 
 ## Cart & Checkout endpoints
 
-Cart-related routes live inside the authenticated store context, so every request requires `Authorization: Bearer {{access_token}}` and, for mutating routes (`PUT /api/v1/cart` and `POST /api/v1/checkout`), an `Idempotency-Key` header with a store-scoped unique value. These headers are enforced by the idempotency middleware (missing keys return HTTP 400/422).
+Cart-related routes live inside the authenticated store context, so every request requires `Authorization: Bearer {{access_token}}` and, for mutating routes (`POST /api/v1/cart` and `POST /api/v1/checkout`), an `Idempotency-Key` header with a store-scoped unique value. These headers are enforced by the idempotency middleware (missing keys return HTTP 400/422).
 
 ### GET /api/v1/cart
-Returns the buyer store's active cart snapshot (if one exists). `items` lists the ordered lines, `cart_level_discount` carries applied promotions, and the totals (`subtotal_cents`, `fees`, `total_discount`, `total_cents`) mirror the values you previously submitted via `PUT /api/v1/cart`.
+Returns the buyer store's active cart snapshot (if one exists). `items` lists the ordered lines, `cart_level_discount` carries applied promotions, and the totals (`subtotal_cents`, `fees`, `total_discount`, `total_cents`) mirror the authoritative values produced by the most recent `POST /api/v1/cart`.
 
 #### cURL
 ```bash
@@ -258,65 +258,35 @@ curl -G "{{API_BASE_URL}}/api/v1/cart" \
   -H "Authorization: Bearer {{access_token}}"
 ```
 
-### PUT /api/v1/cart
-Creates or replaces the buyer store's active cart. The payload must include `subtotal_cents`, `total_cents`, `total_discount`, and the `items` array; everything else is optional (but recommended when available). The response returns the persisted cart record, so you can immediately render totals, timestamps, and status.
+### POST /api/v1/cart
+Creates or replaces the buyer store's active quote. The request must include `buyer_store_id` (must match the authenticated store) and at least one item; `vendor_promos` and `ad_tokens` are optional. The response returns the persisted `CartQuote`, so clients can immediately render the authoritative snapshot.
 
-#### Request body (required + optional fields)
+#### Request body
 ```json
 {
-  "session_id": "bf05-4512-9c9f",
-  "shipping_address": {
-    "line1": "1501 Pike Pl",
-    "line2": "Pier 52",
-    "city": "Seattle",
-    "state": "WA",
-    "postal_code": "98101",
-    "country": "US",
-    "lat": 47.610,
-    "lng": -122.339,
-    "geohash": "c22yzv"
-  },
-  "total_discount": 200,
-  "fees": 50,
-  "subtotal_cents": 12000,
-  "total_cents": 11850,
-  "cart_level_discount": [
+  "buyer_store_id": "bf05-4512-9c9f",
+  "vendor_promos": [
     {
-      "type": "loyalty",
-      "title": "Loyalty bundle",
-      "id": "23f9d3d6-12b3-4f5e-92fa-1f0f545f733e",
-      "value": "2.00",
-      "value_type": "flat",
-      "vendor_id": "7efe5c43-aa7f-4adf-a448-98bb7c6c3fef"
+      "vendor_store_id": "4d5c8316-eb62-4d9b-9f11-65b8c5c8a638",
+      "code": "SAVE20"
     }
   ],
   "items": [
     {
       "product_id": "d3f7e10b-3f91-4f3f-92f6-df0452a1f5f5",
       "vendor_store_id": "8a4e0a8f-5a10-4de1-94da-21a1c4d4e0b1",
-      "qty": 2,
-      "product_sku": "SPINACH-4OZ",
-      "unit": "case",
-      "unit_price_cents": 6500,
-      "compare_at_unit_price_cents": 7000,
-      "applied_volume_tier_min_qty": 3,
-      "applied_volume_tier_unit_price_cents": 6200,
-      "discounted_price": 6200,
-      "sub_total_price": 12400,
-      "featured_image": "https://cdn.packfinderz.com/products/spinach.png",
-      "thc_percent": 0,
-      "cbd_percent": 0
+      "quantity": 2
     }
-  ]
+  ],
+  "ad_tokens": ["token-abc"]
 }
 ```
 
-##### Payload field notes
-- `session_id`: optional string stored with the cart so you can tie it back to a session.
-- `shipping_address`: optional object; when present, `line1`, `city`, `state`, `postal_code`, `country`, `lat`, and `lng` must be provided. `line2` and `geohash` remain optional.
-- `total_discount`, `subtotal_cents`, `total_cents`: integers that must be provided for accuracy. `fees` defaults to `0` when omitted.
-- `cart_level_discount`: optional list of objects; each requires `title`, `id`, `value`, `value_type`, and `vendor_id`. `type` is nullable/optional.
-- `items`: required array of cart items. Each item must include `product_id`, `vendor_store_id`, `qty`, `product_sku`, `unit`, `unit_price_cents`, and `sub_total_price`. Optional fields per item are `compare_at_unit_price_cents`, `applied_volume_tier_min_qty`, `applied_volume_tier_unit_price_cents`, `discounted_price`, `featured_image`, `thc_percent`, and `cbd_percent`.
+#### Payload field notes
+- `buyer_store_id`: required and must match the authenticated buyer store from the JWT.
+- `vendor_promos`: optional array that pairs vendor IDs with promo codes; invalid promos do not fail the quote but surface vendor-level warnings.
+- `items`: required array with `product_id`, `vendor_store_id`, and `quantity >= 1`.
+- `ad_tokens`: echoed back in the quote response but otherwise ignored by the service.
 
 #### cURL (copy into Postman > Raw)
 ```bash

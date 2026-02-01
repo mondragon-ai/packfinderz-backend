@@ -44,10 +44,11 @@ type service struct {
 	tx          txRunner
 	store       storeLoader
 	productRepo productLoader
+	promo       promoLoader
 }
 
 // NewService builds a cart service backed by the provided stack.
-func NewService(repo CartRepository, tx txRunner, store storeLoader, productRepo productLoader) (Service, error) {
+func NewService(repo CartRepository, tx txRunner, store storeLoader, productRepo productLoader, promo promoLoader) (Service, error) {
 	if repo == nil {
 		return nil, fmt.Errorf("cart repository required")
 	}
@@ -60,11 +61,15 @@ func NewService(repo CartRepository, tx txRunner, store storeLoader, productRepo
 	if productRepo == nil {
 		return nil, fmt.Errorf("product loader required")
 	}
+	if promo == nil {
+		return nil, fmt.Errorf("promo loader required")
+	}
 	return &service{
 		repo:        repo,
 		tx:          tx,
 		store:       store,
 		productRepo: productRepo,
+		promo:       promo,
 	}, nil
 }
 

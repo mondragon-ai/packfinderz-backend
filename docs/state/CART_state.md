@@ -1,8 +1,7 @@
 # CART — Current Implementation State
 
 ## 0) Summary
-- What exists today:
-  - `PUT /api/v1/cart` is the canonical way to persist the authoritative buyer cart quote: the request passes through `middleware.Idempotency`, `middleware.StoreContext`, validators, and `internal/cart.Service.UpsertCart` which validates the buyer (`internal/stores/service.go`), vendors (`internal/checkout/helpers/validation.go` + `pkg/visibility/visibility.go`), products (`internal/products/repository.go`), MOQ (`pkg/checkout/validation.go`), volume tiers, and total math before atomically writing `cart_records` + `cart_items` inside a transaction (`internal/cart/service.go`).
+  - `POST /api/v1/cart` is the canonical way to persist the authoritative buyer cart quote: the request passes through `middleware.Idempotency`, `middleware.StoreContext`, validators, and `internal/cart.Service.QuoteCart` (which eventually persists via `UpsertCart`) to validate the buyer (`internal/stores/service.go`), vendors (`internal/checkout/helpers/validation.go` + `pkg/visibility/visibility.go`), products (`internal/products/repository.go`), MOQ (`pkg/checkout/validation.go`), volume tiers, and total math before atomically writing `cart_records` + `cart_items` inside a transaction (`internal/cart/service.go`).
   - `GET /api/v1/cart` simply fetches the currently active `cart_records` row preloaded with `items` and `vendor_groups` (`internal/cart/cart_record_repo.go`) and renders it through `cartdto.CartQuote` (`api/controllers/cart/response.go`).
   - The checkout flow (`internal/checkout/service.go`) consumes that snapshot, reserves inventory, writes vendor orders, marks the cart `converted`, and emits the `EventOrderCreated` outbox event so downstream systems only work with staged cart data.
 - What is missing / stubbed:
@@ -12,11 +11,11 @@
 ## 1) Inventory (Files + Modules)
 - `cmd/api/main.go` — wires the `cart` repository/service into the API stack and reuses the same `db.Client`/`stores.Service`/`products` repo used by other domains.
 - `api/routes/router.go` — mounts `/api/v1/cart` under `middleware.Auth`, `StoreContext`, `Idempotency`, and `RateLimit` so every request must be authenticated and carry a store context.
-- `api/middleware/idempotency.go` — enforces the `Idempotency-Key` header for `PUT /api/v1/cart`, hashes the body, scopes keys to `user|store|method|path`, and stores Redis entries with a 24h TTL (`pkg/redis/client.go`).
+- `api/middleware/idempotency.go` — enforces the `Idempotency-Key` header for `POST /api/v1/cart`, hashes the body, scopes keys to `user|store|method|path`, and stores Redis entries with a 24h TTL (`pkg/redis/client.go`).
 - `api/middleware/store.go` + `api/middleware/context.go` — surface helpers that guarantee a store ID is present in the request context before the controller runs.
-- `api/validators/body.go` — decodes the JSON body, disallows unknown fields, and runs the `validator` tags declared on `upsertCartRequest` / `cartItemPayload`.
+- `api/validators/body.go` — decodes the JSON body, disallows unknown fields, and runs the `validator` tags declared on `cartdto.QuoteCartRequest` / `QuoteCartItem`.
 - `api/controllers/cart/handlers.go` — handles the two endpoints, extracts the buyer store ID from context, and delegates to `cart.Service`.
-- `api/controllers/cart/request.go` — defines `upsertCartRequest` and `cartItemPayload` along with the conversion into `cartsvc.UpsertCartInput` / `CartItemInput` for the service layer.
+- `api/controllers/cart/request.go` — maps `cartdto.QuoteCartRequest` into `cartsvc.QuoteCartInput` so the controller can hand off the minimal intent payload to the quote service.
 - `api/controllers/cart/dto/cart_quote.go` — defines `CartQuote`, `CartQuoteItem`, and `CartQuoteVendorGroup` that mirror the persisted models and control what fields are serialized back to clients.
 - `api/controllers/cart/response.go` — maps the GORM models (`pkg/db/models/cart_record.go`, `cart_item.go`, `cart_vendor_group.go`) into the DTOs used by the API.
 - `internal/cart/service.go` — orchestrates validation, product/vendor lookups, MOQ/layered discounts, and the transactional persistence of the cart snapshot.
@@ -111,53 +110,48 @@
 - Response DTO: `cartdto.CartQuote` (`api/controllers/cart/dto/cart_quote.go`) — contains `id`, `buyer_store_id`, optional `checkout_group_id`, `status`, `shipping_address`, `currency`, `valid_until`, `subtotal_cents`, `discounts_cents`, `total_cents`, optional `ad_tokens`, `vendor_groups`, and `items` (each item includes `quantity`, `moq`, `cur line subtotal`, `status`, `warnings`, timestamps).
 - Status codes / error handling: 200 on success; 403 for missing store context; 404 (`pkgerrors.CodeNotFound`) when no active cart exists; 500/503 for dependency errors.
 
-#### `PUT /api/v1/cart`
+#### `POST /api/v1/cart`
 - Auth: same as GET, plus the request must carry `Idempotency-Key` (middleware enforces this and responds with 400 if missing, 409 if the same key is reused with a different body, or replays the stored 200 response when the body matches) (`api/middleware/idempotency.go`).
-- Request DTO (`upsertCartRequest` + nested `cartItemPayload`, `api/controllers/cart/request.go`):
+- Request DTO (`cartdto.QuoteCartRequest`, plus `QuoteCartItem` and optional `QuoteVendorPromo`, defined in `api/controllers/cart/dto/quote_request.go`):
   ```json
   {
-    "shipping_address": {"line1":"",...},
-    "currency":"USD",
-    "valid_until":"2025-02-01T17:00:00Z",
-    "subtotal_cents": 12345,
-    "discounts_cents": 500,
-    "total_cents": 11845,
-    "ad_tokens": ["token-a"],
+    "buyer_store_id": "buyer-uuid",
     "items": [
       {
         "product_id": "uuid",
         "vendor_store_id": "vendor-uuid",
-        "qty": 2,
-        "unit_price_cents": 6000,
-        "applied_volume_tier_min_qty": 2,
-        "applied_volume_tier_unit_price_cents": 5500,
-        "discounted_price": 5500,
-        "sub_total_price": 11000
+        "quantity": 2
+      }
+    ],
+    "vendor_promos": [
+      {
+        "vendor_store_id": "vendor-uuid",
+        "code": "SAVE20"
       }
     ]
   }
   ```
-  Validation tags ensure totals are non-negative (`validate:"required,min=0"`), `items` is `required,dive`, `qty >= 1`, and `unit_price_cents` + `sub_total_price` are required; `DecodeJSONBody` forbids unknown fields.
-- Response DTO: same `cartdto.CartQuote` as GET, reflecting whatever record survived the transaction after `internal/cart/service.UpsertCart` returns it.
-- Status codes / error handling: 200 on success; 400 for validation errors, missing Idempotency-Key, or mismatched totals/volume tiers; 403 for invalid buyer store context; 404 when a referenced product or vendor is missing; 409 if available inventory (`product.Inventory.AvailableQty`) is insufficient, or if the Idempotency-Key is reused with different body (`pkgerrors.CodeIdempotency` from `api/middleware/idempotency.go`); 422 (`pkgerrors.CodeStateConflict`) is not triggered here but used elsewhere in the stack; 500/503 for DB/Redis dependency failures.
-- Notes: the middleware scope for idempotency includes `user|store|method|path`, so the same key can only be reused safely by the same store/user pair.
+  Validation tags require a non-empty `buyer_store_id`, at least one item, non-empty product/vendor IDs, and `quantity >= 1`. Unknown JSON fields are rejected (`json.Decoder.DisallowUnknownFields`), so legacy upsert payloads automatically trigger validation errors.
+- Response DTO: same `cartdto.CartQuote` as GET, reflecting whatever record the quote flow persisted (`internal/cart.Service.QuoteCart` wraps `UpsertCart` internally).
+- Status codes / error handling: 200 on success; 400 for validation errors or buyer-store mismatches; 403 for invalid buyer store context; 404 when referenced products/vendors are missing; 409 if the Idempotency-Key is reused with a different body; 500/503 for DB/Redis dependency failures.
+- Notes: vendor promo warnings and normalized totals are computed during the quote flow so the API never trusts client-supplied pricing/totals; the `QuoteCart` service returns the authoritative snapshot serialized as `CartQuote`.
 
 ## 4) DTOs & Validation
-- Request DTOs (`api/controllers/cart/request.go`): `upsertCartRequest` captures shipping address, currency, totals, ad tokens, and a list of `cartItemPayload`s. The struct tags rely on `validator.v10` via `api/validators/body.go` so `subtotal_cents`, `discounts_cents`, `total_cents`, and each `cartItemPayload.qty`/`unit_price_cents`/`sub_total_price` are required.
-- `cartItemPayload` also allows optional volume tier metadata (`applied_volume_tier_min_qty`, `applied_volume_tier_unit_price_cents`, `discounted_price`, `applied_volume_discount`). During request decoding, unknown fields are rejected (`json.Decoder.DisallowUnknownFields`).
-- Conversion to service input (`upsertCartRequest.toInput`) maps payloads into `cartsvc.CartItemInput` while passing through the supported fields (`ProductID`, `VendorStoreID`, `Qty`, discount fields, `AppliedVolumeDiscount`). The service ignores `ProductSKU`/`Unit` fields that exist on the struct but are unused, so those remain no-ops today.
+- Request DTOs (`cartdto.QuoteCartRequest`, `QuoteCartItem`, `QuoteVendorPromo`, `api/controllers/cart/dto/quote_request.go`):
+  - `QuoteCartRequest` captures the buyer store context, a list of items, optional vendor promo codes, and any ad tokens the client wants echoed back.
+  - `QuoteCartItem` enforces `product_id`, `vendor_store_id`, and `quantity >= 1`. `QuoteVendorPromo` requires both `vendor_store_id` and `code`. The struct tags are validated by `api/validators/body.go` so missing fields, whitespace `code`, and empty item lists produce `pkgerrors.CodeValidation`.
+  - Unknown JSON fields are rejected by `json.Decoder.DisallowUnknownFields`, which means legacy upsert payloads trigger validation errors automatically.
 - Service-layer validation (`internal/cart/service.go`):
-  - Ensures the buyer store exists, is a verified buyer, and has a state (`validateBuyerStore` with `stores.Service`).
-  - Verifies each vendor via `checkouthelpers.ValidateVendorStore`, which enforces state parity/subscription/KYC (`pkg/visibility/visibility.go`).
-  - Loads every product via `productRepo.GetProductDetail`, which preloads inventory, volume discounts, and media (`internal/products/repository.go`). It requires the product to be active and to belong to the vendor specified in the payload.
-  - Checks inventory availability using `product.Inventory.AvailableQty` before persisting.
-  - Applies `selectVolumeDiscount` to find the highest `MinQty` tier applicable and then runs `validateVolumeTier` to enforce consistency between the selected tier, the submitted `discounted_price`, and the `AppliedVolumeDiscount` payload.
-  - Builds `models.CartItem` rows with canonical `VendorStoreID`, `MOQ` from the product, `LineSubtotalCents`, default `status` = `CartItemStatusOK`, and nil warnings via `buildCartItem`.
-  - Validates totals via `verifyTotals`, ensuring `subtotal == sum(line totals)`, `discounts <= subtotal`, and `total == subtotal - discounts`.
-- Response DTO (`cartdto.CartQuote`): the controller flattens `models.CartRecord`/`CartItem`/`CartVendorGroup` into the DTO, so clients always see `enums.CartStatus`, `enums.CartItemStatus`, `types.CartItemWarnings`, `types.VendorGroupWarnings`, and `types.VendorGroupPromo` serialized verbatim.
+  - `QuoteCart` starts by validating the buyer store (`validateBuyerStore`) and preloading each vendor once via `ensureVendor`, so repeated items for the same vendor reuse cached eligibility checks.
+  - Vendor promos are resolved through `promoLoader.GetVendorPromo`; invalid/missing promos append `VendorGroupWarningTypeInvalidPromo` and the quote continues without applying discounts.
+  - Each item loads `productRepo.GetProductDetail`, ensures the SKU belongs to the requested vendor, and infers product metadata (inventory, MOQ, volume discounts).
+  - Quantities are normalized (`normalizeQuantity`), availability is checked (`hasSufficientInventory`), and warnings are attached when inventory, vendor mismatch, or pricing changes occur.
+  - Pricing uses `selectVolumeDiscount`, `resolvePricing`, and `validateVolumeTier` to compute `unit_price_cents`, `applied_volume_discount`, and `line_subtotal_cents`. Price changes from prior quotes surface as `CartItemWarningTypePriceChanged`.
+  - Vendor groups aggregate the normalized items; they persist subtotals, promo metadata, and warning lists before `QuoteCart` delegates to `UpsertCart` to write the `cart_record`/`cart_items`/`cart_vendor_groups` snapshot.
+- Response DTO (`cartdto.CartQuote`): the controller flattens `models.CartRecord`/`CartItem`/`CartVendorGroup` into the DTO so clients always see `enums.CartStatus`, `enums.CartItemStatus`, `types.CartItemWarnings`, `types.VendorGroupWarnings`, and `types.VendorGroupPromo` serialized verbatim.
 
 ## 5) Flows
-- **Primary flow (PUT /api/v1/cart)**: the middleware stack enforces auth/store context + idempotency, the controller decodes/validates the request, and the service performs buyer/vendor/product/total validations before writing `cart_records` and `cart_items` inside a transaction. The latest record is reloaded and returned as `CartQuote`.
+- **Primary flow (POST /api/v1/cart)**: the middleware stack enforces auth/store context + idempotency, the controller decodes/validates the quote payload, and `internal/cart.Service.QuoteCart` performs buyer/vendor/product validations before writing `cart_records`, `cart_items`, and `cart_vendor_groups` inside a transaction. The latest record is reloaded and returned as `CartQuote`.
 
 ```mermaid
 sequenceDiagram
@@ -170,7 +164,7 @@ sequenceDiagram
   participant CartRepo as internal/cart.Repository
   participant DB as Postgres
 
-  Client->>API: PUT /api/v1/cart (Idempotency-Key, JWT+store)
+  Client->>API: POST /api/v1/cart (Idempotency-Key, JWT+store)
   API->>Idem: check key + body hash + Redis
   Idem->>API: allow/request stored response (24h TTL)
   API->>CartSvc: UpsertCart(buyerStoreID, input)
@@ -193,7 +187,7 @@ sequenceDiagram
 
 ```mermaid
 flowchart TD
-  A[PUT /api/v1/cart → cart_records.status = active]
+  A[POST /api/v1/cart → cart_records.status = active]
   B[GET /api/v1/cart → returns the active record]
   C[POST /api/v1/checkout → cart_records.status := converted]
   D[Converted carts are ignored by FindActive/GET]
@@ -227,9 +221,9 @@ flowchart TD
 - **pkg/types** — includes `Address`, `AppliedVolumeDiscount`, `CartItemWarnings`, `VendorGroupWarnings`, and `VendorGroupPromo` so JSONB fields round-trip correctly.
 
 ## 8) Edge Cases & Gaps
-- **Idempotency behavior**: `PUT /api/v1/cart` is guarded by the idempotency middleware (`api/middleware/idempotency.go`). The endpoint requires the `Idempotency-Key` header, hashes the request body (`sha256` + base64), and replays the stored response if the body has already succeeded; any reuse with a different body is translated to `pkgerrors.CodeIdempotency` (HTTP 409). Missing the header immediately yields `pkgerrors.CodeValidation` (400).
+- **Idempotency behavior**: `POST /api/v1/cart` is guarded by the idempotency middleware (`api/middleware/idempotency.go`). The endpoint requires the `Idempotency-Key` header, hashes the request body (`sha256` + base64), and replays the stored response if the body has already succeeded; any reuse with a different body is translated to `pkgerrors.CodeIdempotency` (HTTP 409). Missing the header immediately yields `pkgerrors.CodeValidation` (400).
 - **Inventory race window**: the cart service checks `product.Inventory.AvailableQty` but does not reserve inventory; `internal/checkout/service.go` later calls `reservation.ReserveInventory`. That step can reject line items (`LineItemStatusRejected`) if inventory changed between the `PUT` and the `checkout` request, leaving the cart `status = active` for the buyer to retry.
 - **Metadata gaps**: `cart_records.valid_until` is only set in `internal/cart/service.go` and returned in `cartdto.CartQuote`, but neither `internal/cart/service.go`, `internal/checkout/service.go`, nor any other file enforces expiration, so the timestamp is passive metadata. Similarly, `ad_tokens` is persisted/returned but there is no consumer outside the cart API (the only occurrences of `AdTokens` are inside the cart controller, DTO, and service files).
-- **Vendor groups / warnings not implemented**: although the schema, models, and repositories define `cart_vendor_groups`, `enums.VendorGroupStatus`, and warning payloads, `internal/cart/service.go` never calls `ReplaceVendorGroups` and never populates warnings — the `vendor_groups` array returned in `CartQuote` is empty until future work wires aggregator logic (the repository method exists but is unused). Likewise, `models.CartItem.Status` is always set to `CartItemStatusOK` and `Warnings` remains nil, so the warning enums are dormant.
+- **Vendor groups / warnings**: `internal/cart/service.go` now persists `cart_vendor_groups` via `ReplaceVendorGroups`, and the aggregator emits vendor-level warnings (including `invalid_promo`) whenever promo validation fails or no valid items exist for a vendor. `CartQuote` surfaces those warnings alongside any persisted `models.CartItem` warnings so the client can render per-vendor issues while the quote remains successful.
 - **Conversion transitions**: once checkout succeeds, `internal/checkout/service.go` runs `cartRepo.UpdateStatus(..., enums.CartStatusConverted)`. Subsequent `GET /api/v1/cart` calls fail with `pkgerrors.CodeNotFound`, and the next `PUT` creates a fresh `active` record. There is no background job pruning old `converted` carts, so older records linger until manual cleanup (the only cleanup hook is the FK cascade when stores are deleted).
 - **Unused helpers**: `CartRecordRepository.SaveAuthoritativeSnapshot` and `Repository.ReplaceVendorGroups` exist but nothing invokes them; the only code paths that touch cart persistence are `Create`, `Update`, `FindActive`, `ReplaceItems`, and `UpdateStatus` within the service.

@@ -93,7 +93,7 @@ func TestCartFetchMissingStoreContext(t *testing.T) {
 	}
 }
 
-func TestCartUpsertSuccess(t *testing.T) {
+func TestCartQuoteSuccess(t *testing.T) {
 	storeID := uuid.New()
 	productID := uuid.New()
 	vendorID := uuid.New()
@@ -103,7 +103,7 @@ func TestCartUpsertSuccess(t *testing.T) {
 		Status:       enums.CartStatusActive,
 	}
 	service := &stubCartService{record: record}
-	handler := CartUpsert(service, nil)
+	handler := CartQuote(service, nil)
 
 	body := fmt.Sprintf(`{
 		"buyer_store_id": "%s",
@@ -141,10 +141,10 @@ func TestCartUpsertSuccess(t *testing.T) {
 	}
 }
 
-func TestCartUpsertBuyerStoreMismatch(t *testing.T) {
+func TestCartQuoteBuyerStoreMismatch(t *testing.T) {
 	storeID := uuid.New()
 	otherStoreID := uuid.New()
-	handler := CartUpsert(&stubCartService{}, nil)
+	handler := CartQuote(&stubCartService{}, nil)
 
 	body := fmt.Sprintf(`{
 		"buyer_store_id": "%s",
@@ -154,6 +154,25 @@ func TestCartUpsertBuyerStoreMismatch(t *testing.T) {
 			"quantity": 1
 		}]
 	}`, otherStoreID, uuid.New(), uuid.New())
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/cart", strings.NewReader(body))
+	req = req.WithContext(middleware.WithStoreID(req.Context(), storeID.String()))
+
+	resp := httptest.NewRecorder()
+	handler.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 got %d", resp.Code)
+	}
+}
+
+func TestCartQuoteValidationFails(t *testing.T) {
+	storeID := uuid.New()
+	handler := CartQuote(&stubCartService{}, nil)
+
+	body := fmt.Sprintf(`{
+		"buyer_store_id": "%s",
+		"items": []
+	}`, storeID)
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/cart", strings.NewReader(body))
 	req = req.WithContext(middleware.WithStoreID(req.Context(), storeID.String()))
 
