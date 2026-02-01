@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/angelmondragon/packfinderz-backend/internal/stores"
 	"github.com/angelmondragon/packfinderz-backend/pkg/db/models"
@@ -32,9 +33,13 @@ type quotePipelineItem struct {
 }
 
 type quotePipelineResult struct {
-	Items         []*quotePipelineItem
-	ItemsByVendor map[uuid.UUID][]*quotePipelineItem
+	Items          []*quotePipelineItem
+	ItemsByVendor  map[uuid.UUID][]*quotePipelineItem
+	VendorWarnings map[uuid.UUID]types.VendorGroupWarnings
+	VendorPromos   map[uuid.UUID]*types.VendorGroupPromo
 }
+
+const invalidPromoWarningMessage = "Promo code is not valid for this vendor"
 
 func (s *service) preprocessQuoteInput(ctx context.Context, buyerState string, input QuoteCartInput, previousPrices map[string]int) (*quotePipelineResult, error) {
 	vendorIDs := map[uuid.UUID]struct{}{}
@@ -45,6 +50,17 @@ func (s *service) preprocessQuoteInput(ctx context.Context, buyerState string, i
 		vendorIDs[payload.VendorStoreID] = struct{}{}
 	}
 
+	promoRequests := map[uuid.UUID]QuoteVendorPromo{}
+	for _, promo := range input.VendorPromos {
+		if promo.VendorStoreID == uuid.Nil {
+			continue
+		}
+		if _, ok := vendorIDs[promo.VendorStoreID]; !ok {
+			continue
+		}
+		promoRequests[promo.VendorStoreID] = promo
+	}
+
 	vendorCache := map[uuid.UUID]*stores.StoreDTO{}
 	for vendorID := range vendorIDs {
 		if _, err := s.ensureVendor(ctx, vendorID, buyerState, vendorCache); err != nil {
@@ -52,9 +68,32 @@ func (s *service) preprocessQuoteInput(ctx context.Context, buyerState string, i
 		}
 	}
 
+	now := time.Now()
+	vendorWarnings := make(map[uuid.UUID]types.VendorGroupWarnings, len(vendorIDs))
+	vendorPromos := make(map[uuid.UUID]*types.VendorGroupPromo, len(vendorIDs))
+	for vendorID, promo := range promoRequests {
+		promoRecord, err := s.promo.GetVendorPromo(ctx, vendorID, promo.Code)
+		if err != nil {
+			return nil, pkgerrors.Wrap(pkgerrors.CodeDependency, err, "load vendor promo")
+		}
+		if promoRecord == nil || promoRecord.VendorStoreID != vendorID || !promoRecord.IsValid(now) {
+			vendorWarnings[vendorID] = append(vendorWarnings[vendorID], types.VendorGroupWarning{
+				Type:    enums.VendorGroupWarningTypeInvalidPromo,
+				Message: invalidPromoWarningMessage,
+			})
+			continue
+		}
+		vendorPromos[vendorID] = &types.VendorGroupPromo{
+			Code:        promoRecord.Code,
+			AmountCents: promoRecord.AmountCents,
+		}
+	}
+
 	result := &quotePipelineResult{
-		Items:         make([]*quotePipelineItem, 0, len(input.Items)),
-		ItemsByVendor: make(map[uuid.UUID][]*quotePipelineItem, len(vendorIDs)),
+		Items:          make([]*quotePipelineItem, 0, len(input.Items)),
+		ItemsByVendor:  make(map[uuid.UUID][]*quotePipelineItem, len(vendorIDs)),
+		VendorWarnings: vendorWarnings,
+		VendorPromos:   vendorPromos,
 	}
 
 	for _, payload := range input.Items {
@@ -197,7 +236,7 @@ func aggregateVendorGroups(pipeline *quotePipelineResult) []models.CartVendorGro
 			}
 		}
 		status := enums.VendorGroupStatusInvalid
-		warnings := types.VendorGroupWarnings{}
+		warnings := append(types.VendorGroupWarnings{}, pipeline.VendorWarnings[vendorID]...)
 		if hasOK {
 			status = enums.VendorGroupStatusOK
 		} else {
@@ -211,6 +250,7 @@ func aggregateVendorGroups(pipeline *quotePipelineResult) []models.CartVendorGro
 			Status:        status,
 			Warnings:      warnings,
 			SubtotalCents: subtotal,
+			Promo:         pipeline.VendorPromos[vendorID],
 			TotalCents:    subtotal,
 		})
 	}

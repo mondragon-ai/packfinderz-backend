@@ -236,6 +236,7 @@ func main() {
 		dbClient,
 		storeService,
 		productRepo,
+		cart.NoopPromoLoader(),
 	)
 	if err != nil {
 		logg.Error(context.Background(), "failed to create cart service", err)

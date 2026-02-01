@@ -14,8 +14,8 @@ import (
 	"github.com/angelmondragon/packfinderz-backend/pkg/logger"
 )
 
-// CartUpsert handles upsert of the buyer's active cart.
-func CartUpsert(svc cartsvc.Service, logg *logger.Logger) http.HandlerFunc {
+// CartQuote handles buyer quote submissions via POST /cart.
+func CartQuote(svc cartsvc.Service, logg *logger.Logger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if svc == nil {
 			responses.WriteError(r.Context(), logg, w, pkgerrors.New(pkgerrors.CodeInternal, "cart service unavailable"))

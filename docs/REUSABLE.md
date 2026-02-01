@@ -380,6 +380,7 @@ type Ratings map[string]int
 * `CartItemWarnings` (`cart_item_warning` objects) store a `type` (`clamped_to_moq`, `price_changed`, `vendor_invalid`, etc.) alongside a `message`; the helper implements `driver.Valuer`/`sql.Scanner` so GORM persists the JSONB array in `cart_items.warnings`.
 * `AppliedVolumeDiscount` mirrors the `label`/`amount_cents` payload clients send when a tiered discount applies; it’s stored in `cart_items.applied_volume_discount`.
 * `VendorGroupWarnings` and `VendorGroupPromo` are the JSONB shapes persisted by the new `cart_vendor_groups` table so each vendor attribution can log warnings, promos, and totals.
+  Invalid vendor promos now surface via `VendorGroupWarnings` (type `invalid_promo` with a stable message) without failing the quote so the client can explain why a promo was ignored.
 * `internal/cart.Repository` now hydrates `CartRecord.VendorGroups` + `CartItem.Warnings` during fetches so services can inspect the authoritative quote before checkout conversion.
 
 ## Security

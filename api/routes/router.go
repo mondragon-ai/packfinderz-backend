@@ -173,7 +173,7 @@ func NewRouter(
 
 			r.Route("/v1/cart", func(r chi.Router) {
 				r.Get("/", cartcontrollers.CartFetch(cartService, logg))
-				r.Put("/", cartcontrollers.CartUpsert(cartService, logg))
+				r.Post("/", cartcontrollers.CartQuote(cartService, logg))
 			})
 			r.Route("/v1/orders", func(r chi.Router) {
 				r.Get("/", ordercontrollers.List(ordersRepo, logg))
