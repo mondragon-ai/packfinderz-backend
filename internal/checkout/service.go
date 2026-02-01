@@ -141,8 +141,18 @@ func (s *service) Execute(ctx context.Context, buyerStoreID, cartID uuid.UUID, i
 			return err
 		}
 
-		requests := make([]reservation.InventoryReservationRequest, len(record.Items))
-		for i, item := range record.Items {
+		eligibleItems := make([]models.CartItem, 0, len(record.Items))
+		for _, item := range record.Items {
+			if item.Status == enums.CartItemStatusOK {
+				eligibleItems = append(eligibleItems, item)
+			}
+		}
+		if len(eligibleItems) == 0 {
+			return pkgerrors.New(pkgerrors.CodeConflict, "cart contains no orderable items")
+		}
+
+		requests := make([]reservation.InventoryReservationRequest, len(eligibleItems))
+		for i, item := range eligibleItems {
 			requests[i] = reservation.InventoryReservationRequest{
 				CartItemID: item.ID,
 				ProductID:  item.ProductID,
@@ -161,8 +171,7 @@ func (s *service) Execute(ctx context.Context, buyerStoreID, cartID uuid.UUID, i
 
 		productCache := map[uuid.UUID]*models.Product{}
 		vendorCache := map[uuid.UUID]*stores.StoreDTO{}
-		totalsByVendor := helpers.ComputeTotalsByVendor(record.Items)
-		grouped := helpers.GroupCartItemsByVendor(record.Items)
+		grouped := helpers.GroupCartItemsByVendor(eligibleItems)
 		vendorGroups := map[uuid.UUID]models.CartVendorGroup{}
 		for _, group := range record.VendorGroups {
 			vendorGroups[group.VendorStoreID] = group
@@ -201,8 +210,15 @@ func (s *service) Execute(ctx context.Context, buyerStoreID, cartID uuid.UUID, i
 				return err
 			}
 
-			totals := totalsByVendor[vendorID]
-			cartGroup := vendorGroups[vendorID]
+			cartGroup, ok := vendorGroups[vendorID]
+			if !ok {
+				return pkgerrors.New(pkgerrors.CodeInternal, fmt.Sprintf("missing vendor group for vendor %s", vendorID))
+			}
+			totals := cartGroup.SubtotalCents
+			discounts := cartGroup.SubtotalCents - cartGroup.TotalCents
+			if discounts < 0 {
+				discounts = 0
+			}
 			order := &models.VendorOrder{
 				CartID:            record.ID,
 				CheckoutGroupID:   createdGroup.ID,
@@ -210,13 +226,13 @@ func (s *service) Execute(ctx context.Context, buyerStoreID, cartID uuid.UUID, i
 				VendorStoreID:     vendorID,
 				Currency:          record.Currency,
 				ShippingAddress:   appliedShippingAddress,
-				SubtotalCents:     totals.SubtotalCents,
-				DiscountsCents:    totals.DiscountsCents,
+				SubtotalCents:     totals,
+				DiscountsCents:    discounts,
 				TaxCents:          0,
 				TransportFeeCents: 0,
 				PaymentMethod:     appliedPaymentMethod,
-				TotalCents:        totals.TotalCents,
-				BalanceDueCents:   totals.TotalCents,
+				TotalCents:        cartGroup.TotalCents,
+				BalanceDueCents:   cartGroup.TotalCents,
 				Warnings:          cartGroup.Warnings,
 				Promo:             cartGroup.Promo,
 				ShippingLine:      appliedShippingLine,
@@ -241,7 +257,7 @@ func (s *service) Execute(ctx context.Context, buyerStoreID, cartID uuid.UUID, i
 			}
 			intent := &models.PaymentIntent{
 				OrderID:     createdOrder.ID,
-				AmountCents: totals.TotalCents,
+				AmountCents: cartGroup.TotalCents,
 			}
 			if _, err := ordersRepo.CreatePaymentIntent(ctx, intent); err != nil {
 				return err
@@ -309,12 +325,14 @@ func (s *service) emitOrderCreatedEvent(ctx context.Context, tx *gorm.DB, checko
 }
 
 func buildLineItem(orderID uuid.UUID, cartItem models.CartItem, product *models.Product, reservation reservation.InventoryReservationResult) models.OrderLineItem {
-	subtotal := cartItem.UnitPriceCents * cartItem.Quantity
 	total := cartItem.LineSubtotalCents
 	if total == 0 {
-		total = subtotal
+		total = cartItem.UnitPriceCents * cartItem.Quantity
 	}
-	discount := subtotal - total
+	discount := 0
+	if cartItem.AppliedVolumeDiscount != nil {
+		discount = cartItem.AppliedVolumeDiscount.AmountCents
+	}
 	if discount < 0 {
 		discount = 0
 	}
