@@ -207,8 +207,156 @@ func TestServiceUsesVendorGroupTotals(t *testing.T) {
 	if len(orderRepo.vendorOrders) != 1 {
 		t.Fatalf("unexpected vendor order count in repo: %d", len(orderRepo.vendorOrders))
 	}
+	intent, ok := orderRepo.paymentIntents[order.ID]
+	if !ok {
+		t.Fatalf("payment intent missing for order %s", order.ID)
+	}
+	if intent.AmountCents != order.TotalCents {
+		t.Fatalf("payment intent amount mismatch (%d vs %d)", intent.AmountCents, order.TotalCents)
+	}
+	if intent.Method != enums.PaymentMethodCash {
+		t.Fatalf("payment intent method mismatch: %s", intent.Method)
+	}
+	if intent.Status != enums.PaymentStatusUnpaid {
+		t.Fatalf("payment intent status changed: %s", intent.Status)
+	}
 	if len(result.CartVendorGroups) != len(cartRecord.VendorGroups) {
 		t.Fatalf("expected %d vendor groups in response, got %d", len(cartRecord.VendorGroups), len(result.CartVendorGroups))
+	}
+}
+
+func TestServiceRejectsVendorWhenAllReservationsFail(t *testing.T) {
+	t.Parallel()
+
+	buyerID := uuid.New()
+	vendorID := uuid.New()
+	productID := uuid.New()
+
+	cartRecord := &models.CartRecord{
+		ID:           uuid.New(),
+		BuyerStoreID: buyerID,
+		Status:       enums.CartStatusActive,
+		Currency:     enums.CurrencyUSD,
+		ValidUntil:   time.Now().Add(10 * time.Minute),
+		Items: []models.CartItem{
+			{
+				ID:                uuid.New(),
+				ProductID:         productID,
+				VendorStoreID:     vendorID,
+				Quantity:          2,
+				UnitPriceCents:    1500,
+				LineSubtotalCents: 3000,
+				Status:            enums.CartItemStatusOK,
+			},
+		},
+		VendorGroups: []models.CartVendorGroup{
+			{
+				VendorStoreID: vendorID,
+				Status:        enums.VendorGroupStatusOK,
+				SubtotalCents: 3000,
+				TotalCents:    3000,
+			},
+		},
+	}
+
+	cartRepo := &stubCartRepo{record: cartRecord}
+
+	storeSvc := &stubStoreService{
+		records: map[uuid.UUID]*stores.StoreDTO{
+			buyerID: {
+				ID:          buyerID,
+				Type:        enums.StoreTypeBuyer,
+				KYCStatus:   enums.KYCStatusVerified,
+				Address:     types.Address{State: "OK"},
+				CompanyName: "Buyer",
+			},
+			vendorID: {
+				ID:                 vendorID,
+				Type:               enums.StoreTypeVendor,
+				KYCStatus:          enums.KYCStatusVerified,
+				SubscriptionActive: true,
+				Address:            types.Address{State: "OK"},
+				CompanyName:        "Vendor",
+			},
+		},
+	}
+
+	productLoader := stubProductLoader{
+		products: map[uuid.UUID]*models.Product{
+			productID: {
+				ID:       productID,
+				StoreID:  vendorID,
+				SKU:      "SKU123",
+				Title:    "Test Product",
+				Category: enums.ProductCategoryFlower,
+				Unit:     enums.ProductUnitGram,
+			},
+		},
+	}
+
+	reserver := stubReservationRunner{
+		results: map[uuid.UUID]reservation.InventoryReservationResult{},
+	}
+	reserver.results[cartRecord.Items[0].ID] = reservation.InventoryReservationResult{
+		CartItemID: cartRecord.Items[0].ID,
+		ProductID:  cartRecord.Items[0].ProductID,
+		Qty:        cartRecord.Items[0].Quantity,
+		Reserved:   false,
+		Reason:     "insufficient_inventory",
+	}
+
+	orderRepo := newStubOrdersRepository()
+	publisher := &stubOutboxPublisher{}
+
+	service, err := NewService(
+		stubTxRunner{},
+		cartRepo,
+		orderRepo,
+		storeSvc,
+		productLoader,
+		reserver,
+		publisher,
+	)
+	if err != nil {
+		t.Fatalf("build service: %v", err)
+	}
+
+	result, err := service.Execute(context.Background(), buyerID, cartRecord.ID, CheckoutInput{
+		IdempotencyKey:  "key",
+		ShippingAddress: &types.Address{Line1: "123 Market", City: "Tulsa", State: "OK", PostalCode: "74104", Country: "US"},
+		PaymentMethod:   enums.PaymentMethodCash,
+	})
+	if err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+
+	if len(result.VendorOrders) != 1 {
+		t.Fatalf("expected 1 vendor order, got %d", len(result.VendorOrders))
+	}
+
+	order := result.VendorOrders[0]
+	if order.Status != enums.VendorOrderStatusRejected {
+		t.Fatalf("expected vendor order rejected, got %s", order.Status)
+	}
+	if order.BalanceDueCents != 0 {
+		t.Fatalf("expected balance due 0 for rejected vendor, got %d", order.BalanceDueCents)
+	}
+
+	if len(order.Items) != 1 {
+		t.Fatalf("expected 1 line item, got %d", len(order.Items))
+	}
+	if order.Items[0].Status != enums.LineItemStatusRejected {
+		t.Fatalf("line item not rejected: %s", order.Items[0].Status)
+	}
+
+	if len(orderRepo.vendorOrders) != 1 {
+		t.Fatalf("unexpected vendor order count in repo: %d", len(orderRepo.vendorOrders))
+	}
+	orderID := order.ID
+	if payment, ok := orderRepo.paymentIntents[orderID]; ok {
+		if payment.Status != enums.PaymentStatusUnpaid {
+			t.Fatalf("payment intent status changed: %s", payment.Status)
+		}
 	}
 }
 
@@ -456,8 +604,18 @@ func (*stubOrdersRepository) UpdateOrderLineItemStatus(ctx context.Context, line
 	return errors.New("not implemented")
 }
 
-func (*stubOrdersRepository) UpdateVendorOrder(ctx context.Context, orderID uuid.UUID, updates map[string]any) error {
-	return errors.New("not implemented")
+func (s *stubOrdersRepository) UpdateVendorOrder(ctx context.Context, orderID uuid.UUID, updates map[string]any) error {
+	order, ok := s.vendorOrders[orderID]
+	if !ok {
+		return gorm.ErrRecordNotFound
+	}
+	if status, ok := updates["status"].(enums.VendorOrderStatus); ok {
+		order.Status = status
+	}
+	if balance, ok := updates["balance_due_cents"].(int); ok {
+		order.BalanceDueCents = balance
+	}
+	return nil
 }
 
 func (*stubOrdersRepository) UpdatePaymentIntent(ctx context.Context, orderID uuid.UUID, updates map[string]any) error {

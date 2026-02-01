@@ -248,20 +248,37 @@ func (s *service) Execute(ctx context.Context, buyerStoreID, cartID uuid.UUID, i
 			}
 
 			lineItems := make([]models.OrderLineItem, 0, len(items))
+			anyReserved := false
 			for _, item := range items {
 				product, err := s.loadProduct(ctx, item.ProductID, productCache)
 				if err != nil {
 					return err
 				}
 				result := reservationMap[item.ID]
+				if result.Reserved {
+					anyReserved = true
+				}
 				lineItems = append(lineItems, buildLineItem(createdOrder.ID, item, product, result))
 			}
 
 			if err := ordersRepo.CreateOrderLineItems(ctx, lineItems); err != nil {
 				return err
 			}
+			if !anyReserved {
+				updates := map[string]any{
+					"status":            enums.VendorOrderStatusRejected,
+					"balance_due_cents": 0,
+				}
+				if err := ordersRepo.UpdateVendorOrder(ctx, createdOrder.ID, updates); err != nil {
+					return err
+				}
+				createdOrder.Status = enums.VendorOrderStatusRejected
+				createdOrder.BalanceDueCents = 0
+			}
 			intent := &models.PaymentIntent{
 				OrderID:     createdOrder.ID,
+				Method:      appliedPaymentMethod,
+				Status:      enums.PaymentStatusUnpaid,
 				AmountCents: cartGroup.TotalCents,
 			}
 			if _, err := ordersRepo.CreatePaymentIntent(ctx, intent); err != nil {
