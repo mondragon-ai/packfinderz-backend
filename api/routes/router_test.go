@@ -225,11 +225,6 @@ func (s stubProductService) DeleteProduct(ctx context.Context, userID uuid.UUID,
 
 type stubCartService struct{}
 
-// UpsertCart implements [cart.Service].
-func (s stubCartService) UpsertCart(ctx context.Context, buyerStoreID uuid.UUID, input cart.UpsertCartInput) (*models.CartRecord, error) {
-	panic("unimplemented")
-}
-
 func (s stubCartService) QuoteCart(ctx context.Context, buyerStoreID uuid.UUID, input cart.QuoteCartInput) (*models.CartRecord, error) {
 	panic("unimplemented")
 }

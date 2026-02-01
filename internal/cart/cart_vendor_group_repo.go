@@ -28,7 +28,7 @@ func (r *CartVendorGroupRepository) WithTx(tx *gorm.DB) *CartVendorGroupReposito
 
 // ReplaceForCart deletes existing vendor groups and inserts the provided snapshot.
 func (r *CartVendorGroupRepository) ReplaceForCart(ctx context.Context, cartID uuid.UUID, groups []models.CartVendorGroup) error {
-	tx := r.db.WithContext(ctx)
+	tx := r.db.WithContext(ctx).Debug()
 	if err := tx.Where("cart_id = ?", cartID).Delete(&models.CartVendorGroup{}).Error; err != nil {
 		return err
 	}

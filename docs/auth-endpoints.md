@@ -201,8 +201,8 @@ If the upload fails, the server leaves the row in `pending`, so you can retry th
 #### cURL
 ```bash
 curl -i -X PUT \
-  -H "Content-Type: image/png" \
-  --upload-file "/Users/angelmondragon/Documents/Dev/GPT_Summary/fresh-cut-spinach.png" \
+  -H "Content-Type: application/pdf" \
+  --upload-file "/Users/angelmondragon/Downloads/reserva.pdf" \
   "NEW_SIGNED_URL"
 ```
 

@@ -20,7 +20,7 @@ type CartItemWarnings []CartItemWarning
 // Value serializes the warnings to JSON.
 func (c CartItemWarnings) Value() (driver.Value, error) {
 	if c == nil {
-		return "[]", nil
+		return []byte("[]"), nil
 	}
 	return json.Marshal(c)
 }
@@ -55,7 +55,7 @@ type VendorGroupWarnings []VendorGroupWarning
 // Value serializes the vendor group warnings to JSON.
 func (v VendorGroupWarnings) Value() (driver.Value, error) {
 	if v == nil {
-		return "[]", nil
+		return []byte("[]"), nil
 	}
 	return json.Marshal(v)
 }

@@ -1995,11 +1995,11 @@ Headers:
 
 ### 5.8 Cart (checkout confirmation staging)
 
-**Create/Upsert cart record**
+**Quote cart record**
 
-* `PUT /api/v1/cart`
+* `POST /api/v1/cart`
 
-  * Created at checkout confirmation step; supports upsert.
+  * Created at checkout confirmation step; persists the authoritative quote.
   * **Idempotent:** YES (required)
   * Success: `200`
   * Errors: `400, 401, 403`
@@ -2021,7 +2021,7 @@ Headers:
 
 * Implementation note: `cart_records`/`cart_items` (see sections 2.9 & 2.10) serve as the authoritative snapshot for each buyer store, and the `internal/cart` repository enforces `buyer_store_id` ownership plus the `CartStatus` (`active|converted`) before handing the data to the checkout flow.
 
-* The `PUT /api/v1/cart` endpoint now relies on `internal/cart.Service.UpsertCart` to gate the request: the buyer store must be type `buyer` and `kyc_status=verified`, each vendor store must be verified, subscribed, and share the buyer’s state, every product SKU/unit ties back to the active vendor listing, MOQ/inventory limits and volume tiers are rechecked, and the submitted `subtotal`/`total`/`discounts_cents` values must match the line-item snapshots before the cart record and its items are persisted. Idempotent requests reuse the same Redis key for 24h while the stored authoritative cart quote (including per-vendor `cart_vendor_groups`, item warnings, and any `ad_tokens` attribution) is returned as the canonical summary.
+* The `POST /api/v1/cart` endpoint now relies on `internal/cart.Service.QuoteCart` to gate the request: the buyer store must be type `buyer` and `kyc_status=verified`, each vendor store must be verified, subscribed, and share the buyer’s state, every product SKU/unit ties back to the active vendor listing, and MOQ/inventory limits plus volume tiers are rechecked before the cart record and its items are persisted. Idempotent requests reuse the same Redis key for 24h while the stored authoritative cart quote (including per-vendor `cart_vendor_groups`, item warnings, and any `ad_tokens` attribution) is returned as the canonical summary.
 
 ---
 

@@ -1,7 +1,7 @@
 # CART — Current Implementation State
 
 ## 0) Summary
-  - `POST /api/v1/cart` is the canonical way to persist the authoritative buyer cart quote: the request passes through `middleware.Idempotency`, `middleware.StoreContext`, validators, and `internal/cart.Service.QuoteCart` (which eventually persists via `UpsertCart`) to validate the buyer (`internal/stores/service.go`), vendors (`internal/checkout/helpers/validation.go` + `pkg/visibility/visibility.go`), products (`internal/products/repository.go`), MOQ (`pkg/checkout/validation.go`), volume tiers, and total math before atomically writing `cart_records` + `cart_items` inside a transaction (`internal/cart/service.go`).
+  - `POST /api/v1/cart` is the canonical way to persist the authoritative buyer cart quote: the request passes through `middleware.Idempotency`, `middleware.StoreContext`, validators, and `internal/cart.Service.QuoteCart` to validate the buyer (`internal/stores/service.go`), vendors (`internal/checkout/helpers/validation.go` + `pkg/visibility/visibility.go`), products (`internal/products/repository.go`), MOQ (`pkg/checkout/validation.go`), volume tiers, and total math before atomically writing `cart_records` + `cart_items` inside a transaction (`internal/cart/service.go`).
   - `GET /api/v1/cart` simply fetches the currently active `cart_records` row preloaded with `items` and `vendor_groups` (`internal/cart/cart_record_repo.go`) and renders it through `cartdto.CartQuote` (`api/controllers/cart/response.go`).
   - The checkout flow (`internal/checkout/service.go`) consumes that snapshot, reserves inventory, writes vendor orders, marks the cart `converted`, and emits the `EventOrderCreated` outbox event so downstream systems only work with staged cart data.
 - What is missing / stubbed:
@@ -132,7 +132,7 @@
   }
   ```
   Validation tags require a non-empty `buyer_store_id`, at least one item, non-empty product/vendor IDs, and `quantity >= 1`. Unknown JSON fields are rejected (`json.Decoder.DisallowUnknownFields`), so legacy upsert payloads automatically trigger validation errors.
-- Response DTO: same `cartdto.CartQuote` as GET, reflecting whatever record the quote flow persisted (`internal/cart.Service.QuoteCart` wraps `UpsertCart` internally).
+- Response DTO: same `cartdto.CartQuote` as GET, reflecting whatever record the quote flow persists.
 - Status codes / error handling: 200 on success; 400 for validation errors or buyer-store mismatches; 403 for invalid buyer store context; 404 when referenced products/vendors are missing; 409 if the Idempotency-Key is reused with a different body; 500/503 for DB/Redis dependency failures.
 - Notes: vendor promo warnings and normalized totals are computed during the quote flow so the API never trusts client-supplied pricing/totals; the `QuoteCart` service returns the authoritative snapshot serialized as `CartQuote`.
 
@@ -146,8 +146,8 @@
   - Vendor promos are resolved through `promoLoader.GetVendorPromo`; invalid/missing promos append `VendorGroupWarningTypeInvalidPromo` and the quote continues without applying discounts.
   - Each item loads `productRepo.GetProductDetail`, ensures the SKU belongs to the requested vendor, and infers product metadata (inventory, MOQ, volume discounts).
   - Quantities are normalized (`normalizeQuantity`), availability is checked (`hasSufficientInventory`), and warnings are attached when inventory, vendor mismatch, or pricing changes occur.
-  - Pricing uses `selectVolumeDiscount`, `resolvePricing`, and `validateVolumeTier` to compute `unit_price_cents`, `applied_volume_discount`, and `line_subtotal_cents`. Price changes from prior quotes surface as `CartItemWarningTypePriceChanged`.
-  - Vendor groups aggregate the normalized items; they persist subtotals, promo metadata, and warning lists before `QuoteCart` delegates to `UpsertCart` to write the `cart_record`/`cart_items`/`cart_vendor_groups` snapshot.
+  - Pricing uses `selectVolumeDiscount` and `resolvePricing` to compute `unit_price_cents`, `applied_volume_discount`, and `line_subtotal_cents`. Price changes from prior quotes surface as `CartItemWarningTypePriceChanged`.
+  - Vendor groups aggregate the normalized items; they persist subtotals, promo metadata, and warning lists before `QuoteCart` writes the `cart_record`/`cart_items`/`cart_vendor_groups` snapshot inside the same transaction.
 - Response DTO (`cartdto.CartQuote`): the controller flattens `models.CartRecord`/`CartItem`/`CartVendorGroup` into the DTO so clients always see `enums.CartStatus`, `enums.CartItemStatus`, `types.CartItemWarnings`, `types.VendorGroupWarnings`, and `types.VendorGroupPromo` serialized verbatim.
 
 ## 5) Flows
@@ -167,7 +167,7 @@ sequenceDiagram
   Client->>API: POST /api/v1/cart (Idempotency-Key, JWT+store)
   API->>Idem: check key + body hash + Redis
   Idem->>API: allow/request stored response (24h TTL)
-  API->>CartSvc: UpsertCart(buyerStoreID, input)
+  API->>CartSvc: QuoteCart(buyerStoreID, intent)
   CartSvc->>StoreSvc: GetByID(buyerStoreID) → verify buyer state/KYC
   CartSvc->>StoreSvc: GetByID(vendor) via checkouthelpers.ValidateVendorStore (caching results)
   CartSvc->>ProductRepo: GetProductDetail(productID)

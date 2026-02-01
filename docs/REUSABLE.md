@@ -540,7 +540,7 @@ All enums implement:
 * `Repository` secures `CartRecord` + `CartItem` persistence by scoping every operation to the owning `buyer_store_id`.
 * `ReplaceItems` wipes the previous `cart_items` rows before inserting the new snapshot, while `UpdateStatus` flips the record from `active` to `converted`.
 * Cart-level discounts map through `pkg/types.CartLevelDiscounts` when the repository writes/reads `cart_level_discount[]`.
-* `Service.UpsertCart` enforces buyer KYC/role, vendor visibility (verified/subscribed/in-state), inventory availability, MOQ, volume-tier pricing, subtotal/total math, and cart-level discount metadata before the cart is created or updated so the returned record is the canonical checkout snapshot (`internal/cart/service.go:39-209`).
+* `Service.QuoteCart` enforces buyer KYC/role, vendor visibility (verified/subscribed/in-state), inventory availability, MOQ, volume-tier pricing, subtotal/total math, and cart-level discount metadata before the cart is created or updated so the returned record is the canonical checkout snapshot (`internal/cart/service.go:310-414`).
 * `Service.GetActiveCart` validates the requesting buyer store, enforces buyer ownership, and returns the latest `cart_record` with joined `cart_items`, otherwise returning `pkgerrors.CodeNotFound` when no active cart exists (`internal/cart/service.go:259-284`).
 
 ### `internal/orders`
