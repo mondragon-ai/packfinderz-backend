@@ -3,6 +3,7 @@ package controllers
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -15,6 +16,7 @@ import (
 	"github.com/angelmondragon/packfinderz-backend/pkg/db/models"
 	"github.com/angelmondragon/packfinderz-backend/pkg/enums"
 	pkgerrors "github.com/angelmondragon/packfinderz-backend/pkg/errors"
+	"github.com/angelmondragon/packfinderz-backend/pkg/types"
 	"github.com/google/uuid"
 )
 
@@ -64,9 +66,24 @@ func TestCheckoutSuccess(t *testing.T) {
 		ID: uuid.New(),
 		VendorOrders: []models.VendorOrder{
 			{
-				ID:                uuid.New(),
-				VendorStoreID:     vendorID,
-				Status:            enums.VendorOrderStatusCreatedPending,
+				ID:            uuid.New(),
+				VendorStoreID: vendorID,
+				Status:        enums.VendorOrderStatusCreatedPending,
+				ShippingAddress: &types.Address{
+					Line1:      "123 Market St",
+					City:       "Tulsa",
+					State:      "OK",
+					PostalCode: "74104",
+					Country:    "US",
+					Lat:        36.15,
+					Lng:        -95.99,
+				},
+				PaymentMethod: enums.PaymentMethodCash,
+				ShippingLine: &types.ShippingLine{
+					Code:       "express",
+					Title:      "Express",
+					PriceCents: 500,
+				},
 				SubtotalCents:     3000,
 				DiscountsCents:    200,
 				TaxCents:          0,
@@ -108,8 +125,10 @@ func TestCheckoutSuccess(t *testing.T) {
 		nil,
 	)
 
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/checkout", strings.NewReader(`{"cart_id":"`+uuid.NewString()+`"}`))
+	payloadCartID := uuid.New()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/checkout", strings.NewReader(validCheckoutRequest(payloadCartID)))
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Idempotency-Key", "test-key")
 	req = req.WithContext(middleware.WithStoreID(req.Context(), storeID.String()))
 
 	resp := httptest.NewRecorder()
@@ -143,6 +162,15 @@ func TestCheckoutSuccess(t *testing.T) {
 	if envelope.Data.RejectedVendors[0].LineItems[0].LineItemID != lineRejected {
 		t.Fatalf("unexpected rejected line item id: %s", envelope.Data.RejectedVendors[0].LineItems[0].LineItemID)
 	}
+	if envelope.Data.ShippingAddress == nil || envelope.Data.ShippingAddress.Line1 != "123 Market St" {
+		t.Fatalf("unexpected shipping address: %+v", envelope.Data.ShippingAddress)
+	}
+	if envelope.Data.PaymentMethod != enums.PaymentMethodCash {
+		t.Fatalf("unexpected payment method: %s", envelope.Data.PaymentMethod)
+	}
+	if envelope.Data.ShippingLine == nil || envelope.Data.ShippingLine.Code != "express" {
+		t.Fatalf("unexpected shipping line: %+v", envelope.Data.ShippingLine)
+	}
 }
 
 func TestCheckoutRequiresBuyerStore(t *testing.T) {
@@ -153,8 +181,10 @@ func TestCheckoutRequiresBuyerStore(t *testing.T) {
 		nil,
 	)
 
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/checkout", strings.NewReader(`{"cart_id":"`+uuid.NewString()+`"}`))
+	payloadCartID := uuid.New()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/checkout", strings.NewReader(validCheckoutRequest(payloadCartID)))
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Idempotency-Key", "test-key")
 	req = req.WithContext(middleware.WithStoreID(req.Context(), storeID.String()))
 
 	resp := httptest.NewRecorder()
@@ -175,6 +205,7 @@ func TestCheckoutValidationError(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/checkout", strings.NewReader(`{}`))
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Idempotency-Key", "test-key")
 	req = req.WithContext(middleware.WithStoreID(req.Context(), storeID.String()))
 
 	resp := httptest.NewRecorder()
@@ -187,4 +218,25 @@ func TestCheckoutValidationError(t *testing.T) {
 
 func ptrString(value string) *string {
 	return &value
+}
+
+func validCheckoutRequest(cartID uuid.UUID) string {
+	return fmt.Sprintf(`{
+		"cart_id":"%s",
+		"shipping_address":{
+			"line1":"123 Market St",
+			"city":"Tulsa",
+			"state":"OK",
+			"postal_code":"74104",
+			"country":"US",
+			"lat":36.154,
+			"lng":-95.992
+		},
+		"payment_method":"cash",
+		"shipping_line":{
+			"code":"express",
+			"title":"Express",
+			"price_cents":500
+		}
+	}`, cartID.String())
 }

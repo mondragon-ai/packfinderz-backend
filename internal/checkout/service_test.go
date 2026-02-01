@@ -90,7 +90,20 @@ func TestServiceExecuteSuccess(t *testing.T) {
 		t.Fatalf("new service: %v", err)
 	}
 
-	group, err := svc.Execute(context.Background(), buyerStoreID, cartID, CheckoutInput{})
+	input := CheckoutInput{
+		IdempotencyKey: "test-key",
+		ShippingAddress: &types.Address{
+			Line1:      "123 Market St",
+			City:       "Tulsa",
+			State:      "OK",
+			PostalCode: "74104",
+			Country:    "US",
+			Lat:        36.154,
+			Lng:        -95.992,
+		},
+		PaymentMethod: enums.PaymentMethodCash,
+	}
+	group, err := svc.Execute(context.Background(), buyerStoreID, cartID, input)
 	if err != nil {
 		t.Fatalf("execute: %v", err)
 	}

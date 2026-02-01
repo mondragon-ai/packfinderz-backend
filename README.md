@@ -364,8 +364,8 @@ The GitHub Actions workflow (`.github/workflows/ci.yml`) runs gofmt, `golangci-l
 ### Checkout Submission
 
 * `POST /api/v1/checkout` finalizes the buyer store's active cart within a single transaction, splitting it into `CheckoutGroup` + per-vendor `VendorOrders`.
-* Requires a `Idempotency-Key` header (7-day TTL) and a buyer store context; the request body must include `cart_id` and may include `attributed_ad_click_id`.
-* Success returns `201` and the canonical `vendor_orders` payload grouped by vendor plus `rejected_vendors`, explicitly listing any vendors/line items that were rejected (each line item surfaces `status`/`notes` so clients can show the failure reason).
+* Requires a `Idempotency-Key` header (7-day TTL) and a buyer store context; the request body must include `cart_id`, `shipping_address`, and `payment_method`, with an optional `shipping_line` so the API can confirm or override the cart’s pending shipment selection.
+* Success returns `201` and the canonical `vendor_orders` payload grouped by vendor plus `rejected_vendors`, explicitly listing any vendors/line items that were rejected (each line item surfaces `status`/`notes` so clients can show the failure reason). The response also mirrors the confirmed `shipping_address`, `payment_method`, and `shipping_line` so the UI can present the exact checkout decision.
 * Errors: `400` (validation), `403` (vendor store or missing store context), `409` (`Idempotency-Key` reused with a different body), `422` (state conflict such as MOQ or reservation failures).
 
 ### Cart Upsert

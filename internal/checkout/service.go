@@ -14,6 +14,7 @@ import (
 	pkgerrors "github.com/angelmondragon/packfinderz-backend/pkg/errors"
 	"github.com/angelmondragon/packfinderz-backend/pkg/outbox"
 	"github.com/angelmondragon/packfinderz-backend/pkg/outbox/payloads"
+	"github.com/angelmondragon/packfinderz-backend/pkg/types"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
@@ -47,7 +48,10 @@ type Service interface {
 
 // CheckoutInput captures optional data used during checkout.
 type CheckoutInput struct {
-	AttributedAdClickID *uuid.UUID
+	IdempotencyKey  string
+	ShippingAddress *types.Address
+	PaymentMethod   enums.PaymentMethod
+	ShippingLine    *types.ShippingLine
 }
 
 type service struct {
@@ -163,10 +167,19 @@ func (s *service) Execute(ctx context.Context, buyerStoreID, cartID uuid.UUID, i
 		}
 		vendorOrderIDs := make([]uuid.UUID, 0, len(grouped))
 
+		appliedShippingAddress := input.ShippingAddress
+		if appliedShippingAddress == nil {
+			appliedShippingAddress = record.ShippingAddress
+		}
+		appliedPaymentMethod := input.PaymentMethod
+		if appliedPaymentMethod == "" {
+			appliedPaymentMethod = enums.PaymentMethodCash
+		}
+		appliedShippingLine := input.ShippingLine
+
 		checkoutGroup := &models.CheckoutGroup{
-			BuyerStoreID:        buyerStoreID,
-			CartID:              &record.ID,
-			AttributedAdClickID: input.AttributedAdClickID,
+			BuyerStoreID: buyerStoreID,
+			CartID:       &record.ID,
 		}
 		createdGroup, err := ordersRepo.CreateCheckoutGroup(ctx, checkoutGroup)
 		if err != nil {
@@ -186,16 +199,17 @@ func (s *service) Execute(ctx context.Context, buyerStoreID, cartID uuid.UUID, i
 				BuyerStoreID:      buyerStoreID,
 				VendorStoreID:     vendorID,
 				Currency:          record.Currency,
-				ShippingAddress:   record.ShippingAddress,
+				ShippingAddress:   appliedShippingAddress,
 				SubtotalCents:     totals.SubtotalCents,
 				DiscountsCents:    totals.DiscountsCents,
 				TaxCents:          0,
 				TransportFeeCents: 0,
-				PaymentMethod:     enums.PaymentMethodCash,
+				PaymentMethod:     appliedPaymentMethod,
 				TotalCents:        totals.TotalCents,
 				BalanceDueCents:   totals.TotalCents,
 				Warnings:          cartGroup.Warnings,
 				Promo:             cartGroup.Promo,
+				ShippingLine:      appliedShippingLine,
 			}
 			createdOrder, err := ordersRepo.CreateVendorOrder(ctx, order)
 			if err != nil {
