@@ -3,6 +3,7 @@ package controllers
 import (
 	"net/http"
 	"sort"
+	"strings"
 
 	"github.com/google/uuid"
 
@@ -13,6 +14,7 @@ import (
 	"github.com/angelmondragon/packfinderz-backend/internal/stores"
 	"github.com/angelmondragon/packfinderz-backend/pkg/db/models"
 	"github.com/angelmondragon/packfinderz-backend/pkg/enums"
+	"github.com/angelmondragon/packfinderz-backend/pkg/types"
 
 	pkgerrors "github.com/angelmondragon/packfinderz-backend/pkg/errors"
 	"github.com/angelmondragon/packfinderz-backend/pkg/logger"
@@ -52,8 +54,17 @@ func Checkout(svc checkoutsvc.Service, storeSvc stores.Service, logg *logger.Log
 			return
 		}
 
+		idempotencyKey := strings.TrimSpace(r.Header.Get("Idempotency-Key"))
+		if idempotencyKey == "" {
+			responses.WriteError(r.Context(), logg, w, pkgerrors.New(pkgerrors.CodeValidation, "Idempotency-Key header required"))
+			return
+		}
+
 		group, err := svc.Execute(r.Context(), buyerStoreID, payload.CartID, checkoutsvc.CheckoutInput{
-			AttributedAdClickID: payload.AttributedAdClickID,
+			IdempotencyKey:  idempotencyKey,
+			ShippingAddress: payload.ShippingAddress,
+			PaymentMethod:   payload.PaymentMethod,
+			ShippingLine:    payload.ShippingLine,
 		})
 		if err != nil {
 			responses.WriteError(r.Context(), logg, w, err)
@@ -80,12 +91,17 @@ func buyerStoreIDFromContext(r *http.Request) (uuid.UUID, error) {
 }
 
 type checkoutRequest struct {
-	CartID              uuid.UUID  `json:"cart_id" validate:"required,uuid4"`
-	AttributedAdClickID *uuid.UUID `json:"attributed_ad_click_id,omitempty" validate:"omitempty,uuid4"`
+	CartID          uuid.UUID           `json:"cart_id" validate:"required,uuid4"`
+	ShippingAddress *types.Address      `json:"shipping_address" validate:"required"`
+	PaymentMethod   enums.PaymentMethod `json:"payment_method" validate:"required,oneof=cash ach"`
+	ShippingLine    *types.ShippingLine `json:"shipping_line,omitempty"`
 }
 
 type checkoutResponse struct {
 	CheckoutGroupID uuid.UUID              `json:"checkout_group_id"`
+	ShippingAddress *types.Address         `json:"shipping_address"`
+	PaymentMethod   enums.PaymentMethod    `json:"payment_method"`
+	ShippingLine    *types.ShippingLine    `json:"shipping_line,omitempty"`
 	VendorOrders    []vendorOrderResponse  `json:"vendor_orders"`
 	RejectedVendors []rejectedVendorReport `json:"rejected_vendors,omitempty"`
 }
@@ -165,8 +181,13 @@ func newCheckoutResponse(group *models.CheckoutGroup) checkoutResponse {
 		return rejected[i].VendorStoreID.String() < rejected[j].VendorStoreID.String()
 	})
 
+	shippingAddress, paymentMethod, shippingLine := collectCheckoutConfirmationFields(group)
+
 	return checkoutResponse{
 		CheckoutGroupID: group.ID,
+		ShippingAddress: shippingAddress,
+		PaymentMethod:   paymentMethod,
+		ShippingLine:    shippingLine,
 		VendorOrders:    vendorOrders,
 		RejectedVendors: rejected,
 	}
@@ -189,4 +210,30 @@ func newLineItemResponse(item models.OrderLineItem) lineItemResponse {
 		Status:         string(item.Status),
 		Notes:          item.Notes,
 	}
+}
+
+func collectCheckoutConfirmationFields(group *models.CheckoutGroup) (*types.Address, enums.PaymentMethod, *types.ShippingLine) {
+	var (
+		shippingAddress *types.Address
+		paymentMethod   enums.PaymentMethod
+		shippingLine    *types.ShippingLine
+	)
+	for _, order := range group.VendorOrders {
+		if shippingAddress == nil && order.ShippingAddress != nil {
+			shippingAddress = order.ShippingAddress
+		}
+		if paymentMethod == "" && order.PaymentMethod != "" {
+			paymentMethod = order.PaymentMethod
+		}
+		if shippingLine == nil && order.ShippingLine != nil {
+			shippingLine = order.ShippingLine
+		}
+		if shippingAddress != nil && paymentMethod != "" && shippingLine != nil {
+			break
+		}
+	}
+	if paymentMethod == "" {
+		paymentMethod = enums.PaymentMethodCash
+	}
+	return shippingAddress, paymentMethod, shippingLine
 }
