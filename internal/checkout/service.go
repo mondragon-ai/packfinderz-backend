@@ -2,7 +2,9 @@ package checkout
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"time"
 
 	"github.com/angelmondragon/packfinderz-backend/internal/cart"
 	"github.com/angelmondragon/packfinderz-backend/internal/checkout/helpers"
@@ -121,13 +123,13 @@ func (s *service) Execute(ctx context.Context, buyerStoreID, cartID uuid.UUID, i
 
 		record, err := cartRepo.FindByIDAndBuyerStore(ctx, cartID, buyerStoreID)
 		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return pkgerrors.New(pkgerrors.CodeNotFound, "cart not found")
+			}
 			return err
 		}
-		if record.Status != enums.CartStatusActive {
-			return pkgerrors.New(pkgerrors.CodeConflict, "cart already processed")
-		}
-		if len(record.Items) == 0 {
-			return pkgerrors.New(pkgerrors.CodeValidation, "cart contains no items")
+		if err := validateCartForCheckout(record); err != nil {
+			return err
 		}
 
 		buyerStore, err := s.storeSvc.GetByID(ctx, buyerStoreID)
@@ -177,7 +179,15 @@ func (s *service) Execute(ctx context.Context, buyerStoreID, cartID uuid.UUID, i
 		}
 		appliedShippingLine := input.ShippingLine
 
+		checkoutGroupID := record.CheckoutGroupID
+		if checkoutGroupID == nil {
+			groupID := uuid.New()
+			checkoutGroupID = &groupID
+			record.CheckoutGroupID = checkoutGroupID
+		}
+
 		checkoutGroup := &models.CheckoutGroup{
+			ID:           *checkoutGroupID,
 			BuyerStoreID: buyerStoreID,
 			CartID:       &record.ID,
 		}
@@ -239,7 +249,8 @@ func (s *service) Execute(ctx context.Context, buyerStoreID, cartID uuid.UUID, i
 			vendorOrderIDs = append(vendorOrderIDs, createdOrder.ID)
 		}
 
-		if err := cartRepo.UpdateStatus(ctx, record.ID, buyerStoreID, enums.CartStatusConverted); err != nil {
+		finalizeCart(record, appliedShippingAddress, appliedPaymentMethod, appliedShippingLine)
+		if _, err := cartRepo.Update(ctx, record); err != nil {
 			return err
 		}
 
@@ -364,4 +375,37 @@ func buildLineItem(orderID uuid.UUID, cartItem models.CartItem, product *models.
 		Status:                status,
 		Notes:                 notes,
 	}
+}
+
+func validateCartForCheckout(record *models.CartRecord) error {
+	if record == nil {
+		return pkgerrors.New(pkgerrors.CodeValidation, "cart missing")
+	}
+	if record.Status != enums.CartStatusActive {
+		return pkgerrors.New(pkgerrors.CodeConflict, "cart must be active")
+	}
+	hasOrderableItem := false
+	for _, item := range record.Items {
+		if item.Status == enums.CartItemStatusOK {
+			hasOrderableItem = true
+			break
+		}
+	}
+	if !hasOrderableItem {
+		return pkgerrors.New(pkgerrors.CodeConflict, "cart contains no orderable items")
+	}
+	return nil
+}
+
+func finalizeCart(record *models.CartRecord, shippingAddress *types.Address, paymentMethod enums.PaymentMethod, shippingLine *types.ShippingLine) {
+	if record == nil {
+		return
+	}
+	record.ShippingAddress = shippingAddress
+	record.ShippingLine = shippingLine
+	method := paymentMethod
+	record.PaymentMethod = &method
+	now := time.Now().UTC()
+	record.ConvertedAt = &now
+	record.Status = enums.CartStatusConverted
 }
