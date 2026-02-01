@@ -2041,16 +2041,16 @@ Headers:
   * The checkout service loads the `cart_records` row via `(buyer_store_id, cart_id)`, validates the shared cart is `active`, and enforces that at least one `cart_items.status = ok` entry exists before any reservations or writes; invalid carts return deterministic `NOT_FOUND`/`CONFLICT` responses so callers can rebuild their quote before retrying.
   * Inside the same transaction the cart record is finalized by overwriting `shipping_address`, persisting `payment_method`/`shipping_line`, recording `converted_at`, and keeping the generated `checkout_group_id` so the cart stays the canonical anchor before its status flips to `converted`.
   * Response payload includes `vendor_orders` grouped by `vendor_store_id` (each order lists `subtotal`, `discount`, `total`, and every line item with its `status`/`notes`) plus `rejected_vendors`, which explicitly lists vendor store IDs and the rejected line items so clients can surface failed vendors/items, and surfaces vendor-level warnings when the cart snapshot had no eligible items so the UI can show the rejection reason even though no vendor order was created. The response now also mirrors the confirmed `shipping_address`, `payment_method`, and `shipping_line` so the UI can show the exact checkout decision.
-  * PF-080 implements the internal checkout service (`internal/checkout/service.go`): single-transaction conversion of a `CartRecord` into `CheckoutGroup`, `VendorOrders`, and `OrderLineItems`, invoking reservations and partial success logic before marking the cart `converted`.
+  * PF-080 implements the internal checkout service (`internal/checkout/service.go`): single-transaction conversion of a `CartRecord` into `vendor_orders`, `order_line_items`, and `payment_intents`, invoking reservations and partial success logic while capturing the cart's `checkout_group_id` as the grouping anchor (no separate `checkout_groups` row).
   * Idempotency is enforced by `middleware.Idempotency` (scope = user/store/method/path) so the first success (checkout group + vendor orders) is cached for 7 days; repeating the same key/body replays that checkout summary while any body change returns `409 IDEMPOTENCY_KEY_REUSED`, preventing double reservations.
 * Domain helpers in `internal/checkout/helpers` group cart items by vendor and validate buyer/vendor eligibility (store type, state, subscription, MOQ) without hitting the database before the orchestration layer materializes checkout entities; the checkout service now reads the authoritative vendor totals from the persisted `cart_vendor_groups` snapshot instead of recomputing them so per-vendor orders match the canonical cart quote.
   * `internal/checkout/reservation` uses the `inventory_items` conditional update pattern to atomically reserve stock per line item, marks insufficient rows with `insufficient_inventory`, and keeps per-line results for the partial success semantics mandated by PF-079.
-  * `internal/checkout/service` drives the single transaction that takes the bundled helpers/reservation results, writes the `CheckoutGroup` + per-vendor orders/line items/payment intents, and marks the secure cart as `converted`. The orchestrator now returns the confirmed `shipping_address`, `payment_method`, and `shipping_line` atop the vendor order summary, mirroring the request values.
+  * `internal/checkout/service` drives the single transaction that takes the bundled helpers/reservation results, writes the per-vendor orders/line items/payment intents, and marks the cart as `converted` so downstream flows can read the confirmed `shipping_address`, `payment_method`, and `shipping_line` that mirror the request values.
 
 **Order Data Models (PF-077)**
 
-* `checkout_groups`, `vendor_orders`, `order_line_items`, and `payment_intents` map the `CartRecord` snapshot into durable checkout entities before inventory/reservations execute; their columns/status enums should match the master definitions in Doc 4, cash remains the default payment method, and each payment intent uses the checkout-selected payment method plus the vendor order total so tracking stays vendor-scoped.
-* The accompanying repositories provide CRUD helpers per table so subsequent tickets can build checkout flows without embedding migrations or business logic in this layer.
+* `cart_records`, `vendor_orders`, `order_line_items`, and `payment_intents` capture the `CartRecord` snapshot ahead of inventory reservations; each vendor order keeps the canonical `checkout_group_id` initially recorded on the cart (the standalone `checkout_groups` table is gone), and payment intents use the checkout-selected payment method plus that vendor total so money tracking stays vendor-scoped.
+* The accompanying repositories provide CRUD helpers for those canonical tables so subsequent tickets can build checkout flows without embedding migrations or business logic in this layer.
 
 ---
 
@@ -2112,7 +2112,7 @@ Headers:
 * `POST /api/v1/orders/{orderId}/retry`
 
   * Allowed only if `expired`.
-  * Reuses the expired order’s snapshot for that vendor: new `checkout_groups`, vendor order, line items, and payment intent; re-reserves inventory before persisting so the vendor sees the same data again.
+* Reuses the expired order’s snapshot for that vendor: a new vendor order/line items/payment intent combo keyed by a freshly minted `checkout_group_id` so the vendor sees the same data again without resurrecting a dedicated `checkout_groups` row.
   * Emits `order_retried` (payload includes the new order ID and original order ID) once the replacement order is created.
   * **Idempotent:** YES (required)
   * Success: `201`
@@ -2995,7 +2995,7 @@ Notes
 
 **Repositories**
 
-* `internal/orders.Repository` exposes persistence for `checkout_groups`, `vendor_orders`, `order_line_items`, and `payment_intents` so the checkout flow can materialize the per-vendor order snapshot with line items and payment state.
+* `internal/orders.Repository` exposes persistence for `vendor_orders`, `order_line_items`, and `payment_intents`, all keyed by the shared `checkout_group_id`, so the checkout flow can materialize the per-vendor snapshot without a standalone `checkout_groups` table.
 
 ```
   cart_level_discount {
@@ -3081,27 +3081,9 @@ FKs
 
 ---
 
-### 2.11 `checkout_groups`
+### 2.11 `checkout_groups` (archived)
 
-**Purpose:** stable “receipt” linking N vendor orders (LOCKED).
-
-Fields
-
-* `id uuid pk`
-* `buyer_store_id uuid not null`
-* `cart_id uuid null` (**ASSUMPTION:** keep reference for debugging even if cart later deleted)
-* `attributed_ad_click_id uuid null` (**ASSUMPTION:** persisted last-click)
-* `created_at timestamptz not null default now()`
-
-Indexes
-
-* `(buyer_store_id, created_at desc)`
-
-FKs
-
-* `buyer_store_id -> stores(id) on delete restrict`
-* `cart_id -> cart_records(id) on delete set null`
-* `attributed_ad_click_id -> ad_clicks(id) on delete set null`
+**Status:** removed. The canonical `checkout_group_id` now lives directly on `cart_records` and `vendor_orders`, so the checkout flow relies on those rows instead of persisting a dedicated `checkout_groups` table. Attribution no longer flows through `attributed_ad_click_id` here; instead `cart_records.ad_tokens` captures the last-click tokens.
 
 ---
 
@@ -3804,11 +3786,11 @@ Rules
 
 * API MUST run the above inside a DB transaction that also creates:
 
-  * `checkout_groups`
   * `vendor_orders`
   * `order_line_items`
   * `payment_intents`
   * `outbox_events` (order_created)
+  * and converts the `cart_records` row (shipping/payment data, `checkout_group_id`, `converted` status) so the checkout attempt remains auditable.
 * If any line item reserve fails:
 
   * that line item MUST be rejected (partial accept supported) **OR**

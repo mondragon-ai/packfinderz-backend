@@ -360,6 +360,171 @@ func TestServiceRejectsVendorWhenAllReservationsFail(t *testing.T) {
 	}
 }
 
+func TestServiceAdjustsTotalsWhenSomeReservationsFail(t *testing.T) {
+	t.Parallel()
+
+	buyerID := uuid.New()
+	vendorID := uuid.New()
+	product1ID := uuid.New()
+	product2ID := uuid.New()
+
+	item1 := models.CartItem{
+		ID:                    uuid.New(),
+		ProductID:             product1ID,
+		VendorStoreID:         vendorID,
+		Quantity:              2,
+		UnitPriceCents:        2000,
+		LineSubtotalCents:     3500,
+		Status:                enums.CartItemStatusOK,
+		AppliedVolumeDiscount: &types.AppliedVolumeDiscount{Label: "tier 2", AmountCents: 500},
+	}
+	item2 := models.CartItem{
+		ID:                uuid.New(),
+		ProductID:         product2ID,
+		VendorStoreID:     vendorID,
+		Quantity:          1,
+		UnitPriceCents:    1000,
+		LineSubtotalCents: 1000,
+		Status:            enums.CartItemStatusOK,
+	}
+
+	cartRecord := &models.CartRecord{
+		ID:           uuid.New(),
+		BuyerStoreID: buyerID,
+		Status:       enums.CartStatusActive,
+		Currency:     enums.CurrencyUSD,
+		ValidUntil:   time.Now().Add(10 * time.Minute),
+		Items:        []models.CartItem{item1, item2},
+		VendorGroups: []models.CartVendorGroup{
+			{
+				VendorStoreID: vendorID,
+				Status:        enums.VendorGroupStatusOK,
+				SubtotalCents: 5000,
+				TotalCents:    4500,
+			},
+		},
+	}
+
+	cartRepo := &stubCartRepo{record: cartRecord}
+
+	storeSvc := &stubStoreService{
+		records: map[uuid.UUID]*stores.StoreDTO{
+			buyerID: {
+				ID:          buyerID,
+				Type:        enums.StoreTypeBuyer,
+				KYCStatus:   enums.KYCStatusVerified,
+				Address:     types.Address{State: "OK"},
+				CompanyName: "Buyer",
+			},
+			vendorID: {
+				ID:                 vendorID,
+				Type:               enums.StoreTypeVendor,
+				KYCStatus:          enums.KYCStatusVerified,
+				SubscriptionActive: true,
+				Address:            types.Address{State: "OK"},
+				CompanyName:        "Vendor",
+			},
+		},
+	}
+
+	productLoader := stubProductLoader{
+		products: map[uuid.UUID]*models.Product{
+			product1ID: {
+				ID:       product1ID,
+				StoreID:  vendorID,
+				SKU:      "SKU123",
+				Title:    "Test Product 1",
+				Category: enums.ProductCategoryFlower,
+			},
+			product2ID: {
+				ID:       product2ID,
+				StoreID:  vendorID,
+				SKU:      "SKU321",
+				Title:    "Test Product 2",
+				Category: enums.ProductCategoryPreRoll,
+			},
+		},
+	}
+
+	reserver := stubReservationRunner{
+		results: map[uuid.UUID]reservation.InventoryReservationResult{},
+	}
+	reserver.results[item1.ID] = reservation.InventoryReservationResult{
+		CartItemID: item1.ID,
+		ProductID:  item1.ProductID,
+		Qty:        item1.Quantity,
+		Reserved:   true,
+	}
+	reserver.results[item2.ID] = reservation.InventoryReservationResult{
+		CartItemID: item2.ID,
+		ProductID:  item2.ProductID,
+		Qty:        item2.Quantity,
+		Reserved:   false,
+		Reason:     "insufficient_inventory",
+	}
+
+	orderRepo := newStubOrdersRepository()
+	publisher := &stubOutboxPublisher{}
+
+	service, err := NewService(
+		stubTxRunner{},
+		cartRepo,
+		orderRepo,
+		storeSvc,
+		productLoader,
+		reserver,
+		publisher,
+	)
+	if err != nil {
+		t.Fatalf("build service: %v", err)
+	}
+
+	result, err := service.Execute(context.Background(), buyerID, cartRecord.ID, CheckoutInput{
+		IdempotencyKey:  "key",
+		ShippingAddress: &types.Address{Line1: "123 Market", City: "Tulsa", State: "OK", PostalCode: "74104", Country: "US"},
+		PaymentMethod:   enums.PaymentMethodCash,
+	})
+	if err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+
+	if len(result.VendorOrders) != 1 {
+		t.Fatalf("expected 1 vendor order, got %d", len(result.VendorOrders))
+	}
+
+	order := result.VendorOrders[0]
+	if order.SubtotalCents != 4000 {
+		t.Fatalf("subtotal mismatch: got %d", order.SubtotalCents)
+	}
+	if order.DiscountsCents != 500 {
+		t.Fatalf("discount mismatch: got %d", order.DiscountsCents)
+	}
+	if order.TotalCents != 3500 {
+		t.Fatalf("total mismatch: got %d", order.TotalCents)
+	}
+	if order.BalanceDueCents != 3500 {
+		t.Fatalf("balance due mismatch: %d", order.BalanceDueCents)
+	}
+
+	if len(order.Items) != 2 {
+		t.Fatalf("expected 2 line items, got %d", len(order.Items))
+	}
+	if order.Items[0].Status != enums.LineItemStatusPending {
+		t.Fatalf("first line should be pending, got %s", order.Items[0].Status)
+	}
+	if order.Items[1].Status != enums.LineItemStatusRejected {
+		t.Fatalf("second line should be rejected, got %s", order.Items[1].Status)
+	}
+
+	intent, ok := orderRepo.paymentIntents[order.ID]
+	if !ok {
+		t.Fatalf("payment intent missing for order %s", order.ID)
+	}
+	if intent.AmountCents != order.TotalCents {
+		t.Fatalf("payment intent amount mismatch (%d vs %d)", intent.AmountCents, order.TotalCents)
+	}
+}
+
 func ptrString(value string) *string {
 	return &value
 }
@@ -483,7 +648,6 @@ type stubOrdersRepository struct {
 	vendorOrders   map[uuid.UUID]*models.VendorOrder
 	lineItems      map[uuid.UUID][]models.OrderLineItem
 	paymentIntents map[uuid.UUID]*models.PaymentIntent
-	createdGroup   *models.CheckoutGroup
 }
 
 func newStubOrdersRepository() *stubOrdersRepository {
@@ -496,14 +660,6 @@ func newStubOrdersRepository() *stubOrdersRepository {
 
 func (s *stubOrdersRepository) WithTx(tx *gorm.DB) orders.Repository {
 	return s
-}
-
-func (s *stubOrdersRepository) CreateCheckoutGroup(ctx context.Context, group *models.CheckoutGroup) (*models.CheckoutGroup, error) {
-	if group.ID == uuid.Nil {
-		group.ID = uuid.New()
-	}
-	s.createdGroup = group
-	return group, nil
 }
 
 func (s *stubOrdersRepository) CreateVendorOrder(ctx context.Context, order *models.VendorOrder) (*models.VendorOrder, error) {
@@ -528,28 +684,17 @@ func (s *stubOrdersRepository) CreatePaymentIntent(ctx context.Context, intent *
 	return intent, nil
 }
 
-func (s *stubOrdersRepository) FindCheckoutGroupByID(ctx context.Context, id uuid.UUID) (*models.CheckoutGroup, error) {
-	if s.createdGroup == nil || s.createdGroup.ID != id {
-		return nil, gorm.ErrRecordNotFound
-	}
-	group := &models.CheckoutGroup{
-		ID:           id,
-		BuyerStoreID: s.createdGroup.BuyerStoreID,
-		CartID:       s.createdGroup.CartID,
-	}
+func (s *stubOrdersRepository) FindVendorOrdersByCheckoutGroup(ctx context.Context, checkoutGroupID uuid.UUID) ([]models.VendorOrder, error) {
+	var orders []models.VendorOrder
 	for _, order := range s.vendorOrders {
 		copy := *order
 		copy.Items = append([]models.OrderLineItem(nil), s.lineItems[order.ID]...)
 		if intent, ok := s.paymentIntents[order.ID]; ok {
 			copy.PaymentIntent = intent
 		}
-		group.VendorOrders = append(group.VendorOrders, copy)
+		orders = append(orders, copy)
 	}
-	return group, nil
-}
-
-func (*stubOrdersRepository) FindVendorOrdersByCheckoutGroup(ctx context.Context, checkoutGroupID uuid.UUID) ([]models.VendorOrder, error) {
-	return nil, errors.New("not implemented")
+	return orders, nil
 }
 
 func (*stubOrdersRepository) FindOrderLineItemsByOrder(ctx context.Context, orderID uuid.UUID) ([]models.OrderLineItem, error) {

@@ -28,13 +28,6 @@ func (r *repository) WithTx(tx *gorm.DB) Repository {
 	return &repository{db: tx}
 }
 
-func (r *repository) CreateCheckoutGroup(ctx context.Context, group *models.CheckoutGroup) (*models.CheckoutGroup, error) {
-	if err := r.db.WithContext(ctx).Create(group).Error; err != nil {
-		return nil, err
-	}
-	return group, nil
-}
-
 func (r *repository) CreateVendorOrder(ctx context.Context, order *models.VendorOrder) (*models.VendorOrder, error) {
 	if err := r.db.WithContext(ctx).Create(order).Error; err != nil {
 		return nil, err
@@ -54,19 +47,6 @@ func (r *repository) CreatePaymentIntent(ctx context.Context, intent *models.Pay
 		return nil, err
 	}
 	return intent, nil
-}
-
-func (r *repository) FindCheckoutGroupByID(ctx context.Context, id uuid.UUID) (*models.CheckoutGroup, error) {
-	var group models.CheckoutGroup
-	err := r.db.WithContext(ctx).
-		Preload("VendorOrders.Items").
-		Preload("VendorOrders.PaymentIntent").
-		Where("id = ?", id).
-		First(&group).Error
-	if err != nil {
-		return nil, err
-	}
-	return &group, nil
 }
 
 func (r *repository) FindVendorOrdersByCheckoutGroup(ctx context.Context, checkoutGroupID uuid.UUID) ([]models.VendorOrder, error) {

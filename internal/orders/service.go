@@ -523,16 +523,9 @@ func (s *service) RetryOrder(ctx context.Context, input BuyerRetryInput) (*Buyer
 			}
 		}
 
-		group, err := repo.CreateCheckoutGroup(ctx, &models.CheckoutGroup{
-			BuyerStoreID: order.BuyerStoreID,
-		})
-		if err != nil {
-			return pkgerrors.Wrap(pkgerrors.CodeDependency, err, "create checkout group")
-		}
-
 		newOrder := &models.VendorOrder{
 			CartID:            order.CartID,
-			CheckoutGroupID:   group.ID,
+			CheckoutGroupID:   uuid.New(),
 			BuyerStoreID:      order.BuyerStoreID,
 			VendorStoreID:     order.VendorStoreID,
 			Currency:          order.Currency,

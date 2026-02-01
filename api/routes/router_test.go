@@ -275,10 +275,6 @@ func (s *stubOrdersRepo) WithTx(tx *gorm.DB) ordersrepo.Repository {
 	return s
 }
 
-func (s *stubOrdersRepo) CreateCheckoutGroup(ctx context.Context, group *models.CheckoutGroup) (*models.CheckoutGroup, error) {
-	panic("unimplemented")
-}
-
 func (s *stubOrdersRepo) CreateVendorOrder(ctx context.Context, order *models.VendorOrder) (*models.VendorOrder, error) {
 	panic("unimplemented")
 }
@@ -288,10 +284,6 @@ func (s *stubOrdersRepo) CreateOrderLineItems(ctx context.Context, items []model
 }
 
 func (s *stubOrdersRepo) CreatePaymentIntent(ctx context.Context, intent *models.PaymentIntent) (*models.PaymentIntent, error) {
-	panic("unimplemented")
-}
-
-func (s *stubOrdersRepo) FindCheckoutGroupByID(ctx context.Context, id uuid.UUID) (*models.CheckoutGroup, error) {
 	panic("unimplemented")
 }
 

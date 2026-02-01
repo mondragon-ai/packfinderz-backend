@@ -46,10 +46,6 @@ func (s *stubControllerOrdersRepo) WithTx(tx *gorm.DB) internalorders.Repository
 	return s
 }
 
-func (s *stubControllerOrdersRepo) CreateCheckoutGroup(ctx context.Context, group *models.CheckoutGroup) (*models.CheckoutGroup, error) {
-	panic("not implemented")
-}
-
 func (s *stubControllerOrdersRepo) CreateVendorOrder(ctx context.Context, order *models.VendorOrder) (*models.VendorOrder, error) {
 	panic("not implemented")
 }
@@ -59,10 +55,6 @@ func (s *stubControllerOrdersRepo) CreateOrderLineItems(ctx context.Context, ite
 }
 
 func (s *stubControllerOrdersRepo) CreatePaymentIntent(ctx context.Context, intent *models.PaymentIntent) (*models.PaymentIntent, error) {
-	panic("not implemented")
-}
-
-func (s *stubControllerOrdersRepo) FindCheckoutGroupByID(ctx context.Context, id uuid.UUID) (*models.CheckoutGroup, error) {
 	panic("not implemented")
 }
 

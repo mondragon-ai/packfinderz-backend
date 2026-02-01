@@ -40,7 +40,7 @@
 
 ### Key Capabilities (MVP)
 
-* Multi-vendor checkout via **CheckoutGroup**
+* Multi-vendor checkout anchored by the cart's `checkout_group_id` (no standalone `checkout_groups` table)
 * Atomic inventory reservation (optimistic + retry)
 * Vendor accept/reject at **order and line-item level**
 * Internal agent delivery with **cash-at-delivery**
@@ -231,17 +231,16 @@ Re-running the migration is safe because the statements use `CREATE EXTENSION IF
 * Client cart → server `CartRecord`
  * Checkout creates:
 
-  * `CheckoutGroup`
-  * N `VendorOrder`s
+  * N `VendorOrder`s (all sharing the canonical `checkout_group_id` recorded on the cart)
 * Partial success allowed **across vendors**
 * Inventory reserved atomically per line item
 * Atomic inventory reservation helper (PF-079) conditionally updates `inventory_items.available_qty`/`reserved_qty` and returns per-line results so checkout can continue with other vendors even when a line item cannot be reserved.
 * Checkout enforces every product's MOQ (Catalog `products.moq`) and now returns `422` plus a `violations` detail array when a line item falls short so clients can display the same failure reason.
-* PF-080 describes the `internal/checkout/service` orchestrator that runs the transaction converting a `CartRecord` → `CheckoutGroup` + `VendorOrders` + `OrderLineItems` while handling reservation-driven partial success semantics.
-* Order data models (`vendor_orders`, `order_line_items`, `payment_intents`) persist the CartRecord snapshot before inventory/reservations run; the grouping ID (`checkout_group_id`) now lives on both `cart_records` and `vendor_orders` while the dedicated `checkout_groups` table has been removed, so each vendor order stays anchored to the canonical cart snapshot, and the cart also records the selected `payment_method`, `shipping_line`, and `converted_at` timestamp so the checkout decision remains auditable. Each vendor order gets its own `payment_intent` seeded with the checkout-selected payment method and that vendor total so payment tracking stays vendor-scoped.
+* PF-080 describes the `internal/checkout/service` orchestrator that runs the transaction converting a `CartRecord` → `vendor_orders`, `order_line_items`, and `payment_intents`, reusing the cart's `checkout_group_id` as the grouping anchor so there is no dedicated `checkout_groups` table while still handling reservation-driven partial success semantics.
+* Order data models (`vendor_orders`, `order_line_items`, `payment_intents`) persist the CartRecord snapshot before inventory/reservations run; the grouping ID (`checkout_group_id`) now lives on both `cart_records` and `vendor_orders` while the dedicated `checkout_groups` table has been removed, so each vendor order stays anchored to the canonical cart snapshot, and the cart also records the selected `payment_method`, `shipping_line`, and `converted_at` timestamp so the checkout decision remains auditable. Each vendor order gets its own `payment_intent` seeded with the checkout-selected payment method and that vendor total so payment tracking stays vendor-scoped. Checkout execution no longer recomputes unit pricing, discounts, or vendor totals—those values flow straight from the `cart_items`/`cart_vendor_groups` snapshot unless reservation failures reject individual line items.
 * The checkout helpers (`internal/checkout/helpers`) group `CartItem`s by vendor and validate buyer/vendor eligibility (store type, state, subscription, MOQ) without hitting the database; vendor totals now flow directly from the persisted `cart_vendor_groups` snapshot so each vendor order mirrors the canonical cart quote instead of recomputing aggregates.
 * `internal/checkout/reservation` runs the `inventory_items` conditional update (`available_qty >= qty`), increments `reserved_qty`, and returns per-line reservation results so checkout can report partial success; if a line item cannot be reserved it is marked `rejected` and a vendor with no successful reservations has its vendor order status flipped to `rejected` so the response clearly shows the failed vendor even though no order will proceed to fulfillment.
-* `internal/checkout/service.go` orchestrates the checkout transaction, creates the `CheckoutGroup` + `VendorOrder`s, converts `CartRecord` to orders, and marks the cart `converted` while reusing the helpers/reservation logic.
+* `internal/checkout/service.go` orchestrates the checkout transaction, converts the `CartRecord` into `VendorOrder`s while capturing the confirmed shipping/payment selections, and marks the cart `converted` so downstream flows can read the canonical totals that came straight out of the cart snapshot.
 * Buyer product listings/details only surface licensed, subscribed vendors whose state matches the buyer's `state` filter (see `pkg/visibility.EnsureVendorVisible` for the gating rules and 404/422 contract).
 
 ### Payments & Ledger
@@ -363,7 +362,7 @@ The GitHub Actions workflow (`.github/workflows/ci.yml`) runs gofmt, `golangci-l
 
 ### Checkout Submission
 
-* `POST /api/v1/checkout` finalizes the buyer store's active cart within a single transaction, splitting it into `CheckoutGroup` + per-vendor `VendorOrders`.
+* `POST /api/v1/checkout` finalizes the buyer store's active cart within a single transaction, splitting it into per-vendor `VendorOrders` that share the cart's `checkout_group_id`.
 * Requires a `Idempotency-Key` header (7-day TTL) and a buyer store context; the request body must include `cart_id`, `shipping_address`, and `payment_method`, with an optional `shipping_line` so the API can confirm or override the cart’s pending shipment selection.
 * The request is rejected before mutating state if the cart is missing, already converted, or contains no `cart_items` with `status=ok`, so callers receive deterministic errors and can rebuild the quote before retrying. Once checkout succeeds the service writes the confirmed shipping metadata plus `payment_method`/`converted_at` to `cart_records`, flips `status` to `converted`, and persists the shared `checkout_group_id` so the cart remains the canonical anchor for downstream orders.
 * Success returns `201` and the canonical `vendor_orders` payload grouped by vendor plus `rejected_vendors`, explicitly listing any vendors/line items that were rejected (each line item surfaces `status`/`notes` so clients can show the failure reason). Even if a vendor has no eligible cart items, the `rejected_vendors` array now includes a warning so clients can show the vendor-level rejection reason alongside the confirmed `shipping_address`, `payment_method`, and `shipping_line` that also appear in the response.
