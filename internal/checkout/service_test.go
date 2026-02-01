@@ -161,6 +161,11 @@ type stubCartRepo struct {
 	updated bool
 }
 
+// ReplaceVendorGroups implements [cart.CartRepository].
+func (s *stubCartRepo) ReplaceVendorGroups(ctx context.Context, cartID uuid.UUID, groups []models.CartVendorGroup) error {
+	panic("unimplemented")
+}
+
 func (s *stubCartRepo) WithTx(tx *gorm.DB) cart.CartRepository { return s }
 func (s *stubCartRepo) FindActiveByBuyerStore(ctx context.Context, buyerStoreID uuid.UUID) (*models.CartRecord, error) {
 	return nil, pkgerrors.New(pkgerrors.CodeNotFound, "not used")

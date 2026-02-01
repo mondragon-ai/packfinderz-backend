@@ -5,7 +5,7 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/angelmondragon/packfinderz-backend/api/controllers/cart/dto"
+	cartdto "github.com/angelmondragon/packfinderz-backend/api/controllers/cart/dto"
 	"github.com/angelmondragon/packfinderz-backend/api/middleware"
 	"github.com/angelmondragon/packfinderz-backend/api/responses"
 	"github.com/angelmondragon/packfinderz-backend/api/validators"

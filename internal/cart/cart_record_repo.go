@@ -3,7 +3,6 @@ package cart
 import (
 	"context"
 	"errors"
-	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -20,7 +19,7 @@ type CartRecordSnapshot struct {
 	BuyerStoreID    uuid.UUID
 	ShippingAddress *types.Address
 	CheckoutGroupID *uuid.UUID
-	Currency        string
+	Currency        enums.Currency
 	ValidUntil      *time.Time
 	SubtotalCents   int
 	DiscountsCents  int
@@ -139,10 +138,10 @@ func applySnapshot(record *models.CartRecord, snapshot CartRecordSnapshot) {
 	record.Status = enums.CartStatusActive
 	record.ShippingAddress = snapshot.ShippingAddress
 	record.CheckoutGroupID = snapshot.CheckoutGroupID
-	if stringsTrim(snapshot.Currency) != "" {
+	if snapshot.Currency.IsValid() {
 		record.Currency = snapshot.Currency
 	} else if record.Currency == "" {
-		record.Currency = "USD"
+		record.Currency = enums.CurrencyUSD
 	}
 	record.ValidUntil = validUntilOrDefault(snapshot.ValidUntil)
 	record.SubtotalCents = snapshot.SubtotalCents
@@ -151,11 +150,11 @@ func applySnapshot(record *models.CartRecord, snapshot CartRecordSnapshot) {
 	record.AdTokens = pq.StringArray(snapshot.AdTokens)
 }
 
-func currencyOrDefault(currency string) string {
-	if stringsTrim(currency) == "" {
-		return "USD"
+func currencyOrDefault(currency enums.Currency) enums.Currency {
+	if currency.IsValid() {
+		return currency
 	}
-	return currency
+	return enums.CurrencyUSD
 }
 
 func validUntilOrDefault(value *time.Time) time.Time {
@@ -163,8 +162,4 @@ func validUntilOrDefault(value *time.Time) time.Time {
 		return *value
 	}
 	return time.Now().Add(15 * time.Minute)
-}
-
-func stringsTrim(value string) string {
-	return strings.TrimSpace(value)
 }
