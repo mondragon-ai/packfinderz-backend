@@ -24,10 +24,6 @@ type stubCartService struct {
 	lastQuoteInput cartsvc.QuoteCartInput
 }
 
-func (s *stubCartService) UpsertCart(ctx context.Context, buyerStoreID uuid.UUID, input cartsvc.UpsertCartInput) (*models.CartRecord, error) {
-	return nil, nil
-}
-
 func (s *stubCartService) QuoteCart(ctx context.Context, buyerStoreID uuid.UUID, input cartsvc.QuoteCartInput) (*models.CartRecord, error) {
 	s.lastQuoteInput = input
 	return s.record, s.err

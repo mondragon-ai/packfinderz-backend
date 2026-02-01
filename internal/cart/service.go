@@ -10,7 +10,6 @@ import (
 	checkouthelpers "github.com/angelmondragon/packfinderz-backend/internal/checkout/helpers"
 	product "github.com/angelmondragon/packfinderz-backend/internal/products"
 	"github.com/angelmondragon/packfinderz-backend/internal/stores"
-	"github.com/angelmondragon/packfinderz-backend/pkg/checkout"
 	"github.com/angelmondragon/packfinderz-backend/pkg/db/models"
 	"github.com/angelmondragon/packfinderz-backend/pkg/enums"
 	pkgerrors "github.com/angelmondragon/packfinderz-backend/pkg/errors"
@@ -34,7 +33,6 @@ type productLoader interface {
 
 // Service exposes cart persistence operations.
 type Service interface {
-	UpsertCart(ctx context.Context, buyerStoreID uuid.UUID, input UpsertCartInput) (*models.CartRecord, error)
 	QuoteCart(ctx context.Context, buyerStoreID uuid.UUID, input QuoteCartInput) (*models.CartRecord, error)
 	GetActiveCart(ctx context.Context, buyerStoreID uuid.UUID) (*models.CartRecord, error)
 }
@@ -73,241 +71,7 @@ func NewService(repo CartRepository, tx txRunner, store storeLoader, productRepo
 	}, nil
 }
 
-// UpsertCartInput captures the payload required to create or refresh a cart record.
-type UpsertCartInput struct {
-	ShippingAddress         *types.Address
-	Currency                enums.Currency
-	ValidUntil              *time.Time
-	DiscountsCents          int
-	SubtotalCents           int
-	TotalCents              int
-	AdTokens                []string
-	Items                   []CartItemInput
-	SkipTotalsValidation    bool
-	SkipInventoryValidation bool
-	SkipVendorValidation    bool
-	VendorGroups            []models.CartVendorGroup
-}
-
-// CartItemInput mirrors the data stored for each cart item.
-type CartItemInput struct {
-	ProductID                       uuid.UUID
-	VendorStoreID                   uuid.UUID
-	Qty                             int
-	MOQ                             int
-	MaxQty                          *int
-	Status                          enums.CartItemStatus
-	Warnings                        types.CartItemWarnings
-	ProductSKU                      string
-	Unit                            enums.ProductUnit
-	UnitPriceCents                  int
-	CompareAtUnitPriceCents         *int
-	AppliedVolumeTierMinQty         *int
-	AppliedVolumeTierUnitPriceCents *int
-	DiscountedPrice                 *int
-	SubTotalPrice                   *int
-	AppliedVolumeDiscount           *types.AppliedVolumeDiscount
-	FeaturedImage                   *string
-	THCPercent                      *float64
-	CBDPercent                      *float64
-}
-
-// UpsertCart validates the provided snapshot and persists the cart atomically.
-func (s *service) UpsertCart(ctx context.Context, buyerStoreID uuid.UUID, input UpsertCartInput) (*models.CartRecord, error) {
-	if buyerStoreID == uuid.Nil {
-		return nil, pkgerrors.New(pkgerrors.CodeValidation, "buyer store id is required")
-	}
-	if len(input.Items) == 0 {
-		return nil, pkgerrors.New(pkgerrors.CodeValidation, "cart must contain at least one item")
-	}
-	if input.SubtotalCents < 0 || input.TotalCents < 0 || input.DiscountsCents < 0 {
-		return nil, pkgerrors.New(pkgerrors.CodeValidation, "cart totals must be non-negative")
-	}
-
-	_, buyerState, err := s.validateBuyerStore(ctx, buyerStoreID)
-	if err != nil {
-		return nil, err
-	}
-
-	vendorCache := map[uuid.UUID]*stores.StoreDTO{}
-	vendorIDs := map[uuid.UUID]struct{}{}
-	var moqInputs []checkout.MOQValidationInput
-	var subtotalSum int64
-	items := make([]models.CartItem, 0, len(input.Items))
-
-	for _, payload := range input.Items {
-		vendorIDs[payload.VendorStoreID] = struct{}{}
-
-		if !input.SkipVendorValidation {
-			vendor, err := s.ensureVendor(ctx, payload.VendorStoreID, buyerState, vendorCache)
-			if err != nil {
-				return nil, err
-			}
-			_ = vendor // ensure we touched vendor to avoid unused
-		}
-
-		product, _, err := s.productRepo.GetProductDetail(ctx, payload.ProductID)
-		if err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				return nil, pkgerrors.New(pkgerrors.CodeNotFound, "product not found")
-			}
-			return nil, pkgerrors.Wrap(pkgerrors.CodeDependency, err, "load product")
-		}
-
-		if product.StoreID != payload.VendorStoreID {
-			return nil, pkgerrors.New(pkgerrors.CodeValidation, "product vendor mismatch")
-		}
-		if !product.IsActive {
-			return nil, pkgerrors.New(pkgerrors.CodeValidation, "product is not available")
-		}
-		// if payload.ProductSKU != product.SKU {
-		// 	return nil, pkgerrors.New(pkgerrors.CodeValidation, "product sku mismatch")
-		// }
-		// if payload.UnitPriceCents != product.PriceCents {
-		// 	return nil, pkgerrors.New(pkgerrors.CodeValidation, "unit price mismatch")
-		// }
-
-		availableQty := 0
-		if product.Inventory != nil {
-			availableQty = product.Inventory.AvailableQty
-		}
-		if payload.Qty > 0 && availableQty < payload.Qty && !input.SkipInventoryValidation {
-			return nil, pkgerrors.New(pkgerrors.CodeConflict, "insufficient inventory for product")
-		}
-
-		tier := selectVolumeDiscount(payload.Qty, product.VolumeDiscounts)
-		if err := s.validateVolumeTier(payload, tier); err != nil {
-			return nil, err
-		}
-
-		linePrice := payload.UnitPriceCents
-		if payload.DiscountedPrice != nil {
-			linePrice = *payload.DiscountedPrice
-		}
-		if linePrice < 0 {
-			return nil, pkgerrors.New(pkgerrors.CodeValidation, "line price cannot be negative")
-		}
-		lineTotal := linePrice * payload.Qty
-		if payload.SubTotalPrice == nil {
-			return nil, pkgerrors.New(pkgerrors.CodeValidation, "sub_total_price is required")
-		}
-		if *payload.SubTotalPrice != lineTotal {
-			return nil, pkgerrors.New(pkgerrors.CodeValidation, "line subtotal mismatch")
-		}
-
-		subtotalSum += int64(lineTotal)
-
-		moqInputs = append(moqInputs, checkout.MOQValidationInput{
-			ProductID:   product.ID,
-			ProductName: product.Title,
-			MOQ:         product.MOQ,
-			Quantity:    payload.Qty,
-		})
-
-		items = append(items, buildCartItem(payload, product, lineTotal))
-	}
-
-	if err := checkout.ValidateMOQ(moqInputs); err != nil {
-		return nil, err
-	}
-
-	if !input.SkipTotalsValidation {
-		if err := verifyTotals(input, subtotalSum); err != nil {
-			return nil, err
-		}
-	}
-
-	var saved *models.CartRecord
-	if err := s.tx.WithTx(ctx, func(tx *gorm.DB) error {
-		txRepo := s.repo.WithTx(tx)
-		record, err := txRepo.FindActiveByBuyerStore(ctx, buyerStoreID)
-		if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
-			return err
-		}
-
-		var targetID uuid.UUID
-		validUntil := time.Now().Add(15 * time.Minute)
-		if input.ValidUntil != nil {
-			validUntil = *input.ValidUntil
-		}
-
-		if record != nil {
-			record.ShippingAddress = input.ShippingAddress
-			if input.Currency.IsValid() {
-				record.Currency = input.Currency
-			}
-			record.ValidUntil = validUntil
-			record.SubtotalCents = input.SubtotalCents
-			record.DiscountsCents = input.DiscountsCents
-			record.TotalCents = input.TotalCents
-			record.AdTokens = pq.StringArray(input.AdTokens)
-			if _, err := txRepo.Update(ctx, record); err != nil {
-				return err
-			}
-			targetID = record.ID
-		} else {
-			currency := input.Currency
-			if !currency.IsValid() {
-				currency = enums.CurrencyUSD
-			}
-			record = &models.CartRecord{
-				BuyerStoreID:    buyerStoreID,
-				ShippingAddress: input.ShippingAddress,
-				Currency:        currency,
-				ValidUntil:      validUntil,
-				SubtotalCents:   input.SubtotalCents,
-				DiscountsCents:  input.DiscountsCents,
-				TotalCents:      input.TotalCents,
-				AdTokens:        pq.StringArray(input.AdTokens),
-			}
-			created, err := txRepo.Create(ctx, record)
-			if err != nil {
-				return err
-			}
-			targetID = created.ID
-		}
-
-		for i := range items {
-			items[i].CartID = targetID
-		}
-
-		if err := txRepo.ReplaceItems(ctx, targetID, items); err != nil {
-			return err
-		}
-		if err := txRepo.ReplaceVendorGroups(ctx, targetID, input.VendorGroups); err != nil {
-			return err
-		}
-
-		saved, err = txRepo.FindByIDAndBuyerStore(ctx, targetID, buyerStoreID)
-		return err
-	}); err != nil {
-		return nil, pkgerrors.Wrap(pkgerrors.CodeDependency, err, "persist cart")
-	}
-
-	return saved, nil
-}
-
-// GetActiveCart returns the active cart for the buyer, or not-found.
-func (s *service) GetActiveCart(ctx context.Context, buyerStoreID uuid.UUID) (*models.CartRecord, error) {
-	if buyerStoreID == uuid.Nil {
-		return nil, pkgerrors.New(pkgerrors.CodeValidation, "buyer store id is required")
-	}
-
-	if _, _, err := s.validateBuyerStore(ctx, buyerStoreID); err != nil {
-		return nil, err
-	}
-
-	record, err := s.repo.FindActiveByBuyerStore(ctx, buyerStoreID)
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, pkgerrors.New(pkgerrors.CodeNotFound, "active cart not found")
-		}
-		return nil, err
-	}
-	return record, nil
-}
-
-// QuoteCart builds a runnable quote intent from the minimal request shape and persists it via UpsertCart.
+// QuoteCart builds a runnable quote intent from the minimal request shape and persists the computed quote snapshot in an atomic transaction.
 func (s *service) QuoteCart(ctx context.Context, buyerStoreID uuid.UUID, input QuoteCartInput) (*models.CartRecord, error) {
 	if buyerStoreID == uuid.Nil {
 		return nil, pkgerrors.New(pkgerrors.CodeValidation, "buyer store id is required")
@@ -331,49 +95,9 @@ func (s *service) QuoteCart(ctx context.Context, buyerStoreID uuid.UUID, input Q
 		return nil, err
 	}
 
-	items := make([]CartItemInput, 0, len(pipeline.Items))
-
+	items := make([]models.CartItem, 0, len(pipeline.Items))
 	for _, pipelineItem := range pipeline.Items {
-		product := pipelineItem.Product
-		qty := pipelineItem.NormalizedQty
-		tier := pipelineItem.SelectedTier
-		lineSubtotal := pipelineItem.LineSubtotalCents
-		var discountedPrice *int
-		var tierMinQty *int
-		var tierUnitPrice *int
-		if tier != nil {
-			minQty := tier.MinQty
-			tierMinQty = &minQty
-			unitPrice := tier.UnitPriceCents
-			tierUnitPrice = &unitPrice
-			discountedPrice = &unitPrice
-		}
-
-		items = append(items, CartItemInput{
-			ProductID:                       product.ID,
-			VendorStoreID:                   product.StoreID,
-			Qty:                             qty,
-			MOQ:                             pipelineItem.MOQ,
-			MaxQty:                          pipelineItem.MaxQty,
-			Status:                          pipelineItem.Status,
-			Warnings:                        pipelineItem.Warnings,
-			ProductSKU:                      product.SKU,
-			Unit:                            product.Unit,
-			UnitPriceCents:                  pipelineItem.UnitPriceCents,
-			CompareAtUnitPriceCents:         product.CompareAtPriceCents,
-			AppliedVolumeTierMinQty:         tierMinQty,
-			AppliedVolumeTierUnitPriceCents: tierUnitPrice,
-			DiscountedPrice:                 discountedPrice,
-			SubTotalPrice:                   &lineSubtotal,
-			AppliedVolumeDiscount:           pipelineItem.AppliedVolumeDiscount,
-			FeaturedImage:                   nil,
-			THCPercent:                      product.THCPercent,
-			CBDPercent:                      product.CBDPercent,
-		})
-
-		if err := s.validateVolumeTier(items[len(items)-1], tier); err != nil {
-			return nil, err
-		}
+		items = append(items, buildCartItemFromPipeline(pipelineItem))
 	}
 
 	vendorGroups := aggregateVendorGroups(pipeline)
@@ -390,22 +114,19 @@ func (s *service) QuoteCart(ctx context.Context, buyerStoreID uuid.UUID, input Q
 	validUntil := time.Now().Add(15 * time.Minute)
 	currency := enums.CurrencyUSD
 
-	upsertInput := UpsertCartInput{
-		ShippingAddress:         &shippingAddress,
-		Currency:                currency,
-		ValidUntil:              &validUntil,
-		DiscountsCents:          discountsCents,
-		SubtotalCents:           subtotalCents,
-		TotalCents:              totalCents,
-		AdTokens:                input.AdTokens,
-		Items:                   items,
-		SkipTotalsValidation:    true,
-		SkipInventoryValidation: true,
-		SkipVendorValidation:    true,
-		VendorGroups:            vendorGroups,
+	payload := cartRecordPayload{
+		ShippingAddress: &shippingAddress,
+		Currency:        currency,
+		ValidUntil:      validUntil,
+		DiscountsCents:  discountsCents,
+		SubtotalCents:   subtotalCents,
+		TotalCents:      totalCents,
+		AdTokens:        input.AdTokens,
+		Items:           items,
+		VendorGroups:    vendorGroups,
 	}
 
-	return s.UpsertCart(ctx, buyerStoreID, upsertInput)
+	return s.persistQuote(ctx, buyerStoreID, payload)
 }
 
 func (s *service) validateBuyerStore(ctx context.Context, buyerStoreID uuid.UUID) (*stores.StoreDTO, string, error) {
@@ -459,51 +180,186 @@ func (s *service) loadExistingItemPrices(ctx context.Context, buyerStoreID uuid.
 	return prices, nil
 }
 
-func (s *service) validateVolumeTier(input CartItemInput, tier *models.ProductVolumeDiscount) error {
-	if tier == nil {
-		if input.AppliedVolumeTierMinQty != nil || input.AppliedVolumeTierUnitPriceCents != nil {
-			return pkgerrors.New(pkgerrors.CodeValidation, "unexpected volume tier data")
-		}
-		return nil
-	}
-	if input.AppliedVolumeTierMinQty == nil || input.AppliedVolumeTierUnitPriceCents == nil {
-		return pkgerrors.New(pkgerrors.CodeValidation, "volume tier data incomplete")
-	}
-	if *input.AppliedVolumeTierMinQty != tier.MinQty || *input.AppliedVolumeTierUnitPriceCents != tier.UnitPriceCents {
-		return pkgerrors.New(pkgerrors.CodeValidation, "volume tier mismatch")
-	}
-	if input.DiscountedPrice == nil || *input.DiscountedPrice != tier.UnitPriceCents {
-		return pkgerrors.New(pkgerrors.CodeValidation, "discounted price must match volume tier")
-	}
-	return nil
-}
-
-func verifyTotals(input UpsertCartInput, subtotal int64) error {
-	if int64(input.SubtotalCents) != subtotal {
-		return pkgerrors.New(pkgerrors.CodeValidation, "cart subtotal mismatch")
-	}
-	if input.DiscountsCents > input.SubtotalCents {
-		return pkgerrors.New(pkgerrors.CodeValidation, "discounts exceed subtotal")
-	}
-	if input.SubtotalCents-input.DiscountsCents != input.TotalCents {
-		return pkgerrors.New(pkgerrors.CodeValidation, "cart total mismatch")
-	}
-	return nil
-}
-
-func buildCartItem(input CartItemInput, product *models.Product, lineTotal int) models.CartItem {
+func buildCartItemFromPipeline(item *quotePipelineItem) models.CartItem {
 	return models.CartItem{
-		ProductID:             product.ID,
-		VendorStoreID:         product.StoreID,
-		Quantity:              input.Qty,
-		MOQ:                   input.MOQ,
-		MaxQty:                input.MaxQty,
-		UnitPriceCents:        input.UnitPriceCents,
-		AppliedVolumeDiscount: input.AppliedVolumeDiscount,
-		LineSubtotalCents:     lineTotal,
-		Status:                input.Status,
-		Warnings:              input.Warnings,
+		ProductID:             item.Product.ID,
+		VendorStoreID:         item.Product.StoreID,
+		Quantity:              item.NormalizedQty,
+		MOQ:                   item.MOQ,
+		MaxQty:                item.MaxQty,
+		UnitPriceCents:        item.UnitPriceCents,
+		AppliedVolumeDiscount: item.AppliedVolumeDiscount,
+		LineSubtotalCents:     item.LineSubtotalCents,
+		Status:                item.Status,
+		Warnings:              item.Warnings,
 	}
+}
+
+type cartRecordPayload struct {
+	ShippingAddress *types.Address
+	Currency        enums.Currency
+	ValidUntil      time.Time
+	DiscountsCents  int
+	SubtotalCents   int
+	TotalCents      int
+	AdTokens        []string
+	Items           []models.CartItem
+	VendorGroups    []models.CartVendorGroup
+}
+
+func (s *service) persistQuote(ctx context.Context, buyerStoreID uuid.UUID, payload cartRecordPayload) (*models.CartRecord, error) {
+	start := time.Now()
+	fmt.Printf("[cart.persistQuote] start buyer_store_id=%s items=%d vendor_groups=%d subtotal=%d discounts=%d total=%d currency=%s valid_until=%s\n",
+		buyerStoreID.String(),
+		len(payload.Items),
+		len(payload.VendorGroups),
+		payload.SubtotalCents,
+		payload.DiscountsCents,
+		payload.TotalCents,
+		string(payload.Currency),
+		payload.ValidUntil.Format(time.RFC3339),
+	)
+
+	if buyerStoreID == uuid.Nil {
+		fmt.Printf("[cart.persistQuote] validation_error reason=buyer_store_id_nil\n")
+		return nil, pkgerrors.New(pkgerrors.CodeValidation, "buyer store id is required")
+	}
+	if len(payload.Items) == 0 {
+		fmt.Printf("[cart.persistQuote] validation_error reason=items_empty\n")
+		return nil, pkgerrors.New(pkgerrors.CodeValidation, "cart must contain at least one item")
+	}
+	if payload.SubtotalCents < 0 || payload.TotalCents < 0 || payload.DiscountsCents < 0 {
+		fmt.Printf("[cart.persistQuote] validation_error reason=negative_totals subtotal=%d discounts=%d total=%d\n",
+			payload.SubtotalCents, payload.DiscountsCents, payload.TotalCents,
+		)
+		return nil, pkgerrors.New(pkgerrors.CodeValidation, "cart totals must be non-negative")
+	}
+
+	currency := payload.Currency
+	if !currency.IsValid() {
+		fmt.Printf("[cart.persistQuote] invalid_currency defaulting currency=%s\n", string(currency))
+		currency = enums.CurrencyUSD
+	}
+
+	var saved *models.CartRecord
+	if err := s.tx.WithTx(ctx, func(tx *gorm.DB) error {
+		txRepo := s.repo.WithTx(tx)
+
+		fmt.Printf("[cart.persistQuote.tx] find_active start buyer_store_id=%s\n", buyerStoreID.String())
+		record, err := txRepo.FindActiveByBuyerStore(ctx, buyerStoreID)
+		if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+			fmt.Printf("[cart.persistQuote.tx] find_active error=%v buyer_store_id=%s\n", err, buyerStoreID.String())
+			return err
+		}
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			fmt.Printf("[cart.persistQuote.tx] find_active not_found buyer_store_id=%s\n", buyerStoreID.String())
+		} else if record != nil {
+			fmt.Printf("[cart.persistQuote.tx] find_active ok cart_id=%s buyer_store_id=%s existing_items=%d existing_vendor_groups=%d\n",
+				record.ID.String(), buyerStoreID.String(), len(record.Items), len(record.VendorGroups),
+			)
+		}
+
+		var targetID uuid.UUID
+		if record != nil && record.ID != uuid.Nil {
+			fmt.Printf("[cart.persistQuote.tx] update_cart start cart_id=%s buyer_store_id=%s\n", record.ID.String(), buyerStoreID.String())
+			record.ShippingAddress = payload.ShippingAddress
+			record.ValidUntil = payload.ValidUntil
+			record.Currency = currency
+			record.DiscountsCents = payload.DiscountsCents
+			record.SubtotalCents = payload.SubtotalCents
+			record.TotalCents = payload.TotalCents
+			record.AdTokens = pq.StringArray(payload.AdTokens)
+
+			if _, err := txRepo.Update(ctx, record); err != nil {
+				fmt.Printf("[cart.persistQuote.tx] update_cart error=%v cart_id=%s\n", err, record.ID.String())
+				return err
+			}
+			fmt.Printf("[cart.persistQuote.tx] update_cart ok cart_id=%s\n", record.ID.String())
+			targetID = record.ID
+		} else {
+			fmt.Printf("[cart.persistQuote.tx] create_cart start buyer_store_id=%s\n", buyerStoreID.String())
+			record = &models.CartRecord{
+				BuyerStoreID:    buyerStoreID,
+				ShippingAddress: payload.ShippingAddress,
+				Currency:        currency,
+				ValidUntil:      payload.ValidUntil,
+				SubtotalCents:   payload.SubtotalCents,
+				DiscountsCents:  payload.DiscountsCents,
+				TotalCents:      payload.TotalCents,
+				AdTokens:        pq.StringArray(payload.AdTokens),
+			}
+			created, err := txRepo.Create(ctx, record)
+			if err != nil {
+				fmt.Printf("[cart.persistQuote.tx] create_cart error=%v buyer_store_id=%s\n", err, buyerStoreID.String())
+				return err
+			}
+			targetID = created.ID
+			fmt.Printf("[cart.persistQuote.tx] create_cart ok cart_id=%s buyer_store_id=%s\n", targetID.String(), buyerStoreID.String())
+		}
+
+		for i := range payload.Items {
+			payload.Items[i].CartID = targetID
+		}
+		for i := range payload.VendorGroups {
+			payload.VendorGroups[i].CartID = targetID
+		}
+
+		fmt.Printf("[cart.persistQuote.tx] replace_items start cart_id=%s items=%d\n", targetID.String(), len(payload.Items))
+		if err := txRepo.ReplaceItems(ctx, targetID, payload.Items); err != nil {
+			fmt.Printf("[cart.persistQuote.tx] replace_items error=%v cart_id=%s items=%d\n", err, targetID.String(), len(payload.Items))
+			return err
+		}
+		fmt.Printf("[cart.persistQuote.tx] replace_items ok cart_id=%s\n", targetID.String())
+
+		fmt.Printf("[cart.persistQuote.tx] replace_vendor_groups start cart_id=%s vendor_groups=%d\n", targetID.String(), len(payload.VendorGroups))
+		if err := txRepo.ReplaceVendorGroups(ctx, targetID, payload.VendorGroups); err != nil {
+			fmt.Printf("[cart.persistQuote.tx] replace_vendor_groups error=%v cart_id=%s vendor_groups=%d\n", err, targetID.String(), len(payload.VendorGroups))
+			return err
+		}
+		fmt.Printf("[cart.persistQuote.tx] replace_vendor_groups ok cart_id=%s\n", targetID.String())
+
+		fmt.Printf("[cart.persistQuote.tx] find_saved start cart_id=%s buyer_store_id=%s\n", targetID.String(), buyerStoreID.String())
+		saved, err = txRepo.FindByIDAndBuyerStore(ctx, targetID, buyerStoreID)
+		if err != nil {
+			fmt.Printf("[cart.persistQuote.tx] find_saved error=%v cart_id=%s buyer_store_id=%s\n", err, targetID.String(), buyerStoreID.String())
+			return err
+		}
+		fmt.Printf("[cart.persistQuote.tx] find_saved ok cart_id=%s items=%d vendor_groups=%d\n",
+			saved.ID.String(), len(saved.Items), len(saved.VendorGroups),
+		)
+
+		return nil
+	}); err != nil {
+		fmt.Printf("[cart.persistQuote] tx failed error=%v buyer_store_id=%s duration_ms=%d\n",
+			err, buyerStoreID.String(), time.Since(start).Milliseconds(),
+		)
+		return nil, pkgerrors.Wrap(pkgerrors.CodeDependency, err, "persist cart")
+	}
+
+	fmt.Printf("[cart.persistQuote] done ok buyer_store_id=%s cart_id=%s duration_ms=%d\n",
+		buyerStoreID.String(), saved.ID.String(), time.Since(start).Milliseconds(),
+	)
+	return saved, nil
+}
+
+// GetActiveCart returns the active cart for the buyer, or not-found.
+func (s *service) GetActiveCart(ctx context.Context, buyerStoreID uuid.UUID) (*models.CartRecord, error) {
+	if buyerStoreID == uuid.Nil {
+		return nil, pkgerrors.New(pkgerrors.CodeValidation, "buyer store id is required")
+	}
+
+	if _, _, err := s.validateBuyerStore(ctx, buyerStoreID); err != nil {
+		return nil, err
+	}
+
+	record, err := s.repo.FindActiveByBuyerStore(ctx, buyerStoreID)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, pkgerrors.New(pkgerrors.CodeNotFound, "active cart not found")
+		}
+		return nil, err
+	}
+	return record, nil
 }
 
 func selectVolumeDiscount(qty int, tiers []models.ProductVolumeDiscount) *models.ProductVolumeDiscount {

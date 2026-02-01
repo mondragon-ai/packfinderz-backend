@@ -19,10 +19,10 @@ type CartItem struct {
 	MOQ                   int                          `gorm:"column:moq;not null;default:1"`
 	MaxQty                *int                         `gorm:"column:max_qty"`
 	UnitPriceCents        int                          `gorm:"column:unit_price_cents;not null"`
-	AppliedVolumeDiscount *types.AppliedVolumeDiscount `gorm:"column:applied_volume_discount;type:jsonb"`
+	AppliedVolumeDiscount *types.AppliedVolumeDiscount `gorm:"column:applied_volume_discount;type:jsonb;serializer:json"`
+	Warnings              types.CartItemWarnings       `gorm:"column:warnings;type:jsonb;serializer:json"`
 	LineSubtotalCents     int                          `gorm:"column:line_subtotal_cents;not null"`
 	Status                enums.CartItemStatus         `gorm:"column:status;type:cart_item_status;not null;default:'ok'"`
-	Warnings              types.CartItemWarnings       `gorm:"column:warnings;type:jsonb"`
 	CreatedAt             time.Time                    `gorm:"column:created_at;autoCreateTime"`
 	UpdatedAt             time.Time                    `gorm:"column:updated_at;autoUpdateTime"`
 }

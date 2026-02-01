@@ -2,6 +2,7 @@ package cart
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/angelmondragon/packfinderz-backend/pkg/db/models"
 	"github.com/google/uuid"
@@ -28,7 +29,7 @@ func (r *CartItemRepository) WithTx(tx *gorm.DB) *CartItemRepository {
 
 // ReplaceForCart deletes existing items and inserts the provided ones transactionally.
 func (r *CartItemRepository) ReplaceForCart(ctx context.Context, cartID uuid.UUID, items []models.CartItem) error {
-	tx := r.db.WithContext(ctx)
+	tx := r.db.WithContext(ctx).Debug()
 	if err := tx.Where("cart_id = ?", cartID).Delete(&models.CartItem{}).Error; err != nil {
 		return err
 	}
@@ -37,6 +38,15 @@ func (r *CartItemRepository) ReplaceForCart(ctx context.Context, cartID uuid.UUI
 	}
 	for i := range items {
 		items[i].CartID = cartID
+
+		fmt.Printf("[cart.ReplaceForCart] item[%d] product_id=%s vendor_id=%s status=%v warnings=%#v applied_volume_discount=%#v\n",
+			i,
+			items[i].ProductID,
+			items[i].VendorStoreID,
+			items[i].Status,
+			items[i].Warnings,
+			items[i].AppliedVolumeDiscount,
+		)
 	}
 	return tx.Create(&items).Error
 }
