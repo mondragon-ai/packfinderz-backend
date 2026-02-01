@@ -198,16 +198,6 @@ func (s *service) Execute(ctx context.Context, buyerStoreID, cartID uuid.UUID, i
 			record.CheckoutGroupID = checkoutGroupID
 		}
 
-		checkoutGroup := &models.CheckoutGroup{
-			ID:           *checkoutGroupID,
-			BuyerStoreID: buyerStoreID,
-			CartID:       &record.ID,
-		}
-		createdGroup, err := ordersRepo.CreateCheckoutGroup(ctx, checkoutGroup)
-		if err != nil {
-			return err
-		}
-
 		vendorGroupSnapshots = append([]models.CartVendorGroup(nil), record.VendorGroups...)
 
 		for vendorID, items := range grouped {
@@ -219,25 +209,21 @@ func (s *service) Execute(ctx context.Context, buyerStoreID, cartID uuid.UUID, i
 			if !ok {
 				return pkgerrors.New(pkgerrors.CodeInternal, fmt.Sprintf("missing vendor group for vendor %s", vendorID))
 			}
-			totals := cartGroup.SubtotalCents
-			discounts := cartGroup.SubtotalCents - cartGroup.TotalCents
-			if discounts < 0 {
-				discounts = 0
-			}
+			orderTotals := computeVendorOrderTotals(items, reservationMap)
 			order := &models.VendorOrder{
 				CartID:            record.ID,
-				CheckoutGroupID:   createdGroup.ID,
+				CheckoutGroupID:   *checkoutGroupID,
 				BuyerStoreID:      buyerStoreID,
 				VendorStoreID:     vendorID,
 				Currency:          record.Currency,
 				ShippingAddress:   appliedShippingAddress,
-				SubtotalCents:     totals,
-				DiscountsCents:    discounts,
+				SubtotalCents:     orderTotals.SubtotalCents,
+				DiscountsCents:    orderTotals.DiscountsCents,
 				TaxCents:          0,
 				TransportFeeCents: 0,
 				PaymentMethod:     appliedPaymentMethod,
-				TotalCents:        cartGroup.TotalCents,
-				BalanceDueCents:   cartGroup.TotalCents,
+				TotalCents:        orderTotals.TotalCents,
+				BalanceDueCents:   orderTotals.TotalCents,
 				Warnings:          cartGroup.Warnings,
 				Promo:             cartGroup.Promo,
 				ShippingLine:      appliedShippingLine,
@@ -248,16 +234,13 @@ func (s *service) Execute(ctx context.Context, buyerStoreID, cartID uuid.UUID, i
 			}
 
 			lineItems := make([]models.OrderLineItem, 0, len(items))
-			anyReserved := false
+			anyReserved := orderTotals.HasReserved
 			for _, item := range items {
 				product, err := s.loadProduct(ctx, item.ProductID, productCache)
 				if err != nil {
 					return err
 				}
 				result := reservationMap[item.ID]
-				if result.Reserved {
-					anyReserved = true
-				}
 				lineItems = append(lineItems, buildLineItem(createdOrder.ID, item, product, result))
 			}
 
@@ -279,7 +262,7 @@ func (s *service) Execute(ctx context.Context, buyerStoreID, cartID uuid.UUID, i
 				OrderID:     createdOrder.ID,
 				Method:      appliedPaymentMethod,
 				Status:      enums.PaymentStatusUnpaid,
-				AmountCents: cartGroup.TotalCents,
+				AmountCents: orderTotals.TotalCents,
 			}
 			if _, err := ordersRepo.CreatePaymentIntent(ctx, intent); err != nil {
 				return err
@@ -292,15 +275,22 @@ func (s *service) Execute(ctx context.Context, buyerStoreID, cartID uuid.UUID, i
 			return err
 		}
 
-		if err := s.emitOrderCreatedEvent(ctx, tx, createdGroup.ID, vendorOrderIDs); err != nil {
+		if err := s.emitOrderCreatedEvent(ctx, tx, *checkoutGroupID, vendorOrderIDs); err != nil {
 			return err
 		}
 
-		result, err = ordersRepo.FindCheckoutGroupByID(ctx, createdGroup.ID)
+		orderRecords, err := ordersRepo.FindVendorOrdersByCheckoutGroup(ctx, *checkoutGroupID)
 		if err != nil {
 			return err
 		}
-		result.CartVendorGroups = vendorGroupSnapshots
+
+		result = &models.CheckoutGroup{
+			ID:               *checkoutGroupID,
+			BuyerStoreID:     buyerStoreID,
+			CartID:           &record.ID,
+			VendorOrders:     orderRecords,
+			CartVendorGroups: vendorGroupSnapshots,
+		}
 		return nil
 	})
 	if err != nil {
@@ -419,6 +409,62 @@ func buildLineItem(orderID uuid.UUID, cartItem models.CartItem, product *models.
 		Status:                status,
 		Notes:                 notes,
 	}
+}
+
+type vendorOrderTotals struct {
+	SubtotalCents  int
+	DiscountsCents int
+	TotalCents     int
+	HasReserved    bool
+}
+
+func computeVendorOrderTotals(items []models.CartItem, reservationMap map[uuid.UUID]reservation.InventoryReservationResult) vendorOrderTotals {
+	var totals vendorOrderTotals
+
+	for _, item := range items {
+		result := reservationMap[item.ID]
+		if !result.Reserved {
+			continue
+		}
+		totals.HasReserved = true
+
+		itemSubtotal := item.UnitPriceCents * item.Quantity
+		if itemSubtotal < 0 {
+			itemSubtotal = 0
+		}
+
+		itemDiscount := 0
+		if item.AppliedVolumeDiscount != nil {
+			itemDiscount = item.AppliedVolumeDiscount.AmountCents
+		}
+		if itemDiscount < 0 {
+			itemDiscount = 0
+		}
+		if itemDiscount > itemSubtotal {
+			itemDiscount = itemSubtotal
+		}
+
+		itemTotal := item.LineSubtotalCents
+		if itemTotal == 0 {
+			itemTotal = itemSubtotal - itemDiscount
+		}
+		if itemTotal < 0 {
+			itemTotal = 0
+		}
+
+		totals.SubtotalCents += itemSubtotal
+		totals.DiscountsCents += itemDiscount
+		totals.TotalCents += itemTotal
+	}
+
+	if totals.DiscountsCents > totals.SubtotalCents {
+		totals.DiscountsCents = totals.SubtotalCents
+	}
+	if totals.TotalCents < 0 {
+		totals.TotalCents = 0
+	}
+
+	return totals
 }
 
 func validateCartForCheckout(record *models.CartRecord) error {

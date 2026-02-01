@@ -108,15 +108,14 @@ func (c *Consumer) Process(ctx context.Context, eventType enums.OutboxEventType,
 }
 
 type marketplaceEventRow struct {
-	EventID             string             `bigquery:"event_id"`
-	EventType           string             `bigquery:"event_type"`
-	OccurredAt          time.Time          `bigquery:"occurred_at"`
-	CheckoutGroupID     *string            `bigquery:"checkout_group_id"`
-	OrderID             *string            `bigquery:"order_id"`
-	BuyerStoreID        *string            `bigquery:"buyer_store_id"`
-	VendorStoreID       *string            `bigquery:"vendor_store_id"`
-	AttributedAdClickID *string            `bigquery:"attributed_ad_click_id"`
-	Payload             cbigquery.NullJSON `bigquery:"payload"`
+	EventID         string             `bigquery:"event_id"`
+	EventType       string             `bigquery:"event_type"`
+	OccurredAt      time.Time          `bigquery:"occurred_at"`
+	CheckoutGroupID *string            `bigquery:"checkout_group_id"`
+	OrderID         *string            `bigquery:"order_id"`
+	BuyerStoreID    *string            `bigquery:"buyer_store_id"`
+	VendorStoreID   *string            `bigquery:"vendor_store_id"`
+	Payload         cbigquery.NullJSON `bigquery:"payload"`
 }
 
 func buildRow(eventType enums.OutboxEventType, envelope outbox.PayloadEnvelope) (*marketplaceEventRow, error) {
@@ -137,15 +136,14 @@ func buildRow(eventType enums.OutboxEventType, envelope outbox.PayloadEnvelope) 
 	}
 
 	return &marketplaceEventRow{
-		EventID:             envelope.EventID,
-		EventType:           string(eventType),
-		OccurredAt:          envelope.OccurredAt,
-		CheckoutGroupID:     stringValue(payload, "checkout_group_id"),
-		OrderID:             stringValue(payload, "order_id"),
-		BuyerStoreID:        stringValue(payload, "buyer_store_id"),
-		VendorStoreID:       stringValue(payload, "vendor_store_id"),
-		AttributedAdClickID: stringValue(payload, "attributed_ad_click_id"),
-		Payload:             payloadJSON,
+		EventID:         envelope.EventID,
+		EventType:       string(eventType),
+		OccurredAt:      envelope.OccurredAt,
+		CheckoutGroupID: stringValue(payload, "checkout_group_id"),
+		OrderID:         stringValue(payload, "order_id"),
+		BuyerStoreID:    stringValue(payload, "buyer_store_id"),
+		VendorStoreID:   stringValue(payload, "vendor_store_id"),
+		Payload:         payloadJSON,
 	}, nil
 }
 

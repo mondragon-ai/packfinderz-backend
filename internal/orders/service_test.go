@@ -23,7 +23,6 @@ type stubOrdersRepo struct {
 	lineItems            map[uuid.UUID]*models.OrderLineItem
 	orderUpdates         map[string]any
 	paymentUpdates       map[string]any
-	createCheckoutGroup  func(ctx context.Context, group *models.CheckoutGroup) (*models.CheckoutGroup, error)
 	createVendorOrder    func(ctx context.Context, order *models.VendorOrder) (*models.VendorOrder, error)
 	createOrderLineItems func(ctx context.Context, items []models.OrderLineItem) error
 	createPaymentIntent  func(ctx context.Context, intent *models.PaymentIntent) (*models.PaymentIntent, error)
@@ -40,16 +39,6 @@ func (s *stubOrdersRepo) FindPendingOrdersBefore(ctx context.Context, cutoff tim
 
 func (s *stubOrdersRepo) WithTx(tx *gorm.DB) Repository {
 	return s
-}
-
-func (s *stubOrdersRepo) CreateCheckoutGroup(ctx context.Context, group *models.CheckoutGroup) (*models.CheckoutGroup, error) {
-	if s.createCheckoutGroup != nil {
-		return s.createCheckoutGroup(ctx, group)
-	}
-	if group.ID == uuid.Nil {
-		group.ID = uuid.New()
-	}
-	return group, nil
 }
 
 func (s *stubOrdersRepo) CreateVendorOrder(ctx context.Context, order *models.VendorOrder) (*models.VendorOrder, error) {
@@ -89,12 +78,11 @@ func (s *stubOrdersRepo) CreatePaymentIntent(ctx context.Context, intent *models
 	return intent, nil
 }
 
-func (s *stubOrdersRepo) FindCheckoutGroupByID(ctx context.Context, id uuid.UUID) (*models.CheckoutGroup, error) {
-	panic("not implemented")
-}
-
 func (s *stubOrdersRepo) FindVendorOrdersByCheckoutGroup(ctx context.Context, checkoutGroupID uuid.UUID) ([]models.VendorOrder, error) {
-	panic("not implemented")
+	if s.order == nil {
+		return nil, nil
+	}
+	return []models.VendorOrder{*s.order}, nil
 }
 
 func (s *stubOrdersRepo) FindOrderLineItemsByOrder(ctx context.Context, orderID uuid.UUID) ([]models.OrderLineItem, error) {
@@ -536,11 +524,6 @@ func TestRetryOrderCreatesNewOrder(t *testing.T) {
 		order.ID = uuid.New()
 		createdOrder = order
 		return order, nil
-	}
-	groupID := uuid.New()
-	repo.createCheckoutGroup = func(ctx context.Context, group *models.CheckoutGroup) (*models.CheckoutGroup, error) {
-		group.ID = groupID
-		return group, nil
 	}
 	capturedItems := make([]models.OrderLineItem, 0)
 	repo.createOrderLineItems = func(ctx context.Context, items []models.OrderLineItem) error {
