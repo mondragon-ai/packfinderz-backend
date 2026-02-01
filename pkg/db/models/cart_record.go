@@ -17,7 +17,7 @@ type CartRecord struct {
 	CheckoutGroupID *uuid.UUID        `gorm:"column:checkout_group_id;type:uuid"`
 	Status          enums.CartStatus  `gorm:"column:status;type:cart_status;not null;default:'active'"`
 	ShippingAddress *types.Address    `gorm:"column:shipping_address;type:address_t"`
-	Currency        string            `gorm:"column:currency;not null;default:'USD'"`
+	Currency        enums.Currency    `gorm:"column:currency;not null;default:'USD'"`
 	ValidUntil      time.Time         `gorm:"column:valid_until;not null"`
 	SubtotalCents   int               `gorm:"column:subtotal_cents;not null;default:0"`
 	DiscountsCents  int               `gorm:"column:discounts_cents;not null;default:0"`

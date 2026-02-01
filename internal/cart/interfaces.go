@@ -17,5 +17,6 @@ type CartRepository interface {
 	Create(ctx context.Context, record *models.CartRecord) (*models.CartRecord, error)
 	Update(ctx context.Context, record *models.CartRecord) (*models.CartRecord, error)
 	ReplaceItems(ctx context.Context, cartID uuid.UUID, items []models.CartItem) error
+	ReplaceVendorGroups(ctx context.Context, cartID uuid.UUID, groups []models.CartVendorGroup) error
 	UpdateStatus(ctx context.Context, id, buyerStoreID uuid.UUID, status enums.CartStatus) error
 }
