@@ -83,7 +83,10 @@ func AdminAuthRegister(adminRegister auth.AdminRegisterService, svc auth.Service
 			return
 		}
 
-		result, err := svc.AdminLogin(r.Context(), auth.LoginRequest(body))
+		result, err := svc.AdminLogin(r.Context(), auth.LoginRequest{
+			Email:    body.Email,
+			Password: body.Password,
+		})
 		if err != nil {
 			responses.WriteError(r.Context(), logg, w, err)
 			return

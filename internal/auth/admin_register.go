@@ -15,8 +15,10 @@ import (
 
 // AdminRegisterRequest contains the credentials for the dev-only admin registration flow.
 type AdminRegisterRequest struct {
-	Email    string `json:"email" validate:"required,email"`
-	Password string `json:"password" validate:"required"`
+	FirstNames string `json:"first_names" validate:"required"`
+	LastName   string `json:"last_name" validate:"required"`
+	Email      string `json:"email" validate:"required,email"`
+	Password   string `json:"password" validate:"required"`
 }
 
 // AdminRegisterService handles creating dev admin users.
@@ -51,6 +53,14 @@ func (s *adminRegisterService) Register(ctx context.Context, req AdminRegisterRe
 	if email == "" {
 		return nil, pkgerrors.New(pkgerrors.CodeValidation, "email is required")
 	}
+	firstNames := strings.TrimSpace(req.FirstNames)
+	if firstNames == "" {
+		return nil, pkgerrors.New(pkgerrors.CodeValidation, "first_names is required")
+	}
+	lastName := strings.TrimSpace(req.LastName)
+	if lastName == "" {
+		return nil, pkgerrors.New(pkgerrors.CodeValidation, "last_name is required")
+	}
 
 	passwordHash, err := security.HashPassword(req.Password, s.passwordCfg)
 	if err != nil {
@@ -70,8 +80,8 @@ func (s *adminRegisterService) Register(ctx context.Context, req AdminRegisterRe
 		user, err := userRepo.Create(ctx, users.CreateUserDTO{
 			Email:        email,
 			PasswordHash: passwordHash,
-			FirstName:    "",
-			LastName:     "",
+			FirstName:    firstNames,
+			LastName:     lastName,
 			IsActive:     boolRef(true),
 			SystemRole:   stringRef("admin"),
 		})

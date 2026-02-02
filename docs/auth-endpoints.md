@@ -807,6 +807,8 @@ Developer-only helper that exists when `PACKFINDERZ_APP_ENV != prod` (the contro
 #### Request body
 ```json
 {
+  "first_names": "Admin",
+  "last_name": "User",
   "email": "admin@example.com",
   "password": "Secur3P@ssw0rd!"
 }
@@ -819,6 +821,8 @@ Developer-only helper that exists when `PACKFINDERZ_APP_ENV != prod` (the contro
 curl -X POST "{{API_BASE_URL}}/api/admin/v1/auth/register" \
   -H "Content-Type: application/json" \
   -d '{
+    "first_names": "Admin",
+    "last_name": "User",
     "email": "admin@example.com",
     "password": "Secur3P@ssw0rd!"
   }'

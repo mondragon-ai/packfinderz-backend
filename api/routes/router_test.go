@@ -145,7 +145,9 @@ func (s *stubAnalyticsService) Query(ctx context.Context, req types.MarketplaceQ
 	return s.response, s.err
 }
 
-type stubLicensesService struct{}
+type stubLicensesService struct {
+	verifyFn func(ctx context.Context, licenseID uuid.UUID, decision enums.LicenseStatus, reason string) (*models.License, error)
+}
 
 // ListLicenses implements [licenses.Service].
 func (s stubLicensesService) ListLicenses(ctx context.Context, params licenses.ListParams) (*licenses.ListResult, error) {
@@ -164,7 +166,19 @@ func (s stubLicensesService) DeleteLicense(ctx context.Context, userID uuid.UUID
 
 // VerifyLicense implements [licenses.Service].
 func (s stubLicensesService) VerifyLicense(ctx context.Context, licenseID uuid.UUID, decision enums.LicenseStatus, reason string) (*models.License, error) {
-	panic("unimplemented")
+	if s.verifyFn != nil {
+		return s.verifyFn(ctx, licenseID, decision, reason)
+	}
+	now := time.Now().UTC()
+	return &models.License{
+		ID:        licenseID,
+		UserID:    uuid.New(),
+		StoreID:   uuid.New(),
+		Status:    decision,
+		Type:      enums.LicenseTypeProducer,
+		CreatedAt: now,
+		UpdatedAt: now,
+	}, nil
 }
 
 type stubNotificationsService struct {
@@ -489,6 +503,74 @@ func TestAdminGroupAllowsStorelessAdmin(t *testing.T) {
 	}
 }
 
+func TestAdminRoutesRequireAdminRole(t *testing.T) {
+	cfg := testConfig()
+	router := newTestRouter(cfg)
+	licenseID := uuid.New()
+
+	routes := []struct {
+		name   string
+		method string
+		path   string
+		body   string
+	}{
+		{
+			name:   "ping",
+			method: http.MethodGet,
+			path:   "/api/admin/ping",
+		},
+		{
+			name:   "payouts",
+			method: http.MethodGet,
+			path:   "/api/admin/v1/orders/payouts",
+		},
+		{
+			name:   "license-verify",
+			method: http.MethodPost,
+			path:   fmt.Sprintf("/api/admin/v1/licenses/%s/verify", licenseID.String()),
+			body:   fmt.Sprintf(`{"decision":"%s"}`, enums.LicenseStatusVerified.String()),
+		},
+	}
+
+	buildRequest := func(route struct {
+		name   string
+		method string
+		path   string
+		body   string
+	}, token string) *http.Request {
+		var body io.Reader
+		if route.body != "" {
+			body = strings.NewReader(route.body)
+		}
+		req := httptest.NewRequest(route.method, route.path, body)
+		if route.body != "" {
+			req.Header.Set("Content-Type", "application/json")
+		}
+		req.Header.Set("Authorization", "Bearer "+token)
+		return req
+	}
+
+	for _, route := range routes {
+		route := route
+		t.Run(route.name+"-forbidden", func(t *testing.T) {
+			req := buildRequest(route, buildToken(t, cfg, enums.MemberRoleViewer))
+			resp := httptest.NewRecorder()
+			router.ServeHTTP(resp, req)
+			if resp.Code != http.StatusForbidden {
+				t.Fatalf("expected 403 for non-admin route %s got %d", route.path, resp.Code)
+			}
+		})
+		t.Run(route.name+"-ok", func(t *testing.T) {
+			req := buildRequest(route, buildToken(t, cfg, enums.MemberRoleAdmin))
+			resp := httptest.NewRecorder()
+			router.ServeHTTP(resp, req)
+			if resp.Code != http.StatusOK {
+				t.Fatalf("expected 200 for admin route %s got %d", route.path, resp.Code)
+			}
+		})
+	}
+}
+
 func TestAgentGroupRequiresAgentRole(t *testing.T) {
 	cfg := testConfig()
 	router := newTestRouter(cfg)
@@ -528,6 +610,64 @@ func TestAgentOrderQueueRequiresAgentRole(t *testing.T) {
 	router.ServeHTTP(resp, agent)
 	if resp.Code != http.StatusOK {
 		t.Fatalf("expected 200 for agent queue got %d", resp.Code)
+	}
+}
+
+func TestAgentRoutesRequireAgentRole(t *testing.T) {
+	cfg := testConfig()
+	router := newTestRouter(cfg)
+	orderID := uuid.New()
+
+	routes := []struct {
+		name   string
+		method string
+		path   string
+	}{
+		{
+			name:   "ping",
+			method: http.MethodGet,
+			path:   "/api/v1/agent/ping",
+		},
+		{
+			name:   "queue",
+			method: http.MethodGet,
+			path:   "/api/v1/agent/orders/queue",
+		},
+		{
+			name:   "pickup",
+			method: http.MethodPost,
+			path:   fmt.Sprintf("/api/v1/agent/orders/%s/pickup", orderID.String()),
+		},
+	}
+
+	makeReq := func(route struct {
+		name   string
+		method string
+		path   string
+	}, token string) *http.Request {
+		req := httptest.NewRequest(route.method, route.path, nil)
+		req.Header.Set("Authorization", "Bearer "+token)
+		return req
+	}
+
+	for _, route := range routes {
+		route := route
+		t.Run(route.name+"-forbidden", func(t *testing.T) {
+			req := makeReq(route, buildToken(t, cfg, enums.MemberRoleViewer))
+			resp := httptest.NewRecorder()
+			router.ServeHTTP(resp, req)
+			if resp.Code != http.StatusForbidden {
+				t.Fatalf("expected 403 for non-agent route %s got %d", route.path, resp.Code)
+			}
+		})
+		t.Run(route.name+"-ok", func(t *testing.T) {
+			req := makeReq(route, buildToken(t, cfg, enums.MemberRoleAgent))
+			resp := httptest.NewRecorder()
+			router.ServeHTTP(resp, req)
+			if resp.Code != http.StatusOK {
+				t.Fatalf("expected 200 for agent route %s got %d", route.path, resp.Code)
+			}
+		})
 	}
 }
 
