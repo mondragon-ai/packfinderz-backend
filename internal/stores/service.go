@@ -114,7 +114,6 @@ func (s *service) createNewUser(ctx context.Context, email, firstName, lastName 
 		FirstName:    firstName,
 		LastName:     lastName,
 		PasswordHash: hash,
-		StoreIDs:     []uuid.UUID{storeID},
 	})
 	if err != nil {
 		return nil, "", pkgerrors.Wrap(pkgerrors.CodeDependency, err, "create user")

@@ -2696,11 +2696,10 @@ Fields
 * `is_active boolean not null default true`
 * `last_login_at timestamptz null`
 * `system_role text null` (**ASSUMPTION:** null for normal users; `agent|admin` for system users)
-* `store_ids uuid[] not null default ARRAY[]::uuid[]` (user’s store memberships for fast joins)
 * `created_at timestamptz not null default now()`
 * `updated_at timestamptz not null default now()`
 
-> **Note:** `store_ids` is deprecated in favor of the canonical `store_memberships` join table (PF-103). Do not attempt to keep the array synchronized with the join table; resolve memberships from `store_memberships` and treat the array as legacy-only until it can be removed.
+> **Note:** The legacy `store_ids` array was removed in PF-198 (pkg/migrate/migrations/20260505000000_drop_users_store_ids.sql); all membership lookups should continue to rely on the `store_memberships` join table.
 
 Indexes
 

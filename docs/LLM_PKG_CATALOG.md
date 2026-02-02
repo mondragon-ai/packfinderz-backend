@@ -121,7 +121,7 @@
 - `Service.RecordEvent` enforces a valid `LedgerEventType`, builds the event, and writes it via the repository so every ledger row is created centrally and never updated/deleted (internal/ledger/service.go:22-64).
 
 ## internal/users
-- `Repository` provides `Create`, `FindByEmail`, `FindByID`, `UpdateLastLogin`, `UpdateStoreIDs`, and `UpdatePasswordHash`, while `UserDTO` hides credentials (internal/users/repo.go:12-70; internal/users/dto.go:11-78).
+- `Repository` provides `Create`, `FindByEmail`, `FindByID`, `UpdateLastLogin`, and `UpdatePasswordHash`; the legacy `UpdateStoreIDs` helper and `users.store_ids` array were removed as part of PF-198 so memberships come from `store_memberships` (internal/users/repo.go:12-70; internal/users/dto.go:11-52).
 
 ## internal/products
 - `repo.Repository` (internal/products/repo/repository.go:60-208) bundles product, inventory, and discount persistence, exposing CRUD operations plus `GetProductDetail`/`ListProductsByStore` that preload `Inventory`, `VolumeDiscounts` (ordered by `min_qty DESC`), and `Media` (ordered by `position ASC`).

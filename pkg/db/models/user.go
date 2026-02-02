@@ -3,7 +3,6 @@ package models
 import (
 	"time"
 
-	dbtypes "github.com/angelmondragon/packfinderz-backend/pkg/db/types"
 	"github.com/google/uuid"
 )
 
@@ -18,7 +17,6 @@ type User struct {
 	IsActive     bool              `gorm:"column:is_active;not null;default:true"`
 	LastLoginAt  *time.Time        `gorm:"column:last_login_at"`
 	SystemRole   *string           `gorm:"column:system_role"`
-	StoreIDs     dbtypes.UUIDArray `gorm:"type:uuid[];column:store_ids;not null;default:ARRAY[]::uuid[]"`
 	CreatedAt    time.Time         `gorm:"column:created_at;autoCreateTime"`
 	UpdatedAt    time.Time         `gorm:"column:updated_at;autoUpdateTime"`
 }

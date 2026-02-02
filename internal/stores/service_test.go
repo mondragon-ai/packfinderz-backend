@@ -515,7 +515,6 @@ func (s *stubUsersRepo) Create(ctx context.Context, dto users.CreateUserDTO) (*m
 		FirstName:    dto.FirstName,
 		LastName:     dto.LastName,
 		PasswordHash: dto.PasswordHash,
-		StoreIDs:     dto.StoreIDs,
 	}
 	s.created = user
 	return user, nil

@@ -10,7 +10,6 @@ CREATE TABLE IF NOT EXISTS users (
     is_active boolean NOT NULL DEFAULT true,
     last_login_at timestamptz NULL,
     system_role text NULL,
-    store_ids uuid[] NOT NULL DEFAULT ARRAY[]::uuid[],
     created_at timestamptz NOT NULL DEFAULT now(),
     updated_at timestamptz NOT NULL DEFAULT now()
 );
