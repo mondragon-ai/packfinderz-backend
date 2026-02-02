@@ -683,8 +683,9 @@ Redis-backed refresh sessions.
 
 ### `internal/analytics`
 
-* `internal/analytics.Service.VendorAnalytics` verifies vendor store context, normalizes either preset (`7d|30d|90d`) or custom `from`/`to` ranges, and returns KPIs + daily series by querying the configured `marketplace_events` table via `pkg/bigquery.Client.Query`.
-* `api/controllers/analytics/vendor` enforces vendor access, resolves the preset/custom range, delegates to `internal/analytics.Service`, and wraps the result in the canonical success envelope so `/api/v1/vendor/analytics` remains read-only and idempotency-key free.
+* `internal/analytics.Service.Query` verifies the active store context (vendor or buyer), normalizes either preset (`7d|30d|90d`) or custom `from`/`to` ranges, and returns the KPIs + derived time series directly from `marketplace_events` using the BigQuery query service.
+* `api/controllers/analytics/vendor` enforces vendor-only access, reuses the shared range resolver, and forwards the request via `internal/analytics.Service` so `/api/v1/vendor/analytics` can stay read-only while returning the canonical success envelope.
+* `api/controllers/analytics/marketplace` enforces any valid store type, resolves the same timeframe, and calls `internal/analytics.Service.Query` so `/api/v1/analytics/marketplace` exposes the same data to both buyers and vendors scoped by `activeStoreId`.
 
 ### `internal/billing`
 
@@ -712,6 +713,7 @@ Redis-backed refresh sessions.
 * `/api/v1/agent/orders/{orderId}`
 * `/api/v1/agent/orders/queue`
 * `/api/v1/vendor/analytics`
+* `/api/v1/analytics/marketplace`
 * `/api/v1/vendor/billing/charges`
 
 ---

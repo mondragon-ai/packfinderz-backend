@@ -27,7 +27,7 @@ func (f *fakeMarketplaceService) Query(ctx context.Context, req types.Marketplac
 	return f.response, nil
 }
 
-func TestServiceVendorAnalyticsReturnsResponse(t *testing.T) {
+func TestServiceQueryReturnsResponse(t *testing.T) {
 	fake := &fakeMarketplaceService{}
 	srv := &service{marketplace: fake}
 	now := time.Now().UTC()
@@ -38,7 +38,7 @@ func TestServiceVendorAnalyticsReturnsResponse(t *testing.T) {
 		End:       now.Add(2 * time.Hour),
 	}
 
-	resp, err := srv.VendorAnalytics(context.Background(), req)
+	resp, err := srv.Query(context.Background(), req)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -56,7 +56,7 @@ func TestServiceVendorAnalyticsReturnsResponse(t *testing.T) {
 	}
 }
 
-func TestServiceVendorAnalyticsPropagatesError(t *testing.T) {
+func TestServiceQueryPropagatesError(t *testing.T) {
 	want := errors.New("query failed")
 	fake := &fakeMarketplaceService{err: want}
 	srv := &service{marketplace: fake}
@@ -68,7 +68,7 @@ func TestServiceVendorAnalyticsPropagatesError(t *testing.T) {
 		End:       now.Add(time.Minute),
 	}
 
-	resp, err := srv.VendorAnalytics(context.Background(), req)
+	resp, err := srv.Query(context.Background(), req)
 	if err != want {
 		t.Fatalf("expected error %v, got %v", want, err)
 	}

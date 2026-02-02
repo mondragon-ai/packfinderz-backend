@@ -174,7 +174,7 @@
 - `internal/cron/notification_cleanup_job.go` (PF-139) runs daily after the license/order TTL jobs: it subtracts 30 days from `now`, calls `DeleteOlderThan` inside `db.WithTx`, and logs `rows_deleted`, `retention_days`, and `cutoff` so the retention job stays observable while purging stale notifications (`internal/cron/notification_cleanup_job.go`:1-102).
 
 ## internal/analytics
-- `Service.VendorAnalytics(ctx, vendorStoreID, start, end)` resolves BigQuery KPIs (orders, revenue, AOV, cash collected) and daily `marketplace_events` series using parameterized queries so vendor dashboards read from the analytics warehouse (`internal/analytics/service.go`:1-200; `pkg/bigquery/client.go`:149-184).
+- `Service.Query(ctx, req)` resolves store-scoped BigQuery KPIs (orders, revenue, AOV, cash collected) and daily `marketplace_events` series using parameterized queries so both vendor and buyer dashboards read from the analytics warehouse (`internal/analytics/service.go`:1-200; `pkg/bigquery/client.go`:149-184).
 
 ## ads
 - `Serve`: request-time selection (`GET /ads/serve`) filters `status=active`, placement, store gating (`subscription_active=true`, `kyc_status=verified`), and time windows, gates via Redis budgets, chooses the highest CPM bid with deterministic tie-breakers, and issues signed view/click tokens (token_id, buyer_store_id, target + event metadata, expiry≈30d) for attribution (`docs/AD_ENGINE.md`:30-128).

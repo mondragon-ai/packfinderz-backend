@@ -36,7 +36,7 @@
 * [x] Ticket: Implement admin auth model + storeless admin role
 * [x] Ticket: Implement admin login endpoint (storeless) + token issuance
 * [x] Ticket: Implement dev-only admin register endpoint
-* [ ] Ticket: Remove/retire deprecated token parser (`api/validators/token.go`) across codebase
+
 * [ ] Ticket: Add auth middleware tests (missing/expired token, revoked session, missing activeStoreId)
 * [ ] Ticket: Add RBAC guard tests for `/api/admin/*` and `/api/v1/agent/*`
 
@@ -55,8 +55,9 @@
 * [x] Ticket: Implement media list endpoint (store-scoped, paginated)
 * [x] Ticket: Implement media delete endpoint (reference-aware)
 * [x] Ticket: Enforce protected attachment checks on media delete
-* [ ] Ticket: Implement async delete lifecycle (`delete_requested → deleted`) if needed
-* [ ] Ticket: Implement stale `pending` media GC scheduler (row exists, no GCS object)
+
+* [ ] Ticket: Validate only `activeStoreID` queries return store related media files
+* [ ] Ticket: Deleting is not actually deleting a media record. Must delete media row + the GCS object. Only `license` kind is protected if not in an `uploaded` or `ready` state. 
 
 ---
 
@@ -92,8 +93,7 @@
 * [x] Ticket: Implement DLQ table + model + repository
 * [x] Ticket: Publish terminal failures to DLQ
 * [x] Ticket: Implement outbox retention cleanup job (>30d published)
-* [x] Ticket: Implement notifications retention cleanup job (>30d)
-* [ ] Ticket: Document and implement DLQ retry policy + MAX_ATTEMPTS conventions (minimal hooks)
+* [x] Ticket: Document and implement DLQ retry policy + MAX_ATTEMPTS conventions (minimal hooks)
 * [ ] Ticket: Create DLQ replay tooling/runbook (safe requeue + idempotency expectations)
 
 ---
@@ -431,25 +431,15 @@
 * [x] Ticket: Implement vendor billing history endpoint (`GET /api/v1/vendor/billing/charges`)
 * [x] Ticket: Enforce subscription gating across marketplace browse/search
 
+
+
 ---
 
-## Phase 26 — BigQuery Analytics: Marketplace Ingestion + Vendor Analytics
+## Phase 26 — BigQuery Analytics: Analytics Worker + Engine
 
-**Goal:** BigQuery ingestion + vendor analytics endpoint for marketplace events.
+**Goal:** BigQuery ingestion + vendor analytics endpoint for marketplace events. Idempotent analytics consumer with routing, BigQuery write layer, and ad/attribution expansions.
 
-* [x] Ticket: Create BigQuery dataset + tables (`marketplace_events`, `ad_events`) with partition/cluster rules
 * [x] Ticket: Implement `pkg/bigquery` client bootstrap + readiness checks
-* [x] Ticket: Implement outbox consumers that insert BigQuery rows for `order_created`, `cash_collected`, `order_paid`
-* [x] Ticket: Add consumer idempotency keys per event (`pf:evt:processed:<consumer>:<event_id>`)
-* [x] Ticket: Implement vendor analytics endpoint (`GET /api/v1/vendor/analytics`) with time presets + KPIs + series
-* [ ] Ticket: Implement admin analytics endpoint (`GET /api/v1/admin/analytics`) for global KPIs
-
----
-
-## Phase 27 — Analytics Worker + Engine
-
-**Goal:** Idempotent analytics consumer with routing, BigQuery write layer, and ad/attribution expansions.
-
 * [x] Ticket: Finalize BigQuery dataset + tables (`marketplace_events`, `ad_event_facts`)
 * [x] Ticket: Define BigQuery partitioning strategy (`DATE(occurred_at)`)
 * [x] Ticket: Check in BigQuery schema definitions / CLI commands to repo
@@ -555,6 +545,7 @@
 * [ ] Ticket: Detach all attachment references by entity type prior to deletion
 * [ ] Ticket: Delete GCS originals + derived artifacts (not-found treated as success)
 * [ ] Ticket: Persist deletion outcomes/status updates
+* [ ] Ticket: Implement stale `pending` media GC scheduler (row exists, no GCS object)
 
 ---
 

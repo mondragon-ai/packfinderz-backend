@@ -1,7 +1,6 @@
 package analytics
 
 import (
-	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -115,26 +114,4 @@ func TestVendorAnalyticsCustomRange(t *testing.T) {
 	if stub.last.StoreType != enums.StoreTypeVendor {
 		t.Fatalf("expected vendor store type, got %s", stub.last.StoreType)
 	}
-}
-
-type testAnalyticsService struct {
-	last     types.MarketplaceQueryRequest
-	response *types.MarketplaceQueryResponse
-	err      error
-}
-
-func (s *testAnalyticsService) VendorAnalytics(ctx context.Context, req types.MarketplaceQueryRequest) (*types.MarketplaceQueryResponse, error) {
-	s.last = req
-	if s.response == nil {
-		s.response = &types.MarketplaceQueryResponse{}
-	}
-	return s.response, s.err
-}
-
-func (s *testAnalyticsService) called() bool {
-	return s.last.StoreID != ""
-}
-
-func (s *testAnalyticsService) period() time.Duration {
-	return s.last.End.Sub(s.last.Start)
 }

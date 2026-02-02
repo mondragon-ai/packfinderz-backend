@@ -137,7 +137,7 @@ type stubAnalyticsService struct {
 	err      error
 }
 
-func (s *stubAnalyticsService) VendorAnalytics(ctx context.Context, req types.MarketplaceQueryRequest) (*types.MarketplaceQueryResponse, error) {
+func (s *stubAnalyticsService) Query(ctx context.Context, req types.MarketplaceQueryRequest) (*types.MarketplaceQueryResponse, error) {
 	s.last = req
 	if s.response == nil {
 		s.response = &types.MarketplaceQueryResponse{}
