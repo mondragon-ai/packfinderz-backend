@@ -3,7 +3,6 @@ package router
 import (
 	"context"
 	"fmt"
-	"strings"
 
 	analyticspayloads "github.com/angelmondragon/packfinderz-backend/internal/analytics/payloads"
 	"github.com/angelmondragon/packfinderz-backend/internal/analytics/types"
@@ -89,20 +88,4 @@ func buildOrderCreatedRow(envelope types.Envelope, event *analyticspayloads.Orde
 		Items:             itemsJSON,
 		Payload:           payloadJSON,
 	}, nil
-}
-
-func stringPtr(value string) *string {
-	trimmed := strings.TrimSpace(value)
-	if trimmed == "" {
-		return nil
-	}
-	return &trimmed
-}
-
-func int64Ptr(value int64) *int64 {
-	return &value
-}
-
-func float64Ptr(value float64) *float64 {
-	return &value
 }

@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/angelmondragon/packfinderz-backend/internal/analytics/payloads"
+	analyticspayloads "github.com/angelmondragon/packfinderz-backend/internal/analytics/payloads"
 	"github.com/angelmondragon/packfinderz-backend/internal/analytics/types"
 	"github.com/angelmondragon/packfinderz-backend/pkg/logger"
 )
@@ -19,7 +19,7 @@ func newCashCollectedHandler(writer Writer, logg *logger.Logger) Handler {
 }
 
 func (h *cashCollectedHandler) Handle(ctx context.Context, envelope types.Envelope, payload any) error {
-	event, ok := payload.(*payloads.CashCollectedEvent)
+	event, ok := payload.(*analyticspayloads.CashCollectedEvent)
 	if !ok {
 		return fmt.Errorf("invalid payload for cash_collected")
 	}
@@ -30,6 +30,26 @@ func (h *cashCollectedHandler) Handle(ctx context.Context, envelope types.Envelo
 		"cash_collected_at": event.CashCollectedAt,
 	}
 	logCtx := h.logg.WithFields(ctx, fields)
-	h.logg.Info(logCtx, "cash_collected handler stub")
+
+	row, err := buildRevenueRow(
+		envelope,
+		int64(event.AmountCents),
+		event.OrderID,
+		event.BuyerStoreID,
+		event.VendorStoreID,
+		event.CashCollectedAt,
+		event,
+	)
+	if err != nil {
+		h.logg.Error(logCtx, "failed to build revenue row", err)
+		return err
+	}
+
+	if err := h.writer.InsertMarketplace(logCtx, row); err != nil {
+		h.logg.Error(logCtx, "failed to insert marketplace row", err)
+		return err
+	}
+
+	h.logg.Info(logCtx, "cash_collected handler inserted marketplace row")
 	return nil
 }

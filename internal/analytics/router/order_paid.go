@@ -30,6 +30,26 @@ func (h *orderPaidHandler) Handle(ctx context.Context, envelope types.Envelope, 
 		"vendor_paid_at": event.VendorPaidAt,
 	}
 	logCtx := h.logg.WithFields(ctx, fields)
-	h.logg.Info(logCtx, "order_paid handler stub")
+
+	row, err := buildRevenueRow(
+		envelope,
+		int64(event.AmountCents),
+		event.OrderID.String(),
+		event.BuyerStoreID.String(),
+		event.VendorStoreID.String(),
+		event.VendorPaidAt,
+		event,
+	)
+	if err != nil {
+		h.logg.Error(logCtx, "failed to build revenue row", err)
+		return err
+	}
+
+	if err := h.writer.InsertMarketplace(logCtx, row); err != nil {
+		h.logg.Error(logCtx, "failed to insert marketplace row", err)
+		return err
+	}
+
+	h.logg.Info(logCtx, "order_paid handler inserted marketplace row")
 	return nil
 }

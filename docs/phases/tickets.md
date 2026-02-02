@@ -540,18 +540,161 @@ Most services, repos, etc live and new ones will also live here `pkg/outbox/**/*
 
 ---
 
-## Phase 16 — Analytics Engine (Dedicated Consumer)
+## Phase 16 — Analytics Engine Foundations
+
+**Goal:** Establish immutable analytics storage, canonical schemas, and shared types so ingestion can be deterministic and queryable.
+
+* [X] Ticket: Finalize BigQuery dataset + tables (`marketplace_events`, `ad_event_facts`)
+* [X] Ticket: Define BigQuery table partitioning strategy (`DATE(occurred_at)`)
+* [X] Ticket: Check in BigQuery schema definitions / CLI commands to repo
+* [X] Ticket: Define canonical analytics event enums (order + ad events)
+* [X] Ticket: Define Pub/Sub analytics envelope DTO
+* [X] Ticket: Define BigQuery row DTOs (MarketplaceEventRow, AdEventFactRow)
+* [X] Ticket: Define shared timestamp selection helpers (created vs paid vs cash)
 
 ---
 
-### 16A) Analytics Worker
+## Phase 16a — Analytics Worker Infrastructure
 
-* [ ] **Ticket:** Create `cmd/analytics-worker` binary
-* [ ] **Ticket:** Finalize BigQuery schemas (marketplace_events + ad_events) + integration + repos & helpers
-* [ ] **Ticket:** Order event ingestion (geo (lat/long and default for zip for now), category, product, )
-* [ ] **Ticket:** Ad impression/click ingestion 
-* [ ] **Ticket:** Aggregated KPI derivation (AOV, ROAS, top ZIPs)
-* [ ] **Ticket:** Admin analytics endpoint (non-MVP)
+**Goal:** Create a reliable, idempotent analytics consumer that can safely process domain events.
+
+* [X] Ticket: Create `cmd/analytics-worker` binary scaffold
+* [X] Ticket: Initialize Pub/Sub client + subscription (`analytics-sub`)
+* [X] Ticket: Implement Redis idempotency gate (`pf:evt:processed:analytics:<event_id>`)
+* [X] Ticket: Define ACK/NACK retry policy for analytics consumer
+* [X] Ticket: Add structured logging with `event_id` correlation
+* [X] Ticket: Graceful shutdown handling for worker
+
+---
+
+## Phase 16b — Event Routing & Handler Skeletons
+
+**Goal:** Route analytics events cleanly without business logic entanglement.
+
+* [X] Ticket: Implement analytics event router (`switch(event_type)`)
+* [X] Ticket: Validate supported analytics event types
+* [X] Ticket: Create handler interfaces/contracts (no god functions)
+* [X] Ticket: Stub handlers for:
+
+  * `order_created`
+  * `order_paid`
+  * `cash_collected`
+  * `order_canceled`
+  * `order_expired`
+  * `ad_impression`
+  * `ad_click`
+  * `ad_daily_charge_recorded`
+
+---
+
+## Phase 16c — BigQuery Write Layer
+
+**Goal:** Provide a single, reliable path for inserting analytics rows into BigQuery.
+
+* [X] Ticket: Implement BigQuery writer client abstraction
+* [X] Ticket: Add retry logic for transient BQ insert failures
+* [X] Ticket: Implement JSON serialization helpers for `items` + `payload`
+* [X] Ticket: Support inserts into `marketplace_events`
+* [ ] Ticket: Support inserts into `ad_event_facts`
+* [X] Ticket: Wire writer into analytics worker handlers
+
+---
+
+## Phase 16d — Marketplace Event Ingestion
+
+**Goal:** Persist all order lifecycle analytics as immutable facts.
+
+* [X] Ticket: Map `order_created` payload → `marketplace_events` row
+* [X] Ticket: Build `items` JSON snapshot from order line items
+* [X] Ticket: Extract buyer geo fields from shipping address snapshot
+* [X] Ticket: Compute revenue fields (gross/net/discounts)
+* [X] Ticket: Handle `order_paid` → marketplace analytics row
+* [X] Ticket: Handle `cash_collected` → marketplace analytics row
+* [X] Ticket: Handle `order_canceled` → marketplace analytics row
+* [X] Ticket: Handle `order_expired` → marketplace analytics row
+
+---
+
+## Phase 16e — Ad Attribution & Conversion Analytics
+
+**Goal:** Enable ROAS and conversion metrics using token-based attribution receipts.
+
+* [ ] Ticket: Implement attribution token decode utilities
+* [ ] Ticket: Define deterministic token selection strategy (last-applicable)
+* [ ] Ticket: Attribute store-level ads → full order revenue
+* [ ] Ticket: Attribute product-level ads → matching line-item revenue
+* [ ] Ticket: Emit `ad_event_facts` rows with `type=conversion`
+* [ ] Ticket: Ensure marketplace events always write even without tokens
+
+---
+
+## Phase 16f — Ad Spend Ingestion (Nightly Billing)
+
+**Goal:** Make ad spend a first-class analytics fact.
+
+* [ ] Ticket: Emit `ad_daily_charge_recorded` from nightly billing job
+* [ ] Ticket: Route charge events through analytics worker
+* [ ] Ticket: Write `ad_event_facts` rows with `type=charge`
+* [ ] Ticket: Normalize `occurred_at` for daily spend events
+* [ ] Ticket: Ensure spend can be computed as `SUM(cost_cents)`
+
+---
+
+## Phase 16g — Marketplace Analytics Query Layer
+
+**Goal:** Power the marketplace dashboard entirely from BigQuery.
+
+* [X] Ticket: Implement marketplace analytics query service
+* [X] Ticket: Orders over time query (created events)
+* [X] Ticket: Revenue over time query (paid/cash fallback logic)
+* [X] Ticket: Discounts over time query
+* [X] Ticket: Net revenue over time query
+* [X] Ticket: Top products query via `UNNEST(items)`
+* [X] Ticket: Top categories query via `UNNEST(items)`
+* [X] Ticket: Top ZIPs query (bar chart MVP)
+* [X] Ticket: AOV calculation
+* [X] Ticket: New vs returning buyer computation
+
+---
+
+## Phase 16h — Ad Analytics Query Layer
+
+**Goal:** Power advertiser dashboards with spend + ROAS.
+
+* [ ] Ticket: Implement ad analytics query service
+* [ ] Ticket: Spend query (`type=charge`)
+* [ ] Ticket: Impressions query
+* [ ] Ticket: Clicks query
+* [ ] Ticket: CPM/CPC derived metrics
+* [ ] Ticket: ROAS query (attributed revenue / spend)
+* [ ] Ticket: Daily impressions/clicks time series
+
+---
+
+## Phase 16i — Analytics API Endpoints
+
+**Goal:** Expose analytics data to the frontend safely and efficiently.
+
+* [ ] Ticket: Marketplace analytics API endpoints
+* [ ] Ticket: Enforce store scoping via `activeStoreId`
+* [ ] Ticket: Timeframe validation + defaults
+* [ ] Ticket: Ad analytics API endpoints
+* [ ] Ticket: Enforce advertiser ownership for ads
+* [ ] Ticket: Shape responses to frontend dashboard contracts
+
+---
+
+## Phase 16j — Testing, Validation & Backfill
+
+**Goal:** Make analytics safe to ship and useful immediately.
+
+* [ ] Ticket: Unit tests for marketplace mapping logic
+* [ ] Ticket: Unit tests for attribution token decoding
+* [ ] Ticket: Unit tests for analytics SQL builders
+* [ ] Ticket: Integration test harness (handler → BQ writer)
+* [ ] Ticket: One-time BigQuery backfill script from Postgres orders
+* [ ] Ticket: Deterministic event_id strategy for backfill runs
+
 
 ---
 

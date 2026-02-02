@@ -111,16 +111,3 @@ func TestOrderCreatedHandlerInsertsMarketplaceRow(t *testing.T) {
 		t.Fatalf("payload order id mismatch: %v", payload["order_id"])
 	}
 }
-
-type fakeWriter struct {
-	inserted []types.MarketplaceEventRow
-}
-
-func (f *fakeWriter) InsertMarketplace(_ context.Context, row types.MarketplaceEventRow) error {
-	f.inserted = append(f.inserted, row)
-	return nil
-}
-
-func (f *fakeWriter) InsertAdFact(_ context.Context, _ types.AdEventFactRow) error {
-	return nil
-}

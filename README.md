@@ -262,6 +262,7 @@ Re-running the migration is safe because the statements use `CREATE EXTENSION IF
 * License decisions emit `license_status_changed` events and the worker subscribes via `PACKFINDERZ_PUBSUB_DOMAIN_SUBSCRIPTION` so the compliance consumer can notify stores (verified/rejected) and admins (pending review) while honoring Redis idempotency.
 * `cmd/analytics-worker` listens on `PACKFINDERZ_PUBSUB_ANALYTICS_SUBSCRIPTION`, deserializes the canonical analytics envelope, and gates duplicates with `pkg/outbox/idempotency.Manager` before routing to the analytics handlers.
 * `internal/analytics/router` enforces canonical event routing and typed payload decoding so each handler stub receives the right DTO plus the shared BigQuery writer interface.
+* `order_paid` and `cash_collected` handlers now append `marketplace_events` rows with `gross_revenue_cents`/`net_revenue_cents` and the actual `occurred_at`, giving the analytics query service explicit events to drive revenue time series without relying on publish time.
 * `internal/analytics/writer.BigQueryWriter` wraps `pkg/bigquery.Client`, normalizes JSON columns via `EncodeJSON`, retries transient BigQuery insert failures, and exposes optional batching for `marketplace_events`/`ad_event_facts`.
 
 ### Ads & Analytics
