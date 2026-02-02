@@ -409,10 +409,11 @@ func (s *service) CancelOrder(ctx context.Context, input BuyerCancelInput) error
 			}
 		}
 
+		now := time.Now().UTC()
 		updates := map[string]any{
 			"status":            enums.VendorOrderStatusCanceled,
 			"balance_due_cents": 0,
-			"canceled_at":       time.Now().UTC(),
+			"canceled_at":       now,
 		}
 		if err := repo.UpdateVendorOrder(ctx, order.ID, updates); err != nil {
 			return pkgerrors.Wrap(pkgerrors.CodeDependency, err, "update vendor order")
@@ -424,11 +425,13 @@ func (s *service) CancelOrder(ctx context.Context, input BuyerCancelInput) error
 			AggregateID:   order.ID,
 			Version:       1,
 			Actor:         buildActor(input.ActorUserID, input.ActorStoreID, input.ActorRole),
+			OccurredAt:    now,
 			Data: payloads.OrderCanceledEvent{
 				OrderID:         order.ID,
 				CheckoutGroupID: order.CheckoutGroupID,
 				BuyerStoreID:    order.BuyerStoreID,
 				VendorStoreID:   order.VendorStoreID,
+				CanceledAt:      now,
 			},
 		}
 		return s.outbox.Emit(ctx, tx, event)

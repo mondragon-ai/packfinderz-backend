@@ -283,6 +283,8 @@ Emitted after checkout commit. One event per `VendorOrder`.
 }
 ```
 
+> The analytics worker appends `marketplace_events` rows for `order_canceled` and `order_expired` so dashboards can exclude these `event_type`s from revenue KPIs while the payload preserves the termination metadata for future dropped-order reporting.
+
 ---
 
 ## 8. Analytics Worker (Dedicated Consumer)
