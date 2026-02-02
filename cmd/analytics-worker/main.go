@@ -9,6 +9,7 @@ import (
 
 	"github.com/joho/godotenv"
 
+	"github.com/angelmondragon/packfinderz-backend/internal/analytics/router"
 	"github.com/angelmondragon/packfinderz-backend/internal/analytics/types"
 	"github.com/angelmondragon/packfinderz-backend/internal/analytics/worker"
 	"github.com/angelmondragon/packfinderz-backend/pkg/config"
@@ -59,16 +60,10 @@ func main() {
 	manager, err := idempotency.NewManager(redisClient, cfg.Eventing.OutboxIdempotencyTTL)
 	requireResource(ctx, logg, "idempotency manager", err)
 
-	handler := worker.HandlerFunc(func(ctx context.Context, envelope types.Envelope) error {
-		logCtx := logg.WithFields(ctx, map[string]any{
-			"event_id":   envelope.EventID,
-			"event_type": envelope.EventType,
-		})
-		logg.Info(logCtx, "analytics envelope received")
-		return nil
-	})
+	routingHandler, err := router.NewRouter(noopWriter{}, logg, nil)
+	requireResource(ctx, logg, "analytics router", err)
 
-	service, err := worker.NewService(subscription, handler, manager, logg)
+	service, err := worker.NewService(subscription, routingHandler, manager, logg)
 	requireResource(ctx, logg, "analytics worker service", err)
 
 	runCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
@@ -91,4 +86,14 @@ func requireResource(ctx context.Context, logg *logger.Logger, resource string, 
 	}
 	logg.Error(ctx, fmt.Sprintf("resource not working: %s", resource), err)
 	os.Exit(1)
+}
+
+type noopWriter struct{}
+
+func (noopWriter) InsertMarketplace(ctx context.Context, row types.MarketplaceEventRow) error {
+	return nil
+}
+
+func (noopWriter) InsertAdFact(ctx context.Context, row types.AdEventFactRow) error {
+	return nil
 }
