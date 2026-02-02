@@ -97,9 +97,9 @@ func NewClient(ctx context.Context, cfg config.GCSConfig, gcp config.GCPConfig, 
 		return nil, fmt.Errorf("gcs health check failed: %w", err)
 	}
 
-	if logg != nil {
-		logg.Info(ctx, "gcs client initialized")
-	}
+	// if logg != nil {
+	// 	logg.Info(ctx, "gcs client initialized")
+	// }
 
 	return client, nil
 }

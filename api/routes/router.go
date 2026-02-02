@@ -71,10 +71,10 @@ func NewRouter(
 	stripeWebhookGuard *stripewebhook.IdempotencyGuard,
 ) http.Handler {
 	r := chi.NewRouter()
-	if stripeClient != nil && logg != nil {
-		ctx := logg.WithField(context.Background(), "stripe_env", stripeClient.Environment())
-		logg.Info(ctx, "stripe client wired to API routes")
-	}
+	// if stripeClient != nil && logg != nil {
+	// 	ctx := logg.WithField(context.Background(), "stripe_env", stripeClient.Environment())
+	// 	logg.Info(ctx, "stripe client wired to API routes")
+	// }
 	r.Use(
 		middleware.Recoverer(logg),
 		middleware.RequestID(logg),

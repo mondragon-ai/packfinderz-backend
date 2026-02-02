@@ -29,17 +29,13 @@ import (
 const lockKeyFormat = "pf:cron-worker:lock:%s"
 
 func main() {
+	ctx := context.Background()
 	logg := logger.New(logger.Options{ServiceName: "cron-worker"})
 
-	if err := godotenv.Load(); err != nil {
-		logg.Warn(context.Background(), ".env file not found, relying on environment")
-	}
+	_ = godotenv.Load()
 
 	cfg, err := config.Load()
-	if err != nil {
-		logg.Error(context.Background(), "failed to load config", err)
-		os.Exit(1)
-	}
+	requireResource(ctx, logg, "config", err)
 
 	cfg.Service.Kind = "cron-worker"
 
@@ -50,31 +46,14 @@ func main() {
 	})
 
 	dbClient, err := db.New(context.Background(), cfg.DB, logg)
-	if err != nil {
-		logg.Error(context.Background(), "failed to bootstrap database", err)
-		os.Exit(1)
-	}
-	defer func() {
-		if err := dbClient.Close(); err != nil {
-			logg.Error(context.Background(), "error closing database", err)
-		}
-	}()
+	requireResource(ctx, logg, "database", err)
+	defer dbClient.Close()
 
-	if err := migrate.MaybeRunDev(context.Background(), cfg, logg, dbClient); err != nil {
-		logg.Error(context.Background(), "failed to run dev migrations", err)
-		os.Exit(1)
-	}
+	requireResource(ctx, logg, "migrations", migrate.MaybeRunDev(context.Background(), cfg, logg, dbClient))
 
 	redisClient, err := redis.New(context.Background(), cfg.Redis, logg)
-	if err != nil {
-		logg.Error(context.Background(), "failed to bootstrap redis", err)
-		os.Exit(1)
-	}
-	defer func() {
-		if err := redisClient.Close(); err != nil {
-			logg.Error(context.Background(), "error closing redis", err)
-		}
-	}()
+	requireResource(ctx, logg, "redis", err)
+	defer redisClient.Close()
 
 	licenseRepo := licenses.NewRepository(dbClient.DB())
 	storeRepo := stores.NewRepository(dbClient.DB())
@@ -83,22 +62,12 @@ func main() {
 	outboxRepo := outbox.NewRepository(dbClient.DB())
 	outboxSvc := outbox.NewService(outboxRepo, logg)
 	gcsClient, err := gcs.NewClient(context.Background(), cfg.GCS, cfg.GCP, logg)
-	if err != nil {
-		logg.Error(context.Background(), "failed to bootstrap gcs", err)
-		os.Exit(1)
-	}
-	defer func() {
-		if err := gcsClient.Close(); err != nil {
-			logg.Error(context.Background(), "error closing gcs client", err)
-		}
-	}()
+	requireResource(ctx, logg, "gcs", err)
+	defer gcsClient.Close()
 
 	metricsCollector := metrics.NewCronJobMetrics(prometheus.DefaultRegisterer)
 	lock, err := cron.NewRedisLock(redisClient, lockKey(cfg.App.Env), 0)
-	if err != nil {
-		logg.Error(context.Background(), "failed to create cron lock", err)
-		os.Exit(1)
-	}
+	requireResource(ctx, logg, "cron lock", err)
 
 	registry := cron.NewRegistry()
 	licenseJob, err := cron.NewLicenseLifecycleJob(cron.LicenseLifecycleJobParams{
@@ -113,10 +82,7 @@ func main() {
 		GCS:            gcsClient,
 		GCSBucket:      cfg.GCS.BucketName,
 	})
-	if err != nil {
-		logg.Error(context.Background(), "failed to create license lifecycle job", err)
-		os.Exit(1)
-	}
+	requireResource(ctx, logg, "license job", err)
 	registry.Register(licenseJob)
 
 	ordersRepo := orders.NewRepository(dbClient.DB())
@@ -128,10 +94,7 @@ func main() {
 		Outbox:        outboxSvc,
 		OutboxRepo:    outboxRepo,
 	})
-	if err != nil {
-		logg.Error(context.Background(), "failed to create order ttl job", err)
-		os.Exit(1)
-	}
+	requireResource(ctx, logg, "order ttl job", err)
 	registry.Register(orderTTLJob)
 	notificationRepo := notifications.NewRepository(dbClient.DB())
 	notificationCleanupJob, err := cron.NewNotificationCleanupJob(cron.NotificationCleanupJobParams{
@@ -139,10 +102,7 @@ func main() {
 		DB:         dbClient,
 		Repository: notificationRepo,
 	})
-	if err != nil {
-		logg.Error(context.Background(), "failed to create notification cleanup job", err)
-		os.Exit(1)
-	}
+	requireResource(ctx, logg, "notification cleanup job", err)
 	registry.Register(notificationCleanupJob)
 
 	outboxRetentionJob, err := cron.NewOutboxRetentionJob(cron.OutboxRetentionJobParams{
@@ -150,10 +110,7 @@ func main() {
 		DB:         dbClient,
 		Repository: outboxRepo,
 	})
-	if err != nil {
-		logg.Error(context.Background(), "failed to create outbox retention job", err)
-		os.Exit(1)
-	}
+	requireResource(ctx, logg, "outbox retention job", err)
 	registry.Register(outboxRetentionJob)
 	service, err := cron.NewService(cron.ServiceParams{
 		Logger:   logg,
@@ -161,25 +118,20 @@ func main() {
 		Lock:     lock,
 		Metrics:  metricsCollector,
 	})
-	if err != nil {
-		logg.Error(context.Background(), "failed to create cron service", err)
-		os.Exit(1)
-	}
+	requireResource(ctx, logg, "cron service", err)
 
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	runCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
-	ctx = logg.WithFields(ctx, map[string]any{
+	runCtx = logg.WithFields(runCtx, map[string]any{
 		"env":         cfg.App.Env,
 		"serviceKind": cfg.Service.Kind,
 	})
-	logg.Info(ctx, "starting cron worker")
+	logg.Info(runCtx, "cron worker ready")
 
-	if err := service.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
-		logg.Error(ctx, "cron worker stopped unexpectedly", err)
+	if err := service.Run(runCtx); err != nil && !errors.Is(err, context.Canceled) {
+		logg.Error(runCtx, "cron worker not working", err)
 		os.Exit(1)
 	}
-
-	logg.Info(ctx, "cron worker shutting down gracefully")
 }
 
 func lockKey(env string) string {
@@ -187,4 +139,12 @@ func lockKey(env string) string {
 		env = "local"
 	}
 	return fmt.Sprintf(lockKeyFormat, env)
+}
+
+func requireResource(ctx context.Context, logg *logger.Logger, resource string, err error) {
+	if err == nil {
+		return
+	}
+	logg.Error(ctx, fmt.Sprintf("resource not working: %s", resource), err)
+	os.Exit(1)
 }

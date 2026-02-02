@@ -159,7 +159,7 @@ func (s *Service) ensureReadiness(ctx context.Context) error {
 	if err := pingDependency(ctx, s.logg, "pubsub", s.pubsub.Ping); err != nil {
 		return err
 	}
-	s.logg.Info(ctx, "all outbox dependencies are ready")
+	// s.logg.Info(ctx, "all outbox dependencies are ready")
 	return nil
 }
 
@@ -168,7 +168,7 @@ func pingDependency(ctx context.Context, logg *logger.Logger, name string, fn fu
 		logg.Error(ctx, fmt.Sprintf("%s ping failed", name), err)
 		return fmt.Errorf("%s ping failed: %w", name, err)
 	}
-	logg.Info(ctx, fmt.Sprintf("%s ping succeeded", name))
+	// logg.Info(ctx, fmt.Sprintf("%s ping succeeded", name))
 	return nil
 }
 

@@ -307,10 +307,25 @@ Submits the buyer store's active cart (the bearer must belong to a buyer store).
 ```json
 {
   "cart_id": "f7b1aeac-0c93-4d59-8a0c-3cd264a5f042",
-  "attributed_ad_click_id": "5d4d57a0-3a4f-4b1f-8ccf-910d1c9fa43e"
+  "shipping_address": {
+    "line1": "400 Market St",
+    "line2": "Suite 800",
+    "city": "Philadelphia",
+    "state": "PA",
+    "postal_code": "19106",
+    "country": "US",
+    "lat": 39.948,
+    "lng": -75.142
+  },
+  "payment_method": "cash",
+  "shipping_line": {
+    "code": "express",
+    "title": "Express Shipping",
+    "price_cents": 500
+  }
 }
 ```
-`cart_id` is required; `attributed_ad_click_id` is optional and should be a UUID when you need to attribute the checkout to an advertising click.
+`cart_id` and `shipping_address` are required; `payment_method` must be either `cash` or `ach`. `shipping_line` is optional and lets you confirm the chosen shipping option (omit it if the buyer selected the store's default). Checkout attribution now relies on the tokens persisted in `cart_records.ad_tokens`, so no `attributed_ad_click_id` is accepted by this endpoint.
 
 #### cURL
 ```bash
@@ -321,7 +336,21 @@ curl -X POST "{{API_BASE_URL}}/api/v1/checkout" \
   -H "Idempotency-Key: {{unique_checkout_key}}" \
   -d '{
     "cart_id": "{{cart_id}}",
-    "attributed_ad_click_id": "{{optional_ad_click_id}}"
+    "shipping_address": {
+      "line1": "{{shipping_line1}}",
+      "city": "{{shipping_city}}",
+      "state": "{{shipping_state}}",
+      "postal_code": "{{shipping_postal_code}}",
+      "country": "US",
+      "lat": {{shipping_lat}},
+      "lng": {{shipping_lng}}
+    },
+    "payment_method": "cash",
+    "shipping_line": {
+      "code": "{{shipping_code}}",
+      "title": "{{shipping_title}}",
+      "price_cents": {{shipping_price_cents}}
+    }
   }'
 ```
 

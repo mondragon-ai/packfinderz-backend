@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"os/signal"
 
@@ -28,17 +29,13 @@ import (
 )
 
 func main() {
+	ctx := context.Background()
 	logg := logger.New(logger.Options{ServiceName: "worker"})
 
-	if err := godotenv.Load(); err != nil {
-		logg.Warn(context.Background(), ".env file not found, relying on environment")
-	}
+	_ = godotenv.Load()
 
 	cfg, err := config.Load()
-	if err != nil {
-		logg.Error(context.Background(), "failed to load config", err)
-		os.Exit(1)
-	}
+	requireResource(ctx, logg, "config", err)
 
 	cfg.Service.Kind = "worker"
 
@@ -49,90 +46,40 @@ func main() {
 	})
 
 	stripeClient, err := stripe.NewClient(context.Background(), cfg.Stripe, logg)
-	if err != nil {
-		logg.Error(context.Background(), "failed to bootstrap stripe client", err)
-		os.Exit(1)
-	}
+	requireResource(ctx, logg, "stripe client", err)
 
 	dbClient, err := db.New(context.Background(), cfg.DB, logg)
-	if err != nil {
-		logg.Error(context.Background(), "failed to bootstrap database", err)
-		os.Exit(1)
-	}
-	defer func() {
-		if err := dbClient.Close(); err != nil {
-			logg.Error(context.Background(), "error closing database", err)
-		}
-	}()
+	requireResource(ctx, logg, "database", err)
+	defer dbClient.Close()
 
-	if err := migrate.MaybeRunDev(context.Background(), cfg, logg, dbClient); err != nil {
-		logg.Error(context.Background(), "failed to run dev migrations", err)
-		os.Exit(1)
-	}
+	requireResource(ctx, logg, "migrations", migrate.MaybeRunDev(context.Background(), cfg, logg, dbClient))
 
 	redisClient, err := redis.New(context.Background(), cfg.Redis, logg)
-	if err != nil {
-		logg.Error(context.Background(), "failed to bootstrap redis", err)
-		os.Exit(1)
-	}
-	defer func() {
-		if err := redisClient.Close(); err != nil {
-			logg.Error(context.Background(), "error closing redis", err)
-		}
-	}()
+	requireResource(ctx, logg, "redis", err)
+	defer redisClient.Close()
 
 	pubsubClient, err := pubsub.NewClient(context.Background(), cfg.GCP, cfg.PubSub, logg)
-	if err != nil {
-		logg.Error(context.Background(), "failed to bootstrap pubsub", err)
-		os.Exit(1)
-	}
-	defer func() {
-		if err := pubsubClient.Close(); err != nil {
-			logg.Error(context.Background(), "error closing pubsub client", err)
-		}
-	}()
+	requireResource(ctx, logg, "pubsub", err)
+	defer pubsubClient.Close()
 
 	gcsClient, err := gcs.NewClient(context.Background(), cfg.GCS, cfg.GCP, logg)
-	if err != nil {
-		logg.Error(context.Background(), "failed to bootstrap gcs", err)
-		os.Exit(1)
-	}
-	defer func() {
-		if err := gcsClient.Close(); err != nil {
-			logg.Error(context.Background(), "error closing gcs client", err)
-		}
-	}()
+	requireResource(ctx, logg, "gcs", err)
+	defer gcsClient.Close()
 
 	bqClient, err := bigquery.NewClient(context.Background(), cfg.GCP, cfg.BigQuery, logg)
-	if err != nil {
-		logg.Error(context.Background(), "failed to bootstrap bigquery", err)
-		os.Exit(1)
-	}
-	defer func() {
-		if err := bqClient.Close(); err != nil {
-			logg.Error(context.Background(), "error closing bigquery client", err)
-		}
-	}()
+	requireResource(ctx, logg, "bigquery", err)
+	defer bqClient.Close()
 
 	mediaRepo := media.NewRepository(dbClient.DB())
 	mediaConsumer, err := consumer.NewConsumer(mediaRepo, pubsubClient.MediaSubscription(), logg)
-	if err != nil {
-		logg.Error(context.Background(), "failed to create media consumer", err)
-		os.Exit(1)
-	}
+	requireResource(ctx, logg, "media consumer", err)
 
 	idempotencyManager, err := idempotency.NewManager(redisClient, cfg.Eventing.OutboxIdempotencyTTL)
-	if err != nil {
-		logg.Error(context.Background(), "failed to bootstrap idempotency manager", err)
-		os.Exit(1)
-	}
+	requireResource(ctx, logg, "idempotency manager", err)
 
 	notificationRepo := notifications.NewRepository(dbClient.DB())
 	notificationConsumer, err := notifications.NewConsumer(notificationRepo, pubsubClient.NotificationSubscription(), idempotencyManager, logg)
-	if err != nil {
-		logg.Error(context.Background(), "failed to create notifications consumer", err)
-		os.Exit(1)
-	}
+	requireResource(ctx, logg, "notifications consumer", err)
 
 	licenseRepo := licenses.NewRepository(dbClient.DB())
 	storeRepo := stores.NewRepository(dbClient.DB())
@@ -145,10 +92,7 @@ func main() {
 		StoreRepo: storeRepo,
 		Outbox:    outboxSvc,
 	})
-	if err != nil {
-		logg.Error(context.Background(), "failed to create license scheduler", err)
-		os.Exit(1)
-	}
+	requireResource(ctx, logg, "license scheduler", err)
 
 	service, err := NewService(ServiceParams{
 		Config:               cfg,
@@ -163,23 +107,26 @@ func main() {
 		BigQuery:             bqClient,
 		Stripe:               stripeClient,
 	})
-	if err != nil {
-		logg.Error(context.Background(), "failed to create worker service", err)
-		os.Exit(1)
-	}
+	requireResource(ctx, logg, "worker service", err)
 
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	runCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
-	ctx = logg.WithFields(ctx, map[string]any{
+	runCtx = logg.WithFields(runCtx, map[string]any{
 		"env":         cfg.App.Env,
 		"serviceKind": cfg.Service.Kind,
 	})
-	logg.Info(ctx, "starting worker")
+	logg.Info(runCtx, "worker ready")
 
-	if err := service.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
-		logg.Error(ctx, "worker stopped unexpectedly", err)
+	if err := service.Run(runCtx); err != nil && !errors.Is(err, context.Canceled) {
+		logg.Error(runCtx, "worker not working", err)
 		os.Exit(1)
 	}
+}
 
-	logg.Info(ctx, "worker shutting down gracefully")
+func requireResource(ctx context.Context, logg *logger.Logger, resource string, err error) {
+	if err == nil {
+		return
+	}
+	logg.Error(ctx, fmt.Sprintf("resource not working: %s", resource), err)
+	os.Exit(1)
 }

@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"os/signal"
 
@@ -17,17 +18,13 @@ import (
 )
 
 func main() {
+	ctx := context.Background()
 	logg := logger.New(logger.Options{ServiceName: "media-deletion-worker"})
 
-	if err := godotenv.Load(); err != nil {
-		logg.Warn(context.Background(), ".env file not found, relying on environment")
-	}
+	_ = godotenv.Load()
 
 	cfg, err := config.Load()
-	if err != nil {
-		logg.Error(context.Background(), "failed to load config", err)
-		os.Exit(1)
-	}
+	requireResource(ctx, logg, "config", err)
 
 	cfg.Service.Kind = "media-deletion-worker"
 
@@ -38,26 +35,12 @@ func main() {
 	})
 
 	dbClient, err := db.New(context.Background(), cfg.DB, logg)
-	if err != nil {
-		logg.Error(context.Background(), "failed to bootstrap database", err)
-		os.Exit(1)
-	}
-	defer func() {
-		if err := dbClient.Close(); err != nil {
-			logg.Error(context.Background(), "error closing database", err)
-		}
-	}()
+	requireResource(ctx, logg, "database", err)
+	defer dbClient.Close()
 
 	pubsubClient, err := pubsub.NewClient(context.Background(), cfg.GCP, cfg.PubSub, logg)
-	if err != nil {
-		logg.Error(context.Background(), "failed to bootstrap pubsub", err)
-		os.Exit(1)
-	}
-	defer func() {
-		if err := pubsubClient.Close(); err != nil {
-			logg.Error(context.Background(), "error closing pubsub client", err)
-		}
-	}()
+	requireResource(ctx, logg, "pubsub", err)
+	defer pubsubClient.Close()
 
 	mediaRepo := media.NewRepository(dbClient.DB())
 	attachmentRepo := media.NewMediaAttachmentRepository(dbClient.DB())
@@ -69,23 +52,26 @@ func main() {
 		pubsubClient.MediaDeletionSubscription(),
 		logg,
 	)
-	if err != nil {
-		logg.Error(context.Background(), "failed to create media deletion consumer", err)
-		os.Exit(1)
-	}
+	requireResource(ctx, logg, "media deletion consumer", err)
 
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	runCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
-	ctx = logg.WithFields(ctx, map[string]any{
+	runCtx = logg.WithFields(runCtx, map[string]any{
 		"serviceKind": cfg.Service.Kind,
 		"env":         cfg.App.Env,
 	})
-	logg.Info(ctx, "starting media deletion worker")
+	logg.Info(runCtx, "media deletion worker ready")
 
-	if err := deletionConsumer.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
-		logg.Error(ctx, "media deletion worker stopped unexpectedly", err)
+	if err := deletionConsumer.Run(runCtx); err != nil && !errors.Is(err, context.Canceled) {
+		logg.Error(runCtx, "media deletion worker not working", err)
 		os.Exit(1)
 	}
+}
 
-	logg.Info(ctx, "media deletion worker shutting down gracefully")
+func requireResource(ctx context.Context, logg *logger.Logger, resource string, err error) {
+	if err == nil {
+		return
+	}
+	logg.Error(ctx, fmt.Sprintf("resource not working: %s", resource), err)
+	os.Exit(1)
 }

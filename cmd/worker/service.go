@@ -127,7 +127,7 @@ func pingDependency(ctx context.Context, logg *logger.Logger, name string, fn fu
 		logg.Error(ctx, fmt.Sprintf("%s ping failed", name), err)
 		return fmt.Errorf("%s ping failed: %w", name, err)
 	}
-	logg.Info(ctx, fmt.Sprintf("%s ping succeeded", name))
+	// logg.Info(ctx, fmt.Sprintf("%s ping succeeded", name))
 	return nil
 }
 

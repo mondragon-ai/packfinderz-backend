@@ -64,9 +64,9 @@ func New(ctx context.Context, cfg config.DBConfig, logg *logger.Logger) (*Client
 		sqlDB.SetConnMaxIdleTime(cfg.ConnMaxIdleTime)
 	}
 
-	if logg != nil {
-		logg.Info(ctx, "database connection established")
-	}
+	// if logg != nil {
+	// 	logg.Info(ctx, "database connection established")
+	// }
 
 	return &Client{conn: conn}, nil
 }
