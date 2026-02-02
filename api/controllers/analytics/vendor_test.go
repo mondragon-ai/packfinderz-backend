@@ -41,14 +41,11 @@ func TestVendorAnalyticsUsesPreset(t *testing.T) {
 
 	stub := &testAnalyticsService{
 		response: &types.MarketplaceQueryResponse{
-			KPIs: types.MarketplaceKPIs{
-				Orders:             5,
-				RevenueCents:       1000,
-				AOVCents:           200,
-				CashCollectedCents: 800,
+			OrdersSeries: []types.TimeSeriesPoint{
+				{Date: "2025-01-09", Value: 2},
 			},
-			Series: []types.MarketplaceSeriesPoint{
-				{Date: "2025-01-09", Orders: 2, RevenueCents: 400, CashCollectedCents: 300},
+			GrossRevenue: []types.TimeSeriesPoint{
+				{Date: "2025-01-09", Value: 400},
 			},
 		},
 	}
@@ -68,6 +65,9 @@ func TestVendorAnalyticsUsesPreset(t *testing.T) {
 	if stub.period() != 7*24*time.Hour {
 		t.Fatalf("expected 7d range, got %v", stub.period())
 	}
+	if stub.last.StoreType != enums.StoreTypeVendor {
+		t.Fatalf("expected vendor store type, got %s", stub.last.StoreType)
+	}
 
 	var respEnvelope struct {
 		Data types.MarketplaceQueryResponse `json:"data"`
@@ -75,8 +75,14 @@ func TestVendorAnalyticsUsesPreset(t *testing.T) {
 	if err := json.NewDecoder(resp.Body).Decode(&respEnvelope); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if respEnvelope.Data.KPIs.Orders != 5 {
-		t.Fatalf("expected orders 5 got %d", respEnvelope.Data.KPIs.Orders)
+	if len(respEnvelope.Data.OrdersSeries) == 0 {
+		t.Fatal("expected orders series data")
+	}
+	if respEnvelope.Data.OrdersSeries[0].Value != 2 {
+		t.Fatalf("unexpected orders value: %d", respEnvelope.Data.OrdersSeries[0].Value)
+	}
+	if len(respEnvelope.Data.GrossRevenue) == 0 || respEnvelope.Data.GrossRevenue[0].Value != 400 {
+		t.Fatalf("unexpected gross revenue data: %+v", respEnvelope.Data.GrossRevenue)
 	}
 }
 
@@ -103,6 +109,12 @@ func TestVendorAnalyticsCustomRange(t *testing.T) {
 	if !stub.last.End.Equal(endExpected) {
 		t.Fatalf("unexpected end %v", stub.last.End)
 	}
+	if stub.last.StoreID != "vendor-1" {
+		t.Fatalf("expected store id set, got %s", stub.last.StoreID)
+	}
+	if stub.last.StoreType != enums.StoreTypeVendor {
+		t.Fatalf("expected vendor store type, got %s", stub.last.StoreType)
+	}
 }
 
 type testAnalyticsService struct {
@@ -120,7 +132,7 @@ func (s *testAnalyticsService) VendorAnalytics(ctx context.Context, req types.Ma
 }
 
 func (s *testAnalyticsService) called() bool {
-	return s.last.VendorStoreID != ""
+	return s.last.StoreID != ""
 }
 
 func (s *testAnalyticsService) period() time.Duration {

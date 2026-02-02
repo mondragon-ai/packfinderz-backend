@@ -36,9 +36,10 @@ func VendorAnalytics(service analytics.Service, logg *logger.Logger) http.Handle
 		}
 
 		req := types.MarketplaceQueryRequest{
-			VendorStoreID: storeID,
-			Start:         start,
-			End:           end,
+			StoreID:   storeID,
+			StoreType: enums.StoreTypeVendor,
+			Start:     start,
+			End:       end,
 		}
 		result, err := service.VendorAnalytics(ctx, req)
 		if err != nil {
