@@ -1,27 +1,43 @@
-# 📊 PackFinderz — Analytics Service (Canonical Spec)
+Absolutely. Here’s the **updated, consolidated Analytics doc** where the older “Canonical Spec” has been **brought up to date** using your **MOST UP TO DATE SOURCE OF TRUTH** (the draft you created).
 
-**Status:** LOCKED unless explicitly marked otherwise
+Key changes applied (silently, in the content):
+
+* Keeps the **Canonical Spec structure and “LOCKED” tone** where appropriate
+* Aligns with the **new tables + fields** (flattened columns + embedded `items` JSON, `ad_event_facts`)
+* Reconciles the **token attribution receipt model** with the **new draft attribution rules**
+* Resolves conflicts like “BQ append-only” vs “consumer must be idempotent” by making **idempotency required** and **BQ append-only** still true
+* Updates routing, payload contracts, and schemas to match the new document
+
+---
+
+# 📊 PackFinderz Analytics Engine — Architecture & Data Model (CANONICAL SPEC v1 — UPDATED)
+
+**Status:** DRAFT – for review & correction (becomes LOCKED once approved)
 **Audience:** Backend engineers, data engineers, LLM ticket generators
-**Purpose:** Define the exact analytics event lifecycle, schemas, contracts, workers, routing rules, and edge cases for the MVP + the updated cart→order snapshot + ad token attribution model.
+**Scope:** Marketplace Analytics + Ad Analytics (MVP)
+**Source of Truth:** BigQuery (BQ)
+**Processing Model:** Event-driven via Outbox → Pub/Sub → Dedicated Analytics Consumer
 
 ---
 
 ## 1. Analytics Philosophy (Non-Negotiable)
 
-1. **Postgres is the source of truth**
-2. **Analytics are derived, never authoritative**
-3. **All analytics are event-driven**
-4. **All events originate from domain commits**
-5. **At-least-once delivery is expected**
-6. **Consumers MUST be idempotent**
-7. **BigQuery is append-only**
-8. **Analytics never infer business correctness** — they persist what domain snapshots say
+1. **Postgres is the transactional source of truth**
+2. **BigQuery is the analytics source of truth**
+3. **Analytics are derived and observational, never authoritative**
+4. **All analytics are event-driven**
+5. **All events originate from domain commits**
+6. **At-least-once delivery is expected**
+7. **Consumers MUST be idempotent**
+8. **BigQuery is append-only**
+9. **Analytics never infer business correctness** — they persist what domain snapshots say
 
 **Hard rules:**
 
 * ❌ No request-time analytics writes
 * ❌ No synchronous analytics mutations in the API
-* ❌ No cron-generated “inferred” analytics facts (cron MAY drive domain state changes that emit events)
+* ❌ No consumer inventing events
+* ✅ Cron MAY drive domain state changes that emit events (e.g., ad daily charge events)
 
 ---
 
@@ -34,119 +50,103 @@ sequenceDiagram
   participant OB as Outbox Table
   participant PUB as Outbox Publisher
   participant PS as Pub/Sub
-  participant AC as Analytics Consumer
+  participant AC as Analytics Worker
   participant BQ as BigQuery
 
   API->>PG: BEGIN TX
-  API->>PG: Domain mutation (checkout, order, payment, ledger, etc)
+  API->>PG: Domain mutation (checkout, order, payment, ledger, ad, etc)
   API->>OB: INSERT outbox_event(s)
   API->>PG: COMMIT
 
   PUB->>OB: Fetch unpublished (FOR UPDATE SKIP LOCKED)
-  PUB->>PS: Publish event(s)
+  PUB->>PS: Publish message(s) to analytics-sub
   PUB->>OB: Mark published_at
 
   PS->>AC: Deliver message (at-least-once)
-  AC->>AC: Idempotency check
+  AC->>AC: Idempotency check (Redis)
   AC->>BQ: INSERT marketplace_events (always)
-  AC->>BQ: INSERT ad_events (only if tokens exist / attribution applies)
+  AC->>BQ: INSERT ad_event_facts (conditionally)
 ```
 
 ---
 
 ## 3. Analytics Event Origin Rules (LOCKED)
 
-Analytics events **MUST ONLY** be emitted from:
+Analytics events MUST ONLY be emitted from:
 
 * domain services
-* inside the **same DB transaction**
-* that mutates authoritative state
+* inside the same DB transaction that mutates authoritative state
 
 ❌ No API request logging as analytics events
-❌ No consumer inventing events
-❌ No “analytics-only” outbox rows created outside domain commits
+❌ No analytics-only outbox rows created outside domain commits
+❌ No consumer creating “synthetic” events
 
 ---
 
-## 4. Event Taxonomy (MVP) — Updated & Locked
+## 4. Event Taxonomy (MVP) — Locked
 
 ### 4.1 Canonical Analytics Event Types
 
 **All MVP analytics events are order-scoped.**
-**Analytics never reference `cart_items` directly** — only **order snapshots derived from cart**.
+Analytics must not reference live cart item tables at query time; it relies on order snapshots.
 
-| Event Type         | Aggregate    | Emitted When                              | References                                 |
-| ------------------ | ------------ | ----------------------------------------- | ------------------------------------------ |
-| `order_created`    | vendor_order | Vendor order snapshot committed from cart | `order_id`, `checkout_group_id`,           |
-| `order_paid`       | vendor_order | Payment confirmed for an order            | `order_id`                                 |
-| `cash_collected`   | vendor_order | Cash/settlement recorded (ledger-driven)  | `order_id`                                 |
-| `order_canceled`   | vendor_order | Order canceled                            | `order_id`                                 |
-| `order_expired`    | vendor_order | TTL expiry applied to order               | `order_id`                                 |
-| `refund_initiated` | vendor_order | **FUTURE**                                | `order_id`                                 |
+| Event Type         | Aggregate      | Emitted When                              |
+| ------------------ | -------------- | ----------------------------------------- |
+| `order_created`    | `vendor_order` | Vendor order snapshot committed from cart |
+| `order_paid`       | `vendor_order` | Payment confirmed for an order            |
+| `cash_collected`   | `vendor_order` | Cash/settlement recorded (ledger-driven)  |
+| `order_canceled`   | `vendor_order` | Order canceled                            |
+| `order_expired`    | `vendor_order` | TTL expiry applied to order               |
+| `refund_initiated` | `vendor_order` | **FUTURE**                                |
 
-> Future event types can be added and should be able to be added without conflict
+### 4.2 Notes on paid semantics
 
-### 4.2 Notes on “paid” semantics
-
-* `order_paid` **MUST reference the order** (`order_id`).
-* If you later split “payment authorized” vs “captured” vs “payout”, those are **new event types**, not overloads.
+* `order_paid` MUST reference `order_id`
+* If later splitting “authorized vs captured vs payout,” those are NEW event types
 
 ---
 
 ## 5. Outbox → Analytics Routing Rules (Canonical)
 
-### 5.1 Outbox is a fan-out intent log (LOCKED)
+### 5.1 Outbox is an intent log (LOCKED)
 
-> **One domain transaction → many downstream intents**
-> Each intent is its **own outbox row**, with:
-
-* its own `event_type`
-* its own consumer(s)
-* its own delivery guarantee
-
-**Example: checkout commit (one DB TX):**
-
-```text
-1) INSERT vendor_orders (N rows)
-2) INSERT order_line_items (snapshot)
-3) INSERT outbox_event (order_created → analytics)
-4) INSERT outbox_event (order_created → notifications)
-5) COMMIT
-```
+One domain transaction may produce multiple outbox rows, each routed independently.
 
 ### 5.2 Publisher responsibilities (LOCKED)
 
-* Publisher does **not** decide analytics meaning.
-* Publisher only routes based on:
+Publisher does not decide analytics meaning. It only routes based on:
 
-  * `event_type`
-  * registry mapping
-  * destination topic (or derived topic)
+* `event_type`
+* registry mapping
+* destination topic/subscription
 
-Unknown/invalid `event_type` **MUST be rejected** and DLQ’d.
+Unknown/invalid `event_type` MUST be rejected and DLQ’d.
 
 ### 5.3 Required registry mapping
 
 ```go
 AnalyticsEventRegistry = map[string]string{
-  "order_created":  "analytics.marketplace",
-  "order_paid":     "analytics.marketplace",
-  "cash_collected": "analytics.marketplace",
-  "order_canceled": "analytics.marketplace",
-  "order_expired":  "analytics.marketplace",
+  "order_created":    "analytics.marketplace",
+  "order_paid":       "analytics.marketplace",
+  "cash_collected":   "analytics.marketplace",
+  "order_canceled":   "analytics.marketplace",
+  "order_expired":    "analytics.marketplace",
   // future:
   "refund_initiated": "analytics.marketplace",
+  // ads:
+  "ad_impression":            "analytics.ads",
+  "ad_click":                 "analytics.ads",
+  "ad_daily_charge_recorded": "analytics.ads",
 }
 ```
 
-**Important constraint (LOCKED):**
-The **payload may differ per consumer**, but the **domain fact does not**.
+**Note:** Topic/subscription naming may be collapsed to one `analytics-sub` in MVP. The registry still exists for future fan-out.
 
 ---
 
 ## 6. Analytics Pub/Sub Envelope (LOCKED)
 
-Every analytics message uses the same envelope:
+Every analytics message MUST use the same envelope:
 
 ```json
 {
@@ -162,31 +162,20 @@ Every analytics message uses the same envelope:
 Rules:
 
 * `event_id` globally unique
-* `occurred_at` reflects **domain time**, not publish time
+* `occurred_at` reflects domain time, not publish time
 * `payload` is event-specific (see below)
 
 ---
 
-## 7. Event Payload Contracts (Exact) — Updated to Cart→Order Snapshot Model
+## 7. Event Payload Contracts (Order Snapshot Model)
 
-### 7.0 Key rule (LOCKED)
+### 7.0 Key Rule (LOCKED)
 
-> Analytics payloads are derived from **order snapshots**, not live cart tables.
+Analytics payloads are derived from **order snapshots**, not live cart tables.
 
-Cart tables exist to:
+### 7.1 `order_created` payload (authoritative)
 
-* validate
-* price
-* group
-* snapshot
-
-After checkout commits, analytics reads **order snapshot state**.
-
-### 7.1 `order_created` (authoritative)
-
-**Emitted:** after checkout transaction commits
-**Granularity:** one event per **VendorOrder**
-**Source of payload:** cart snapshot flattened into vendor-order scope (derived from `cart_records`, `cart_items`, `cart_vendor_groups` at checkout time, then persisted as order snapshot tables)
+Emitted after checkout commit. One event per `VendorOrder`.
 
 ```json
 {
@@ -201,22 +190,31 @@ After checkout commits, analytics reads **order snapshot state**.
 
   "subtotal_cents": 100000,
   "discounts_cents": 5000,
+  "tax_cents": 0,
+  "transport_fee_cents": 0,
   "total_cents": 95000,
+
+  "shipping_address": {
+    "postal_code": "73112",
+    "lat": 35.52,
+    "lng": -97.56
+  },
 
   "items": [
     {
       "product_id": "uuid",
-      "quantity": 5,
+      "title": "Product Name",
+      "category": "Flower",
+      "classification": "Indica",
 
+      "qty": 5,
       "moq": 1,
       "max_qty": null,
 
       "unit_price_cents": 20000,
-
-      "applied_volume_tier_min_qty": 5,
-      "applied_volume_tier_unit_price_cents": 19000,
-
       "line_subtotal_cents": 95000,
+      "line_total_cents": 95000,
+      "discount_cents": 0,
 
       "status": "ok",
       "warnings": []
@@ -224,21 +222,28 @@ After checkout commits, analytics reads **order snapshot state**.
   ],
 
   "order_snapshot_status": "pending_vendor_approval",
-  "attributed_ad_tokens": ["token_id_1", "token_id_2"]
+  "attributed_ad_tokens": ["token_1", "token_2"]
 }
 ```
 
-**Notes (LOCKED):**
+**Notes (LOCKED)**
 
-* `items[].status` reflects the snapshot outcome at checkout time (e.g. `ok`, `not_available`, `invalid`)
-* `warnings` is persisted snapshot metadata
-* Analytics does **not** revalidate pricing/availability
-* `attributed_ad_tokens` comes from `cart_records.ad_tokens[]` and is copied into order snapshot
+* `items[].status` reflects snapshot outcome at checkout time
+* Analytics MUST NOT revalidate pricing/availability
+* `attributed_ad_tokens[]` is copied from cart snapshot into the order snapshot
 
-### 7.2 `cash_collected`
+### 7.2 `order_paid`
 
-**Emitted:** when cash/settlement recorded in ledger
-**Order-scoped.**
+```json
+{
+  "order_id": "uuid",
+  "vendor_store_id": "uuid",
+  "amount_cents": 95000,
+  "paid_at": "timestamp"
+}
+```
+
+### 7.3 `cash_collected`
 
 ```json
 {
@@ -247,20 +252,6 @@ After checkout commits, analytics reads **order snapshot state**.
   "vendor_store_id": "uuid",
   "amount_cents": 95000,
   "cash_collected_at": "timestamp"
-}
-```
-
-### 7.3 `order_paid`
-
-**Emitted:** when payment confirmed
-**Order-scoped.**
-
-```json
-{
-  "order_id": "uuid",
-  "vendor_store_id": "uuid",
-  "amount_cents": 95000,
-  "paid_at": "timestamp"
 }
 ```
 
@@ -290,147 +281,139 @@ After checkout commits, analytics reads **order snapshot state**.
 
 ---
 
-## 8. Analytics Consumer Responsibilities (LOCKED)
+## 8. Analytics Worker (Dedicated Consumer)
 
 ### 8.1 Binary
 
 * `cmd/analytics-worker`
 * long-running
-* subscribes to analytics Pub/Sub subscription(s)
+* subscribes to `analytics-sub`
 
-### 8.2 Idempotency (REQUIRED)
+### 8.2 Responsibilities
+
+* Deserialize envelope
+* Route by `event_type`
+* Perform idempotency check
+* Write analytics records to BigQuery
+
+### 8.3 Idempotency (REQUIRED)
 
 Before any side effect:
 
-```text
-Redis Key:
-pf:evt:processed:analytics:<event_id>
-TTL: PACKFINDERZ_EVENTING_IDEMPOTENCY_TTL (default 720h)
-```
+* Redis Key: `pf:evt:processed:analytics:<event_id>`
+* TTL: `PACKFINDERZ_EVENTING_IDEMPOTENCY_TTL` (default 720h)
 
-If key exists → ACK without processing.
+If key exists:
 
-### 8.3 Write behavior (LOCKED)
+* ACK immediately (do not re-insert)
+
+### 8.4 Write behavior (LOCKED)
 
 For every message:
 
-1. write **one row** to `marketplace_events`
-2. then, **conditionally** write to `ad_events` based on tokens
+1. Write **one row** to `marketplace_events` (always)
+2. Conditionally write to `ad_event_facts` if tokens exist / attribution applies
 
 ---
 
-## 9. BigQuery — Marketplace Events Table (REAL schema = source of truth)
+## 9. BigQuery Tables (BQ = analytics truth)
 
-Table: `packfinderz_analytics.marketplace_events` (name may vary; schema is locked)
+### 9.1 Marketplace Analytics Table (UPDATED SCHEMA)
 
-```json
-[
-  { "name": "event_id", "type": "STRING" },
-  { "name": "event_type", "type": "STRING" },
-  { "name": "occurred_at", "type": "TIMESTAMP" },
-  { "name": "checkout_group_id", "type": "STRING" },
-  { "name": "order_id", "type": "STRING" },
-  { "name": "buyer_store_id", "type": "STRING" },
-  { "name": "vendor_store_id", "type": "STRING" },
-  { "name": "attributed_ad_click_id", "type": "STRING" },
-  { "name": "payload", "type": "JSON" }
-]
+**Table:** `packfinderz_analytics.marketplace_events`
+**Write Mode:** append-only
+**Partition:** `DATE(occurred_at)`
+
+#### Columns (flattened + items JSON)
+
+```text
+event_id                STRING
+event_type              STRING
+occurred_at             TIMESTAMP
+
+checkout_group_id       STRING
+order_id                STRING
+buyer_store_id          STRING
+vendor_store_id         STRING
+
+buyer_zip               STRING
+buyer_lat               FLOAT
+buyer_lng               FLOAT
+
+subtotal_cents          INT64
+discounts_cents         INT64
+tax_cents               INT64
+transport_fee_cents     INT64
+
+gross_revenue_cents     INT64        -- = total_cents
+refund_cents            INT64        -- future (default 0)
+net_revenue_cents       INT64        -- = gross - refund
+
+attributed_ad_id        STRING       -- nullable (derived from tokens if desired)
+
+items                   JSON         -- array of line item snapshots (MVP)
+payload                 JSON         -- optional raw payload copy for debugging
 ```
 
-Rules:
+**Notes**
 
-* append-only
-* partition by `DATE(occurred_at)`
-* analytics consumer writes only
-* no updates
-* no deletes
-
-**Note on attribution column:** `attributed_ad_click_id` remains in schema even if attribution is now token-based.
-**ASSUMPTION:** For MVP, set it to `NULL` (or populate later if you also mint/store click_id inside token claims).
+* This replaces the old minimal schema that only stored a `payload` blob.
+* `attributed_ad_click_id` is deprecated.
+  **ASSUMPTION:** keep it nullable if it still exists physically, but do not rely on it.
 
 ---
 
-## 10. Ads Attribution in Analytics (LOCKED) — Token Receipt Model
-
-### 10.1 New invariant (LOCKED)
-
-> Ad attribution is validated at checkout, not analytics time.
-> Analytics **trusts tokens** and does **not validate ads**.
-
-### 10.2 Token schema (server-signed receipt) — Minimum fields
-
-* `token_id` (uuid)
-* `ad_id`
-* `creative_id`
-* `placement`
-* `target_type` (`store|product`)
-* `target_id` (store_id|product_id)
-* `buyer_store_id` (bind token to tenant)
-* `event_type` (`impression|click`)
-* `occurred_at`
-* `expires_at` (occurred_at + 30d)
-* `request_id` or `nonce`
-* `sig` (HMAC/JWT signature)
-
-### 10.3 Server acceptance rules (checkout time)
-
-* signature valid
-* not expired
-* `buyer_store_id == JWT.activeStoreId`
-* enums valid
-
-### 10.4 Attribution flow
-
-```mermaid
-flowchart LR
-  Click[Ad Click] --> Token[Server-signed token]
-  Token --> Cart[cart_records.ad_tokens[]]
-  Cart --> Order[order snapshot]
-  Order --> AnalyticsConsumer
-```
-
-### 10.5 Analytics consumer behavior (LOCKED)
-
-1. Always write marketplace event
-2. Only process ad events if `attributed_ad_tokens` exist (non-empty)
-3. Tokens are treated as receipts, not claims
-
-### 10.6 Token → attribution logic (consumer)
-
-For each token in `attributed_ad_tokens`:
-
-* extract claims (do not revalidate signature in MVP unless required for security hardening)
-* determine attribution:
-
-  * `target_type == store` → attribute order total
-  * `target_type == product` → attribute only matching line items by `product_id == target_id`
-* emit `ad_event(type=conversion)` with attributed revenue cents
-
-**ASSUMPTION:** If multiple tokens exist, attribution strategy is “last applicable token by occurred_at” per target. If you want a different rule (e.g., prefer click over impression; last-click overall; one token max at checkout), encode that in checkout and keep consumer dumb.
-
----
-
-## 11. BigQuery — Ad Events Table (REAL schema = source of truth)
+### 9.2 Embedded `items[]` JSON Shape (LOCKED for querying)
 
 ```json
-[
-  { "name": "event_id", "type": "STRING" },
-  { "name": "occurred_at", "type": "TIMESTAMP" },
-  { "name": "ad_id", "type": "STRING" },
-  { "name": "vendor_store_id", "type": "STRING" },
-  { "name": "buyer_store_id", "type": "STRING" },
-  { "name": "buyer_user_id", "type": "STRING" },
-  { "name": "type", "type": "STRING" },
-  { "name": "payload", "type": "JSON" }
-]
+{
+  "product_id": "uuid",
+  "title": "Product Name",
+  "category": "Flower",
+  "classification": "Indica",
+
+  "qty": 10,
+  "unit_price_cents": 1200,
+  "line_total_cents": 12000,
+  "discount_cents": 0,
+
+  "attributed_ad_id": "ad_uuid | null"
+}
+```
+
+---
+
+### 9.3 Ad Analytics Table (UPDATED SCHEMA)
+
+**Table:** `packfinderz_analytics.ad_event_facts`
+**Write Mode:** append-only
+**Partition:** `DATE(occurred_at)`
+
+```text
+event_id                STRING
+occurred_at             TIMESTAMP
+
+ad_id                   STRING
+vendor_store_id         STRING
+buyer_store_id          STRING       -- nullable
+type                    STRING       -- impression | click | conversion | charge
+cost_cents              INT64
+
+attributed_order_id     STRING       -- nullable
+
+buyer_zip               STRING       -- optional
+buyer_lat               FLOAT
+buyer_lng               FLOAT
+
+payload                 JSON         -- structured attribution metadata
 ```
 
 Payload SHOULD include:
 
 * `order_id`
 * `checkout_group_id`
-* `target_type`
-* `target_id`
+* `target_type` (`store|product`)
+* `target_id` (store_id|product_id)
 * `attributed_revenue_cents`
 * `token_id`
 * `creative_id`
@@ -438,56 +421,170 @@ Payload SHOULD include:
 
 ---
 
-## 12. Failure & Edge Cases (MANDATORY)
+## 10. Timestamp Rules (LOCKED)
 
-### 12.1 Duplicate events
-
-Handled by Redis idempotency.
-
-### 12.2 Partial checkout (LOCKED)
-
-Order snapshot is the source of truth. If:
-
-* items rejected
-* items clamped to MOQ
-* vendor partially approves later
-
-That must be visible in the snapshot payload fields (`status`, `warnings`, `order_snapshot_status`, etc).
-
-### 12.3 Order retry
-
-Retry creates **new checkout_group_id/cart_id/order_id** as applicable.
-Analytics reflect new events; no mutation semantics.
-
-### 12.4 Missing ad click / no tokens (LOCKED)
-
-* Marketplace events always emitted
-* Ad event processing only initiates if `ad_tokens` exist on the order snapshot
-* No token → no attribution → no `ad_events` rows
-
-### 12.5 Worker crash mid-processing
-
-Safe due to:
-
-* outbox retries
-* Pub/Sub redelivery
-* idempotency prevents double-writes
+| Metric                  | Timestamp Source                                   |
+| ----------------------- | -------------------------------------------------- |
+| Orders over time        | `created_at` (from `order_created.occurred_at`)    |
+| Revenue over time       | `paid_at` → `cash_collected_at` → fallback created |
+| Discounts over time     | same as revenue                                    |
+| AOV                     | same as revenue                                    |
+| Top products/categories | same as revenue                                    |
+| Fulfillment analytics   | deferred                                           |
 
 ---
 
-## 13. Explicit Non-Responsibilities (LOCKED)
+## 11. KPI Definitions (LOCKED)
+
+* `gross_revenue_cents = total_cents`
+* `refund_cents = 0` (until refund events exist)
+* `net_revenue_cents = gross - refund`
+* AOV:
+
+  ```text
+  AOV = SUM(gross_revenue_cents) / COUNT(DISTINCT order_id)
+  ```
+
+**Orders Count**
+
+* include `created_pending`
+* exclude canceled/expired from revenue metrics
+
+**Top Products/Categories**
+
+* derived by `UNNEST(items)`
+* ranked by revenue
+
+**New vs Returning**
+
+* identity = `buyer_store_id`
+* returning if any paid order exists before timeframe start
+
+---
+
+## 12. Ad Attribution (UPDATED Receipt Token Model)
+
+### 12.1 Invariant (LOCKED)
+
+Ad attribution is validated at checkout, not analytics time. Analytics trusts the tokens.
+
+### 12.2 Token minimum fields (receipt)
+
+* `token_id` (uuid)
+* `ad_id`
+* `creative_id`
+* `placement`
+* `target_type` (`store|product`)
+* `target_id` (store_id|product_id)
+* `buyer_store_id`
+* `event_type` (`impression|click`)
+* `occurred_at`
+* `expires_at`
+* `sig` (JWT/HMAC)
+
+### 12.3 Analytics worker behavior (LOCKED)
+
+1. Always write marketplace event
+2. If `attributed_ad_tokens[]` exists:
+
+   * decode token(s)
+   * derive `attributed_ad_id` for marketplace row if needed (optional)
+   * emit ad conversion row(s) to `ad_event_facts` with attributed revenue
+
+### 12.4 Attribution Logic (MVP)
+
+For each token:
+
+* if `target_type == store`:
+
+  * attribute **order total cents**
+* if `target_type == product`:
+
+  * attribute **sum of matching line items** where `product_id == target_id`
+
+**ASSUMPTION (needs explicit confirmation):**
+If multiple tokens exist, use **last applicable token by token.occurred_at** per target.
+Alternative is “prefer click over impression” — if you want that, encode it here.
+
+---
+
+## 13. Ad Spend + ROAS (UPDATED)
+
+### Spend source of truth
+
+* Nightly billing job calculates cost based on Redis counters (impressions/clicks)
+* Nightly job emits `ad_daily_charge_recorded`
+* Worker writes `ad_event_facts` with:
+
+  * `type=charge`
+  * `cost_cents` populated
+
+### ROAS
+
+```text
+ROAS = SUM(attributed gross revenue) / SUM(cost_cents)
+```
+
+---
+
+## 14. Query Layer (BigQuery)
+
+### Marketplace Queries (MVP)
+
+* orders over time
+* revenue over time
+* discounts over time
+* net revenue over time
+* top products
+* top categories
+* top ZIPs (bar chart MVP)
+* AOV
+* new vs returning customers
+
+### Ad Queries (MVP)
+
+* spend
+* impressions
+* clicks
+* CPM/CPC derived
+* ROAS
+* avg daily impressions/clicks
+
+---
+
+## 15. Failure & Edge Cases (MANDATORY)
+
+* Duplicate events → Redis idempotency
+* Worker crash mid-processing → Pub/Sub redelivery; idempotency prevents double-writes
+* Missing tokens → no ad rows written; marketplace always written
+* Partial checkout outcomes are preserved via `items[].status` + `warnings`
+* Order retry creates new identifiers; analytics reflects immutable history
+
+---
+
+## 16. Explicit Non-Responsibilities (LOCKED)
 
 Analytics do NOT:
 
 * enforce billing
 * trigger payouts
 * affect order state
-* drive product logic
-* validate pricing, availability, inventory, or ad legitimacy
+* validate ads, pricing, or inventory
+* write to Postgres (analytics are observational only)
 
-Analytics are observational only.
+---
 
-## 14. Summary Mental Model (LOCKED)
+## 17. Summary Mental Model (LOCKED)
 
-> **Domain commits truth → Outbox guarantees intent → Pub/Sub transports facts →
-> Analytics writes immutable history → Ads attribution trusts server-signed receipts**
+> Domain commits truth → Outbox guarantees intent → Pub/Sub transports facts →
+> Analytics writes immutable history → Ads attribution trusts server-signed receipts →
+> Dashboard queries BigQuery as analytics truth
+
+---
+
+## Open Questions (Explicitly Deferred)
+
+* Refund events schema & amount fields
+* Fulfillment dashboards
+* Conversion funnel definition
+* Whether to add a dedicated line-item BQ table later (if UNNEST JSON becomes costly)

@@ -74,7 +74,11 @@ func main() {
 	// Everything else needs DB
 	dbClient, err := db.New(context.Background(), cfg.DB, logg)
 	requireResource(ctx, logg, "database", err)
-	defer dbClient.Close()
+	defer func() {
+		if err := dbClient.Close(); err != nil {
+			logg.Error(ctx, "failed to close database client", err)
+		}
+	}()
 
 	sqlDB, err := dbClient.DB().DB()
 	requireResource(ctx, logg, "sql database", err)

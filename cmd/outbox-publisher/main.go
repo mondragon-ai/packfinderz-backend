@@ -37,13 +37,21 @@ func main() {
 
 	dbClient, err := db.New(context.Background(), cfg.DB, logg)
 	requireResource(ctx, logg, "database", err)
-	defer dbClient.Close()
+	defer func() {
+		if err := dbClient.Close(); err != nil {
+			logg.Error(ctx, "failed to close database client", err)
+		}
+	}()
 
 	requireResource(ctx, logg, "migrations", migrate.MaybeRunDev(context.Background(), cfg, logg, dbClient))
 
 	pubsubClient, err := pubsub.NewClient(context.Background(), cfg.GCP, cfg.PubSub, logg)
 	requireResource(ctx, logg, "pubsub", err)
-	defer pubsubClient.Close()
+	defer func() {
+		if err := pubsubClient.Close(); err != nil {
+			logg.Error(ctx, "failed to close pubsub client", err)
+		}
+	}()
 
 	repo := outbox.NewRepository(dbClient.DB())
 	dlqRepo := outbox.NewDLQRepository(dbClient.DB())

@@ -56,24 +56,41 @@ func main() {
 
 	dbClient, err := db.New(context.Background(), cfg.DB, logg)
 	requireResource(ctx, logg, "database", err)
-	defer dbClient.Close()
+	defer func() {
+		if err := dbClient.Close(); err != nil {
+			logg.Error(ctx, "failed to close database client", err)
+		}
+	}()
 
 	requireResource(ctx, logg, "migrations", migrate.MaybeRunDev(context.Background(), cfg, logg, dbClient))
 
 	redisClient, err := redis.New(context.Background(), cfg.Redis, logg)
 	requireResource(ctx, logg, "redis", err)
-	defer redisClient.Close()
+
+	defer func() {
+		if err := redisClient.Close(); err != nil {
+			logg.Error(ctx, "failed to close redis client", err)
+		}
+	}()
 
 	sessionManager, err := session.NewManager(redisClient, cfg.JWT)
 	requireResource(ctx, logg, "session manager", err)
 
 	gcsClient, err := gcs.NewClient(context.Background(), cfg.GCS, cfg.GCP, logg)
 	requireResource(ctx, logg, "gcs", err)
-	defer gcsClient.Close()
+	defer func() {
+		if err := gcsClient.Close(); err != nil {
+			logg.Error(ctx, "failed to close gcs client", err)
+		}
+	}()
 
 	bqClient, err := bigquery.NewClient(context.Background(), cfg.GCP, cfg.BigQuery, logg)
 	requireResource(ctx, logg, "bigquery", err)
-	defer bqClient.Close()
+	defer func() {
+		if err := bqClient.Close(); err != nil {
+			logg.Error(ctx, "failed to close bigquery client", err)
+		}
+	}()
 
 	analyticsService, err := analytics.NewService(bqClient, cfg.GCP.ProjectID, cfg.BigQuery.Dataset, cfg.BigQuery.MarketplaceEventsTable)
 	requireResource(ctx, logg, "analytics service", err)

@@ -47,13 +47,21 @@ func main() {
 
 	dbClient, err := db.New(context.Background(), cfg.DB, logg)
 	requireResource(ctx, logg, "database", err)
-	defer dbClient.Close()
+	defer func() {
+		if err := dbClient.Close(); err != nil {
+			logg.Error(ctx, "failed to close database client", err)
+		}
+	}()
 
 	requireResource(ctx, logg, "migrations", migrate.MaybeRunDev(context.Background(), cfg, logg, dbClient))
 
 	redisClient, err := redis.New(context.Background(), cfg.Redis, logg)
 	requireResource(ctx, logg, "redis", err)
-	defer redisClient.Close()
+	defer func() {
+		if err := redisClient.Close(); err != nil {
+			logg.Error(ctx, "failed to close redis client", err)
+		}
+	}()
 
 	licenseRepo := licenses.NewRepository(dbClient.DB())
 	storeRepo := stores.NewRepository(dbClient.DB())
@@ -63,7 +71,11 @@ func main() {
 	outboxSvc := outbox.NewService(outboxRepo, logg)
 	gcsClient, err := gcs.NewClient(context.Background(), cfg.GCS, cfg.GCP, logg)
 	requireResource(ctx, logg, "gcs", err)
-	defer gcsClient.Close()
+	defer func() {
+		if err := gcsClient.Close(); err != nil {
+			logg.Error(ctx, "failed to close gcs client", err)
+		}
+	}()
 
 	metricsCollector := metrics.NewCronJobMetrics(prometheus.DefaultRegisterer)
 	lock, err := cron.NewRedisLock(redisClient, lockKey(cfg.App.Env), 0)
