@@ -111,6 +111,10 @@ Reusable BigQuery bootstrap + readiness guard.
 * `Ping(ctx)` re-checks the configured dataset + tables so `/health/ready` and `cmd/worker` dependency pings fail fast when `marketplace_events` or `ad_events` are missing.
 * Configured via `PACKFINDERZ_BIGQUERY_DATASET` (default `packfinderz`), `PACKFINDERZ_BIGQUERY_MARKETPLACE_TABLE`, and `PACKFINDERZ_BIGQUERY_AD_TABLE`.
 
+**Writer**
+
+* `internal/analytics/writer.BigQueryWriter` builds on this client, exposes `EncodeJSON` for JSON columns, and adds retry/backoff plus optional batching before emitting `marketplace_events` and `ad_event_facts` rows.
+
 ### `pagination`
 
 Cursor-based limit/cursor helpers reused across list endpoints.

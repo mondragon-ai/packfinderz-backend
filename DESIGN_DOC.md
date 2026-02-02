@@ -342,6 +342,8 @@ Marketplace events (BigQuery):
 * `cmd/analytics-worker` is the dedicated ingestion binary that subscribes to `PACKFINDERZ_PUBSUB_ANALYTICS_SUBSCRIPTION`, decodes the canonical analytics envelope, and enforces the `pf:evt:processed:analytics:<event_id>` guard (TTL=`PACKFINDERZ_EVENTING_IDEMPOTENCY_TTL`) before routing events to analytics handlers.
 > `internal/analytics/router` splits the envelope per canonical `event_type`, decodes the typed payload, and dispatches to handler stubs so the BigQuery writer interface remains consistent across the analytics surface.
 
+> `internal/analytics/writer.BigQueryWriter` wraps `pkg/bigquery.Client`, enforces consistent `items`/`payload` JSON encoding via `EncodeJSON`, retries transient insert failures with bounded backoff, and optionally batches rows before committing them to `marketplace_events` and `ad_event_facts`.
+
 > Canonical analytics DTOs (Pub/Sub envelope, BigQuery rows, and query request/response types) live under `internal/analytics/types`, while the routed event enums are defined in `pkg/enums/analytics_event_type.go` and `pkg/enums/ad_event_fact_type.go`.
 
 KPIs:
