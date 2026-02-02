@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -11,36 +12,71 @@ import (
 	"github.com/angelmondragon/packfinderz-backend/pkg/auth/session"
 	"github.com/angelmondragon/packfinderz-backend/pkg/config"
 	"github.com/angelmondragon/packfinderz-backend/pkg/enums"
+	pkgerrors "github.com/angelmondragon/packfinderz-backend/pkg/errors"
+	"github.com/angelmondragon/packfinderz-backend/pkg/types"
 	"github.com/google/uuid"
 )
 
-func TestAuthRejectsMissingToken(t *testing.T) {
+func TestAuthRejectsTokenErrors(t *testing.T) {
 	cfg := config.JWTConfig{Secret: "secret", Issuer: "issuer", ExpirationMinutes: 10}
 	handler := Auth(cfg, stubSessionVerifier{ok: true}, nil)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}))
+	expiredToken := mintExpiredTestToken(t, cfg, enums.MemberRoleOwner, uuid.New())
 
-	req := httptest.NewRequest(http.MethodGet, "/", nil)
-	resp := httptest.NewRecorder()
-	handler.ServeHTTP(resp, req)
-	if resp.Code != http.StatusUnauthorized {
-		t.Fatalf("expected 401 got %d", resp.Code)
+	tests := []struct {
+		name            string
+		setup           func(*http.Request)
+		expectedMessage string
+	}{
+		{
+			name:            "missing token",
+			expectedMessage: "missing credentials",
+		},
+		{
+			name: "invalid token",
+			setup: func(req *http.Request) {
+				req.Header.Set("Authorization", "Bearer invalid")
+			},
+			expectedMessage: "invalid token",
+		},
+		{
+			name: "expired token",
+			setup: func(req *http.Request) {
+				req.Header.Set("Authorization", "Bearer "+expiredToken)
+			},
+			expectedMessage: "invalid token",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, "/", nil)
+			if tt.setup != nil {
+				tt.setup(req)
+			}
+			resp := httptest.NewRecorder()
+			handler.ServeHTTP(resp, req)
+			assertErrorResponse(t, resp, http.StatusUnauthorized, pkgerrors.CodeUnauthorized, tt.expectedMessage)
+		})
 	}
 }
 
-func TestAuthRejectsInvalidToken(t *testing.T) {
-	cfg := config.JWTConfig{Secret: "secret", Issuer: "issuer", ExpirationMinutes: 10}
-	handler := Auth(cfg, stubSessionVerifier{ok: true}, nil)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+func TestAuthRejectsRevokedSession(t *testing.T) {
+	cfg := config.JWTConfig{Secret: "secret", Issuer: "issuer", ExpirationMinutes: 60}
+	storeID := uuid.New()
+	token := mintTestToken(t, cfg, enums.MemberRoleOwner, storeID)
+
+	handler := Auth(cfg, stubSessionVerifier{ok: false}, nil)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}))
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
-	req.Header.Set("Authorization", "Bearer invalid")
+	req.Header.Set("Authorization", "Bearer "+token)
 	resp := httptest.NewRecorder()
 	handler.ServeHTTP(resp, req)
-	if resp.Code != http.StatusUnauthorized {
-		t.Fatalf("expected 401 got %d", resp.Code)
-	}
+
+	assertErrorResponse(t, resp, http.StatusUnauthorized, pkgerrors.CodeUnauthorized, "session unavailable")
 }
 
 func TestAuthAllowsValidToken(t *testing.T) {
@@ -113,15 +149,25 @@ func TestAuthAllowsTokenWithoutStore(t *testing.T) {
 }
 
 func mintTestToken(t *testing.T, cfg config.JWTConfig, role enums.MemberRole, storeID uuid.UUID) string {
+	return mintTestTokenAt(t, cfg, role, storeID, time.Now())
+}
+
+func mintExpiredTestToken(t *testing.T, cfg config.JWTConfig, role enums.MemberRole, storeID uuid.UUID) string {
+	issuedAt := time.Now().Add(-time.Duration(cfg.ExpirationMinutes+1) * time.Minute)
+	return mintTestTokenAt(t, cfg, role, storeID, issuedAt)
+}
+
+func mintTestTokenAt(t *testing.T, cfg config.JWTConfig, role enums.MemberRole, storeID uuid.UUID, issuedAt time.Time) string {
 	t.Helper()
 	accessID := session.NewAccessID()
+	store := storeID
 	payload := auth.AccessTokenPayload{
 		UserID:        uuid.New(),
-		ActiveStoreID: &storeID,
+		ActiveStoreID: &store,
 		Role:          role,
 		JTI:           accessID,
 	}
-	token, err := auth.MintAccessToken(cfg, time.Now(), payload)
+	token, err := auth.MintAccessToken(cfg, issuedAt, payload)
 	if err != nil {
 		t.Fatalf("mint token: %v", err)
 	}
@@ -141,6 +187,23 @@ func mintTestTokenWithoutStore(t *testing.T, cfg config.JWTConfig, role enums.Me
 		t.Fatalf("mint token: %v", err)
 	}
 	return token
+}
+
+func assertErrorResponse(t *testing.T, resp *httptest.ResponseRecorder, expectStatus int, expectCode pkgerrors.Code, expectMessage string) {
+	t.Helper()
+	if resp.Code != expectStatus {
+		t.Fatalf("expected status %d got %d", expectStatus, resp.Code)
+	}
+	var payload types.ErrorEnvelope
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if payload.Error.Code != string(expectCode) {
+		t.Fatalf("expected code %s got %s", expectCode, payload.Error.Code)
+	}
+	if payload.Error.Message != expectMessage {
+		t.Fatalf("expected message %q got %q", expectMessage, payload.Error.Message)
+	}
 }
 
 type stubSessionVerifier struct {

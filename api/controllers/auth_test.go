@@ -61,7 +61,7 @@ func TestAdminAuthRegisterSuccess(t *testing.T) {
 		nil,
 	)
 
-	req := httptest.NewRequest(http.MethodPost, "/api/admin/v1/auth/register", bytes.NewReader([]byte(`{"email":"admin@example.com","password":"Secret#1"}`)))
+	req := httptest.NewRequest(http.MethodPost, "/api/admin/v1/auth/register", bytes.NewReader([]byte(`{"first_names":"Admin","last_name":"User","email":"admin@example.com","password":"Secret#1"}`)))
 	req.Header.Set("Content-Type", "application/json")
 	resp := httptest.NewRecorder()
 

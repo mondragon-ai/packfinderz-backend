@@ -16,6 +16,15 @@
 ## Auth
 - `POST /api/admin/v1/auth/login` – admin-only route under the `/api/admin` group, it accepts the same `{"email","password"}` payload (handled via `auth.LoginRequest`), enforces `users.system_role=admin`, and mirrors the fresh access token in `X-PF-Token` while returning `{"user":<users.UserDTO>,"refresh_token":<refresh_token>}`; invalid emails/passwords or non-admin users get the canonical `401 invalid credentials` error. The route does not serialize the access token (only the header), updates `last_login_at`, mints a JWT with `role=admin`/no store claims, and seeds the refresh session via `session.Generate` so `/api/admin/*` can be accessed without an `active_store_id` (api/routes/router.go:117-119; api/controllers/auth.go:39-61; internal/auth/service.go:160-194).
 - `POST /api/admin/v1/auth/register` – dev-only helper that is mounted only when `cfg.App.IsProd()` is false, creates a `users.system_role=admin` row with `is_active=true`, hashes the password via `security.HashPassword`, prevents duplicate emails via the conflict check in `internal/auth/admin_register`, then reuses `auth.AdminLogin` so the response matches the admin login payload while also adding `X-PF-Token` (header) so dev tooling can immediately hit `/api/admin/*`; invalid payloads still raise `422` from `validators.DecodeJSONBody`, duplicate emails surface as `409`, and production calls return `403 admin register disabled in production` (api/routes/router.go:109-119; api/controllers/auth.go:63-93; internal/auth/admin_register.go:16-92; pkg/config/config.go:19-36; pkg/security/password.go:29-44).
+  Request body (all fields required):
+  ```json
+  {
+    "first_names": "Admin",
+    "last_name": "User",
+    "email": "admin@example.com",
+    "password": "Secur3P@ssw0rd!"
+  }
+  ```
 - `POST /api/v1/auth/register` – public, body `RegisterRequest` (first/last name, email, password, company, store_type, address, accept_tos), reuses `auth.Service` to auto-login, returns 201 with tokens and `X-PF-Token` (api/controllers/register.go:13-41; internal/auth/register.go:21-133).
 - `POST /api/v1/auth/logout` – requires Authorization Bearer token, revokes the access session via `session.Manager.Revoke`, returns `{"status":"logged_out"}` (api/controllers/session.go:47-79).
 - `POST /api/v1/auth/refresh` – requires Authorization, body `{"refresh_token"}`, rotates session, issues new `AccessToken`/`RefreshToken` plus `X-PF-Token` header (api/controllers/session.go:81-143).
