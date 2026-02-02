@@ -176,6 +176,8 @@ type PubSubConfig struct {
 	BillingSubscription       string `envconfig:"PACKFINDERZ_PUBSUB_BILLING_SUBSCRIPTION" required:"true"`
 	NotificationTopic         string `envconfig:"PACKFINDERZ_PUBSUB_NOTIFICATION_TOPIC" default:"pf-notification-events"`
 	NotificationSubscription  string `envconfig:"PACKFINDERZ_PUBSUB_NOTIFICATION_SUBSCRIPTION" required:"true"`
+	AnalyticsTopic            string `envconfig:"PACKFINDERZ_PUBSUB_ANALYTICS_TOPIC" required:"true"`
+	AnalyticsSubscription     string `envconfig:"PACKFINDERZ_PUBSUB_ANALYTICS_SUBSCRIPTION" required:"true"`
 }
 
 type BigQueryConfig struct {

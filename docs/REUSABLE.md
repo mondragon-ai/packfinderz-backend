@@ -538,6 +538,7 @@ All enums implement:
 * Rows capture `event_id`, `event_type`, `occurred_at`, optional store/order IDs, and the raw JSON payload stored through `bigquery.NullJSON`.
 * Canonical analytics DTOs (envelope, marketplace/ad row, query request/response) now live under `internal/analytics/types`, and the analytics/enumeration helpers live in `pkg/enums/analytics_event_type.go` + `pkg/enums/ad_event_fact_type.go`.
 * Any payload or insert failure deletes the idempotency key so retries are allowed, and the handler logs via `pkg/logger`.
+* `cmd/analytics-worker` now wires an analytics service that decodes the canonical envelope, writes `pf:evt:processed:analytics:<event_id>` with `PACKFINDERZ_EVENTING_IDEMPOTENCY_TTL`, and routes to the handler stencil so duplicate Pub/Sub deliveries stay idempotent.
 
 ### `internal/cart`
 * `Repository` secures `CartRecord` + `CartItem` persistence by scoping every operation to the owning `buyer_store_id`.

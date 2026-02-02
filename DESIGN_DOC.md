@@ -339,6 +339,8 @@ Marketplace events (BigQuery):
 * `order_paid` (vendor payout recorded)
 * optional: `order_canceled`, `refund_initiated`
 
+* `cmd/analytics-worker` is the dedicated ingestion binary that subscribes to `PACKFINDERZ_PUBSUB_ANALYTICS_SUBSCRIPTION`, decodes the canonical analytics envelope, and enforces the `pf:evt:processed:analytics:<event_id>` guard (TTL=`PACKFINDERZ_EVENTING_IDEMPOTENCY_TTL`) before routing events to analytics handlers.
+
 > Canonical analytics DTOs (Pub/Sub envelope, BigQuery rows, and query request/response types) live under `internal/analytics/types`, while the routed event enums are defined in `pkg/enums/analytics_event_type.go` and `pkg/enums/ad_event_fact_type.go`.
 
 KPIs:
