@@ -140,6 +140,8 @@ AnalyticsEventRegistry = map[string]string{
 }
 ```
 
+> Canonical event types for this registry live under `pkg/enums/analytics_event_type.go` (ad-specific fact types land in `pkg/enums/ad_event_fact_type.go` so the BigQuery insert helpers only emit valid `type` values).
+
 **Note:** Topic/subscription naming may be collapsed to one `analytics-sub` in MVP. The registry still exists for future fan-out.
 
 ---
@@ -158,6 +160,8 @@ Every analytics message MUST use the same envelope:
   "payload": {}
 }
 ```
+
+> The Go consumer enforces this contract via `internal/analytics/types.Envelope` so every handler receives the same, typed metadata before routing into BigQuery.
 
 Rules:
 
@@ -361,6 +365,8 @@ payload                 JSON         -- optional raw payload copy for debugging
 * `attributed_ad_click_id` is deprecated.
   **ASSUMPTION:** keep it nullable if it still exists physically, but do not rely on it.
 
+> Go code uses `internal/analytics/types.MarketplaceEventRow` to match this schema when inserting rows.
+
 ---
 
 ### 9.2 Embedded `items[]` JSON Shape (LOCKED for querying)
@@ -408,6 +414,8 @@ buyer_lng               FLOAT
 payload                 JSON         -- structured attribution metadata
 ```
 
+> Ad inserts rely on `internal/analytics/types.AdEventFactRow` so the table and enum contract stay aligned.
+
 Payload SHOULD include:
 
 * `order_id`
@@ -431,6 +439,8 @@ Payload SHOULD include:
 | AOV                     | same as revenue                                    |
 | Top products/categories | same as revenue                                    |
 | Fulfillment analytics   | deferred                                           |
+
+> The helper `internal/analytics/RevenueTimestamp` encodes the `paid_at → cash_collected_at → fallback` rule so ingestion handlers always pick the right timestamp when multiple fields are available.
 
 ---
 
@@ -541,6 +551,8 @@ ROAS = SUM(attributed gross revenue) / SUM(cost_cents)
 * AOV
 * new vs returning customers
 
+> Input/output DTOs for these queries live under `internal/analytics/types` (`MarketplaceQueryRequest/Response`) so the API and service operate on typed payloads.
+
 ### Ad Queries (MVP)
 
 * spend
@@ -549,6 +561,8 @@ ROAS = SUM(attributed gross revenue) / SUM(cost_cents)
 * CPM/CPC derived
 * ROAS
 * avg daily impressions/clicks
+
+> Ad query helpers reuse `types.AdQueryRequest`/`types.AdQueryResponse` for the eventual analytics query service referenced in PF-XXX.
 
 ---
 

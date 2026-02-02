@@ -8,6 +8,7 @@ import (
 	"github.com/angelmondragon/packfinderz-backend/api/middleware"
 	"github.com/angelmondragon/packfinderz-backend/api/responses"
 	"github.com/angelmondragon/packfinderz-backend/internal/analytics"
+	"github.com/angelmondragon/packfinderz-backend/internal/analytics/types"
 	"github.com/angelmondragon/packfinderz-backend/pkg/enums"
 	pkgerrors "github.com/angelmondragon/packfinderz-backend/pkg/errors"
 	"github.com/angelmondragon/packfinderz-backend/pkg/logger"
@@ -34,7 +35,12 @@ func VendorAnalytics(service analytics.Service, logg *logger.Logger) http.Handle
 			return
 		}
 
-		result, err := service.VendorAnalytics(ctx, storeID, start, end)
+		req := types.MarketplaceQueryRequest{
+			VendorStoreID: storeID,
+			Start:         start,
+			End:           end,
+		}
+		result, err := service.VendorAnalytics(ctx, req)
 		if err != nil {
 			responses.WriteError(ctx, logg, w, err)
 			return

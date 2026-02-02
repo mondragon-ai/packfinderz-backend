@@ -339,6 +339,8 @@ Marketplace events (BigQuery):
 * `order_paid` (vendor payout recorded)
 * optional: `order_canceled`, `refund_initiated`
 
+> Canonical analytics DTOs (Pub/Sub envelope, BigQuery rows, and query request/response types) live under `internal/analytics/types`, while the routed event enums are defined in `pkg/enums/analytics_event_type.go` and `pkg/enums/ad_event_fact_type.go`.
+
 KPIs:
 
 * total orders, AOV, gross/net revenue

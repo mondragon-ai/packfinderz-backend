@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/angelmondragon/packfinderz-backend/api/middleware"
-	"github.com/angelmondragon/packfinderz-backend/internal/analytics"
+	"github.com/angelmondragon/packfinderz-backend/internal/analytics/types"
 	"github.com/angelmondragon/packfinderz-backend/pkg/enums"
 	"github.com/angelmondragon/packfinderz-backend/pkg/logger"
 )
@@ -40,14 +40,14 @@ func TestVendorAnalyticsUsesPreset(t *testing.T) {
 	defer func() { timeNowUTC = func() time.Time { return time.Now().UTC() } }()
 
 	stub := &testAnalyticsService{
-		response: &analytics.VendorAnalyticsResult{
-			KPIs: analytics.VendorKPIs{
+		response: &types.MarketplaceQueryResponse{
+			KPIs: types.MarketplaceKPIs{
 				Orders:             5,
 				RevenueCents:       1000,
 				AOVCents:           200,
 				CashCollectedCents: 800,
 			},
-			Series: []analytics.VendorSeriesPoint{
+			Series: []types.MarketplaceSeriesPoint{
 				{Date: "2025-01-09", Orders: 2, RevenueCents: 400, CashCollectedCents: 300},
 			},
 		},
@@ -70,7 +70,7 @@ func TestVendorAnalyticsUsesPreset(t *testing.T) {
 	}
 
 	var respEnvelope struct {
-		Data analytics.VendorAnalyticsResult `json:"data"`
+		Data types.MarketplaceQueryResponse `json:"data"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&respEnvelope); err != nil {
 		t.Fatalf("decode response: %v", err)
@@ -97,38 +97,32 @@ func TestVendorAnalyticsCustomRange(t *testing.T) {
 	}
 	startExpected := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
 	endExpected := time.Date(2025, 1, 7, 0, 0, 0, 0, time.UTC)
-	if !stub.last.start.Equal(startExpected) {
-		t.Fatalf("unexpected start %v", stub.last.start)
+	if !stub.last.Start.Equal(startExpected) {
+		t.Fatalf("unexpected start %v", stub.last.Start)
 	}
-	if !stub.last.end.Equal(endExpected) {
-		t.Fatalf("unexpected end %v", stub.last.end)
+	if !stub.last.End.Equal(endExpected) {
+		t.Fatalf("unexpected end %v", stub.last.End)
 	}
 }
 
 type testAnalyticsService struct {
-	last struct {
-		vendorStoreID string
-		start         time.Time
-		end           time.Time
-	}
-	response *analytics.VendorAnalyticsResult
+	last     types.MarketplaceQueryRequest
+	response *types.MarketplaceQueryResponse
 	err      error
 }
 
-func (s *testAnalyticsService) VendorAnalytics(ctx context.Context, vendorStoreID string, start, end time.Time) (*analytics.VendorAnalyticsResult, error) {
-	s.last.vendorStoreID = vendorStoreID
-	s.last.start = start
-	s.last.end = end
+func (s *testAnalyticsService) VendorAnalytics(ctx context.Context, req types.MarketplaceQueryRequest) (*types.MarketplaceQueryResponse, error) {
+	s.last = req
 	if s.response == nil {
-		s.response = &analytics.VendorAnalyticsResult{}
+		s.response = &types.MarketplaceQueryResponse{}
 	}
 	return s.response, s.err
 }
 
 func (s *testAnalyticsService) called() bool {
-	return s.last.vendorStoreID != ""
+	return s.last.VendorStoreID != ""
 }
 
 func (s *testAnalyticsService) period() time.Duration {
-	return s.last.end.Sub(s.last.start)
+	return s.last.End.Sub(s.last.Start)
 }

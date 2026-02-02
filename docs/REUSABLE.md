@@ -536,6 +536,7 @@ All enums implement:
 ### `internal/consumers/analytics`
 * `Consumer` decodes `order_created`, `cash_collected`, and `order_paid` outbox payloads, guards with `pf:evt:processed:analytics:<event_id>`, and inserts a single `marketplace_events` row per event via `pkg/bigquery.Client.InsertRows`.
 * Rows capture `event_id`, `event_type`, `occurred_at`, optional store/order IDs, and the raw JSON payload stored through `bigquery.NullJSON`.
+* Canonical analytics DTOs (envelope, marketplace/ad row, query request/response) now live under `internal/analytics/types`, and the analytics/enumeration helpers live in `pkg/enums/analytics_event_type.go` + `pkg/enums/ad_event_fact_type.go`.
 * Any payload or insert failure deletes the idempotency key so retries are allowed, and the handler logs via `pkg/logger`.
 
 ### `internal/cart`
