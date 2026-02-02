@@ -3,9 +3,9 @@ package analytics
 import (
 	"context"
 	"fmt"
-	"time"
 
 	cloudbigquery "cloud.google.com/go/bigquery"
+	"github.com/angelmondragon/packfinderz-backend/internal/analytics/types"
 	pkgbigquery "github.com/angelmondragon/packfinderz-backend/pkg/bigquery"
 	pkgerrors "github.com/angelmondragon/packfinderz-backend/pkg/errors"
 	"google.golang.org/api/iterator"
@@ -14,7 +14,7 @@ import (
 // Service provides analytics reports based on BigQuery data.
 type Service interface {
 	// VendorAnalytics returns KPIs and daily aggregates for the specified vendor store within the requested time range.
-	VendorAnalytics(ctx context.Context, vendorStoreID string, start, end time.Time) (*VendorAnalyticsResult, error)
+	VendorAnalytics(ctx context.Context, req types.MarketplaceQueryRequest) (*types.MarketplaceQueryResponse, error)
 }
 
 type service struct {
@@ -43,37 +43,15 @@ func NewService(client *pkgbigquery.Client, project, dataset, table string) (Ser
 	}, nil
 }
 
-// VendorAnalyticsResult wraps KPIs and series data returned from BigQuery.
-type VendorAnalyticsResult struct {
-	KPIs   VendorKPIs          `json:"kpis"`
-	Series []VendorSeriesPoint `json:"series"`
-}
-
-// VendorKPIs are the top-level metrics returned by the vendor analytics endpoint.
-type VendorKPIs struct {
-	Orders             int64   `json:"orders"`
-	RevenueCents       int64   `json:"revenue_cents"`
-	AOVCents           float64 `json:"aov_cents"`
-	CashCollectedCents int64   `json:"cash_collected_cents"`
-}
-
-// VendorSeriesPoint describes a single point on the vendor analytics time series.
-type VendorSeriesPoint struct {
-	Date               string `json:"date"`
-	Orders             int64  `json:"orders"`
-	RevenueCents       int64  `json:"revenue_cents"`
-	CashCollectedCents int64  `json:"cash_collected_cents"`
-}
-
-func (s *service) VendorAnalytics(ctx context.Context, vendorStoreID string, start, end time.Time) (*VendorAnalyticsResult, error) {
-	if vendorStoreID == "" {
+func (s *service) VendorAnalytics(ctx context.Context, req types.MarketplaceQueryRequest) (*types.MarketplaceQueryResponse, error) {
+	if req.VendorStoreID == "" {
 		return nil, pkgerrors.New(pkgerrors.CodeValidation, "vendor store id required")
 	}
-	if end.Before(start) {
+	if req.End.Before(req.Start) {
 		return nil, pkgerrors.New(pkgerrors.CodeValidation, "invalid time range")
 	}
 
-	params := queryParameters(vendorStoreID, start, end)
+	params := queryParameters(req)
 
 	kpis, err := s.fetchKPIs(ctx, params)
 	if err != nil {
@@ -84,21 +62,21 @@ func (s *service) VendorAnalytics(ctx context.Context, vendorStoreID string, sta
 		return nil, err
 	}
 
-	return &VendorAnalyticsResult{
+	return &types.MarketplaceQueryResponse{
 		KPIs:   kpis,
 		Series: series,
 	}, nil
 }
 
-func queryParameters(vendorStoreID string, start, end time.Time) []cloudbigquery.QueryParameter {
+func queryParameters(req types.MarketplaceQueryRequest) []cloudbigquery.QueryParameter {
 	return []cloudbigquery.QueryParameter{
-		{Name: "vendorStoreID", Value: vendorStoreID},
-		{Name: "start", Value: start},
-		{Name: "end", Value: end},
+		{Name: "vendorStoreID", Value: req.VendorStoreID},
+		{Name: "start", Value: req.Start},
+		{Name: "end", Value: req.End},
 	}
 }
 
-func (s *service) fetchKPIs(ctx context.Context, params []cloudbigquery.QueryParameter) (VendorKPIs, error) {
+func (s *service) fetchKPIs(ctx context.Context, params []cloudbigquery.QueryParameter) (types.MarketplaceKPIs, error) {
 	const sql = `
 WITH base AS (
   SELECT
@@ -118,7 +96,7 @@ FROM base
 `
 	iter, err := s.client.Query(ctx, fmt.Sprintf(sql, s.tableRef), params)
 	if err != nil {
-		return VendorKPIs{}, fmt.Errorf("kpi query failed: %w", err)
+		return types.MarketplaceKPIs{}, fmt.Errorf("kpi query failed: %w", err)
 	}
 
 	var row struct {
@@ -129,12 +107,12 @@ FROM base
 	}
 	if err := iter.Next(&row); err != nil {
 		if err == iterator.Done {
-			return VendorKPIs{}, nil
+			return types.MarketplaceKPIs{}, nil
 		}
-		return VendorKPIs{}, fmt.Errorf("reading kpi row: %w", err)
+		return types.MarketplaceKPIs{}, fmt.Errorf("reading kpi row: %w", err)
 	}
 
-	return VendorKPIs{
+	return types.MarketplaceKPIs{
 		Orders:             row.Orders,
 		RevenueCents:       int64Value(row.RevenueCents),
 		AOVCents:           float64Value(row.AOVCents),
@@ -142,7 +120,7 @@ FROM base
 	}, nil
 }
 
-func (s *service) fetchSeries(ctx context.Context, params []cloudbigquery.QueryParameter) ([]VendorSeriesPoint, error) {
+func (s *service) fetchSeries(ctx context.Context, params []cloudbigquery.QueryParameter) ([]types.MarketplaceSeriesPoint, error) {
 	const sql = `
 SELECT
   DATE_TRUNC(occurred_at, DAY) AS day,
@@ -160,7 +138,7 @@ ORDER BY day ASC
 		return nil, fmt.Errorf("series query failed: %w", err)
 	}
 
-	var points []VendorSeriesPoint
+	var points []types.MarketplaceSeriesPoint
 	for {
 		var row struct {
 			Day                cloudbigquery.NullDate  `bigquery:"day"`
@@ -179,7 +157,7 @@ ORDER BY day ASC
 		if row.Day.Valid {
 			date = row.Day.Date.String()
 		}
-		points = append(points, VendorSeriesPoint{
+		points = append(points, types.MarketplaceSeriesPoint{
 			Date:               date,
 			Orders:             row.Orders,
 			RevenueCents:       int64Value(row.RevenueCents),

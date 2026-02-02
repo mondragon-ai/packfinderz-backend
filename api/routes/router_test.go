@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/angelmondragon/packfinderz-backend/internal/analytics"
+	"github.com/angelmondragon/packfinderz-backend/internal/analytics/types"
 	"github.com/angelmondragon/packfinderz-backend/internal/auth"
 	"github.com/angelmondragon/packfinderz-backend/internal/cart"
 	"github.com/angelmondragon/packfinderz-backend/internal/checkout"
@@ -132,21 +132,15 @@ func (s stubStoreService) Update(ctx context.Context, userID uuid.UUID, storeID 
 }
 
 type stubAnalyticsService struct {
-	last struct {
-		vendorStoreID string
-		start         time.Time
-		end           time.Time
-	}
-	response *analytics.VendorAnalyticsResult
+	last     types.MarketplaceQueryRequest
+	response *types.MarketplaceQueryResponse
 	err      error
 }
 
-func (s *stubAnalyticsService) VendorAnalytics(ctx context.Context, vendorStoreID string, start, end time.Time) (*analytics.VendorAnalyticsResult, error) {
-	s.last.vendorStoreID = vendorStoreID
-	s.last.start = start
-	s.last.end = end
+func (s *stubAnalyticsService) VendorAnalytics(ctx context.Context, req types.MarketplaceQueryRequest) (*types.MarketplaceQueryResponse, error) {
+	s.last = req
 	if s.response == nil {
-		s.response = &analytics.VendorAnalyticsResult{}
+		s.response = &types.MarketplaceQueryResponse{}
 	}
 	return s.response, s.err
 }
