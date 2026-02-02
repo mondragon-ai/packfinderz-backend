@@ -275,7 +275,7 @@ Re-running the migration is safe because the statements use `CREATE EXTENSION IF
 * Last-click attribution (30d)
 * BigQuery used for analytics only
 * Canonical analytics DTOs (envelope, marketplace/ad rows, query requests/responses) live under `internal/analytics/types` while event enums live in `pkg/enums/analytics_event_type.go`/`pkg/enums/ad_event_fact_type.go`.
-* Vendors can query KPIs/time-series via `GET /api/v1/vendor/analytics`, which runs parameterized BigQuery queries (presets 7d/30d/90d or custom `from`/`to`) against `marketplace_events` and returns the canonical success envelope scoped to `activeStoreId`.
+* Vendors and buyers can query KPIs/time-series via `GET /api/v1/vendor/analytics` (vendor-only route) or the new `GET /api/v1/analytics/marketplace` endpoint, both of which run parameterized BigQuery queries (presets 7d/30d/90d or custom `from`/`to`) against `marketplace_events` and return the canonical success envelope scoped to `activeStoreId`.
 * Analytics ingestion uses `cmd/analytics-worker` powered by `PACKFINDERZ_PUBSUB_ANALYTICS_TOPIC`/`PACKFINDERZ_PUBSUB_ANALYTICS_SUBSCRIPTION`; the worker decodes the canonical analytics envelope and writes the `pf:evt:processed:analytics:<event_id>` guard via `PACKFINDERZ_EVENTING_IDEMPOTENCY_TTL`.
 * Vendor subscription lifecycle is handled through `POST /api/v1/vendor/subscriptions` (create, idempotent), `POST /api/v1/vendor/subscriptions/cancel` (idempotent), and `GET /api/v1/vendor/subscriptions` (fetch the single active subscription or `null`). The POSTs require an `Idempotency-Key` and Stripe customer/payment method IDs; the API mirrors Stripe state into the local `subscriptions` table and flips `stores.subscription_active`.
 

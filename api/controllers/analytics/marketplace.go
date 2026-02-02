@@ -7,12 +7,11 @@ import (
 	"github.com/angelmondragon/packfinderz-backend/api/responses"
 	"github.com/angelmondragon/packfinderz-backend/internal/analytics"
 	"github.com/angelmondragon/packfinderz-backend/internal/analytics/types"
-	"github.com/angelmondragon/packfinderz-backend/pkg/enums"
 	pkgerrors "github.com/angelmondragon/packfinderz-backend/pkg/errors"
 	"github.com/angelmondragon/packfinderz-backend/pkg/logger"
 )
 
-func VendorAnalytics(service analytics.Service, logg *logger.Logger) http.HandlerFunc {
+func MarketplaceAnalytics(service analytics.Service, logg *logger.Logger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 		storeID := middleware.StoreIDFromContext(ctx)
@@ -22,8 +21,8 @@ func VendorAnalytics(service analytics.Service, logg *logger.Logger) http.Handle
 		}
 
 		storeType, ok := middleware.StoreTypeFromContext(ctx)
-		if !ok || storeType != enums.StoreTypeVendor {
-			responses.WriteError(ctx, logg, w, pkgerrors.New(pkgerrors.CodeForbidden, "vendor access required"))
+		if !ok || !storeType.IsValid() {
+			responses.WriteError(ctx, logg, w, pkgerrors.New(pkgerrors.CodeForbidden, "store context required"))
 			return
 		}
 
@@ -35,10 +34,11 @@ func VendorAnalytics(service analytics.Service, logg *logger.Logger) http.Handle
 
 		req := types.MarketplaceQueryRequest{
 			StoreID:   storeID,
-			StoreType: enums.StoreTypeVendor,
+			StoreType: storeType,
 			Start:     start,
 			End:       end,
 		}
+
 		result, err := service.Query(ctx, req)
 		if err != nil {
 			responses.WriteError(ctx, logg, w, err)

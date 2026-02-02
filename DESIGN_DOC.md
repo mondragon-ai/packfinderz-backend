@@ -2269,11 +2269,19 @@ Headers:
 
 ---
 
-### 5.14 Analytics (vendor only)
+### 5.14 Analytics (marketplace)
 
 **Get vendor analytics**
 
 * `GET /api/v1/vendor/analytics`
+
+  * Query: `from`, `to`, optional `granularity`, preset alias supported.
+  * Success: `200`
+  * Errors: `401, 403, 422`
+
+**Get marketplace analytics**
+
+* `GET /api/v1/analytics/marketplace`
 
   * Query: `from`, `to`, optional `granularity`, preset alias supported.
   * Success: `200`

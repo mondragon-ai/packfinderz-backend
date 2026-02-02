@@ -11,8 +11,8 @@ import (
 
 // Service provides analytics reports based on marketplace events.
 type Service interface {
-	// VendorAnalytics returns marketplace KPIs for the provided request.
-	VendorAnalytics(ctx context.Context, req types.MarketplaceQueryRequest) (*types.MarketplaceQueryResponse, error)
+	// Query returns marketplace KPIs for the provided request.
+	Query(ctx context.Context, req types.MarketplaceQueryRequest) (*types.MarketplaceQueryResponse, error)
 }
 
 type service struct {
@@ -33,6 +33,6 @@ func NewService(client *bigquery.Client, project, dataset, table string) (Servic
 	return &service{marketplace: marketplace}, nil
 }
 
-func (s *service) VendorAnalytics(ctx context.Context, req types.MarketplaceQueryRequest) (*types.MarketplaceQueryResponse, error) {
+func (s *service) Query(ctx context.Context, req types.MarketplaceQueryRequest) (*types.MarketplaceQueryResponse, error) {
 	return s.marketplace.Query(ctx, req)
 }
