@@ -293,6 +293,8 @@ Emitted after checkout commit. One event per `VendorOrder`.
 * long-running
 * subscribes to `analytics-sub`
 
+> `cmd/analytics-worker` is the canonical analytics ingestion service; it points at `PACKFINDERZ_PUBSUB_ANALYTICS_SUBSCRIPTION`, decodes the canonical envelope described above, and relies on `PACKFINDERZ_EVENTING_IDEMPOTENCY_TTL` plus `pkg/outbox/idempotency.Manager` so duplicates are skipped before any handler runs.
+
 ### 8.2 Responsibilities
 
 * Deserialize envelope

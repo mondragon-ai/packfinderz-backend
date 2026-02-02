@@ -260,6 +260,7 @@ Re-running the migration is safe because the statements use `CREATE EXTENSION IF
 * Worker publishes to Pub/Sub and consumers use `pkg/eventing/idempotency.Manager` to enforce `pf:evt:processed:<consumer>:<event_id>` keys before executing side effects.
 * Consumers **must be idempotent**; the TTL for idempotency keys is configurable via `PACKFINDERZ_EVENTING_IDEMPOTENCY_TTL` (default `720h`).
 * License decisions emit `license_status_changed` events and the worker subscribes via `PACKFINDERZ_PUBSUB_DOMAIN_SUBSCRIPTION` so the compliance consumer can notify stores (verified/rejected) and admins (pending review) while honoring Redis idempotency.
+* `cmd/analytics-worker` listens on `PACKFINDERZ_PUBSUB_ANALYTICS_SUBSCRIPTION`, deserializes the canonical analytics envelope, and gates duplicates with `pkg/outbox/idempotency.Manager` before routing to the analytics handlers.
 
 ### Ads & Analytics
 
@@ -271,6 +272,7 @@ Re-running the migration is safe because the statements use `CREATE EXTENSION IF
 * BigQuery used for analytics only
 * Canonical analytics DTOs (envelope, marketplace/ad rows, query requests/responses) live under `internal/analytics/types` while event enums live in `pkg/enums/analytics_event_type.go`/`pkg/enums/ad_event_fact_type.go`.
 * Vendors can query KPIs/time-series via `GET /api/v1/vendor/analytics`, which runs parameterized BigQuery queries (presets 7d/30d/90d or custom `from`/`to`) against `marketplace_events` and returns the canonical success envelope scoped to `activeStoreId`.
+* Analytics ingestion uses `cmd/analytics-worker` powered by `PACKFINDERZ_PUBSUB_ANALYTICS_TOPIC`/`PACKFINDERZ_PUBSUB_ANALYTICS_SUBSCRIPTION`; the worker decodes the canonical analytics envelope and writes the `pf:evt:processed:analytics:<event_id>` guard via `PACKFINDERZ_EVENTING_IDEMPOTENCY_TTL`.
 * Vendor subscription lifecycle is handled through `POST /api/v1/vendor/subscriptions` (create, idempotent), `POST /api/v1/vendor/subscriptions/cancel` (idempotent), and `GET /api/v1/vendor/subscriptions` (fetch the single active subscription or `null`). The POSTs require an `Idempotency-Key` and Stripe customer/payment method IDs; the API mirrors Stripe state into the local `subscriptions` table and flips `stores.subscription_active`.
 
 ---
@@ -569,6 +571,11 @@ These knobs control the publisher worker that reads `outbox_events` and pushes d
 * `PACKFINDERZ_OUTBOX_MAX_ATTEMPTS` (default `10`) – stop claiming rows once they hit this attempt count so failing rows can be audited.
 * `PACKFINDERZ_PUBSUB_DOMAIN_TOPIC` (default `pf-domain-events`) – the Pub/Sub topic that the worker publishes to; events flow through this topic plus the `event_type` attribute.
 * `PACKFINDERZ_PUBSUB_DOMAIN_SUBSCRIPTION` (required) – the subscription the worker listens to for domain events such as `license_status_changed`.
+
+### Analytics Worker
+
+* `PACKFINDERZ_PUBSUB_ANALYTICS_TOPIC` (required) – the Pub/Sub topic that feeds analytics events into the pipeline.
+* `PACKFINDERZ_PUBSUB_ANALYTICS_SUBSCRIPTION` (required) – the subscription consumed by `cmd/analytics-worker` which decodes the canonical envelope and honors the `pf:evt:processed:analytics:<event_id>` guard.
 
 ### Auth Rate Limiting
 

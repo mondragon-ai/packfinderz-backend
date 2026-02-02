@@ -84,6 +84,7 @@ func subscriptionNames(cfg config.PubSubConfig) []string {
 		cfg.OrdersSubscription,
 		cfg.BillingSubscription,
 		cfg.NotificationSubscription,
+		cfg.AnalyticsSubscription,
 	} {
 		if trimmed := strings.TrimSpace(name); trimmed != "" {
 			names = append(names, trimmed)
@@ -148,6 +149,11 @@ func (c *Client) BillingSubscription() *pubsub.Subscriber {
 // NotificationSubscription returns the configured domain subscription handle.
 func (c *Client) NotificationSubscription() *pubsub.Subscriber {
 	return c.Subscription(c.cfg.NotificationSubscription)
+}
+
+// AnalyticsSubscription returns the configured analytics subscription handle.
+func (c *Client) AnalyticsSubscription() *pubsub.Subscriber {
+	return c.Subscription(c.cfg.AnalyticsSubscription)
 }
 
 // Publisher returns a publisher handle for the given topic ID/resource name.
