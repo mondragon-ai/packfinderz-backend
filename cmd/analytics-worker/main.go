@@ -10,8 +10,9 @@ import (
 	"github.com/joho/godotenv"
 
 	"github.com/angelmondragon/packfinderz-backend/internal/analytics/router"
-	"github.com/angelmondragon/packfinderz-backend/internal/analytics/types"
 	"github.com/angelmondragon/packfinderz-backend/internal/analytics/worker"
+	"github.com/angelmondragon/packfinderz-backend/internal/analytics/writer"
+	"github.com/angelmondragon/packfinderz-backend/pkg/bigquery"
 	"github.com/angelmondragon/packfinderz-backend/pkg/config"
 	"github.com/angelmondragon/packfinderz-backend/pkg/logger"
 	"github.com/angelmondragon/packfinderz-backend/pkg/outbox/idempotency"
@@ -52,6 +53,14 @@ func main() {
 		}
 	}()
 
+	bqClient, err := bigquery.NewClient(context.Background(), cfg.GCP, cfg.BigQuery, logg)
+	requireResource(ctx, logg, "bigquery client", err)
+	defer func() {
+		if err := bqClient.Close(); err != nil {
+			logg.Error(ctx, "failed to close bigquery client", err)
+		}
+	}()
+
 	subscription := pubsubClient.AnalyticsSubscription()
 	if subscription == nil {
 		requireResource(ctx, logg, "analytics subscription", errors.New("subscription not configured"))
@@ -60,7 +69,14 @@ func main() {
 	manager, err := idempotency.NewManager(redisClient, cfg.Eventing.OutboxIdempotencyTTL)
 	requireResource(ctx, logg, "idempotency manager", err)
 
-	routingHandler, err := router.NewRouter(noopWriter{}, logg, nil)
+	writerConfig := writer.Config{
+		MarketplaceTable: cfg.BigQuery.MarketplaceEventsTable,
+		AdEventTable:     cfg.BigQuery.AdEventsTable,
+	}
+	analyticsWriter, err := writer.New(bqClient, writerConfig)
+	requireResource(ctx, logg, "analytics bigquery writer", err)
+
+	routingHandler, err := router.NewRouter(analyticsWriter, logg, nil)
 	requireResource(ctx, logg, "analytics router", err)
 
 	service, err := worker.NewService(subscription, routingHandler, manager, logg)
@@ -86,14 +102,4 @@ func requireResource(ctx context.Context, logg *logger.Logger, resource string, 
 	}
 	logg.Error(ctx, fmt.Sprintf("resource not working: %s", resource), err)
 	os.Exit(1)
-}
-
-type noopWriter struct{}
-
-func (noopWriter) InsertMarketplace(ctx context.Context, row types.MarketplaceEventRow) error {
-	return nil
-}
-
-func (noopWriter) InsertAdFact(ctx context.Context, row types.AdEventFactRow) error {
-	return nil
 }
