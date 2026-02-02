@@ -136,7 +136,6 @@ func NewRouter(
 				r.Post("/products", controllers.VendorCreateProduct(productService, logg))
 				r.Patch("/products/{productId}", controllers.VendorUpdateProduct(productService, logg))
 				r.Delete("/products/{productId}", controllers.VendorDeleteProduct(productService, logg))
-				r.Get("/analytics", analysiscontrollers.VendorAnalytics(analyticsService, logg))
 				r.Get("/billing/charges", billingcontrollers.VendorBillingCharges(billingService, logg))
 				r.Post("/orders/{orderId}/decision", ordercontrollers.VendorOrderDecision(ordersSvc, logg))
 				r.Post("/orders/{orderId}/line-items/decision", ordercontrollers.VendorLineItemDecision(ordersSvc, logg))
