@@ -9,6 +9,7 @@ import (
 	"time"
 
 	gcppubsub "cloud.google.com/go/pubsub/v2"
+	"github.com/angelmondragon/packfinderz-backend/internal/analytics/router"
 	"github.com/angelmondragon/packfinderz-backend/internal/analytics/types"
 	"github.com/angelmondragon/packfinderz-backend/pkg/enums"
 	"github.com/angelmondragon/packfinderz-backend/pkg/logger"
@@ -122,6 +123,10 @@ func (s *Service) process(ctx context.Context, msg *gcppubsub.Message) processRe
 	}
 
 	if err := s.handler.Handle(logCtx, *envelope); err != nil {
+		if errors.Is(err, router.ErrUnsupportedEventType) {
+			s.logg.Info(logCtx, "unsupported analytics event")
+			return processResult{}
+		}
 		s.logg.Error(logCtx, "handler error", err)
 		_ = s.manager.Delete(logCtx, analyticsConsumerName, eventID)
 		return processResult{nack: true}

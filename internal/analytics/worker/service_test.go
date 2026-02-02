@@ -8,6 +8,7 @@ import (
 	"time"
 
 	gcppubsub "cloud.google.com/go/pubsub/v2"
+	"github.com/angelmondragon/packfinderz-backend/internal/analytics/router"
 	"github.com/angelmondragon/packfinderz-backend/internal/analytics/types"
 	"github.com/angelmondragon/packfinderz-backend/pkg/enums"
 	"github.com/angelmondragon/packfinderz-backend/pkg/logger"
@@ -100,6 +101,21 @@ func TestProcessInvalidEnvelope(t *testing.T) {
 	}
 	if len(manager.checked) != 0 {
 		t.Fatalf("idempotency manager should not be touched")
+	}
+}
+
+func TestProcessUnsupportedEvent(t *testing.T) {
+	manager := &stubManager{}
+	handler := &stubHandler{err: router.ErrUnsupportedEventType}
+	svc := newTestServiceWithDeps(t, handler, manager)
+
+	msg := buildAnalyticsMessage(t)
+	res := svc.process(context.Background(), msg)
+	if res.nack {
+		t.Fatalf("unsupported event should ack")
+	}
+	if len(manager.deleted) != 0 {
+		t.Fatalf("idempotency delete should not run")
 	}
 }
 
