@@ -15,7 +15,6 @@ import (
 	pkgerrors "github.com/angelmondragon/packfinderz-backend/pkg/errors"
 	"github.com/angelmondragon/packfinderz-backend/pkg/security"
 	"github.com/angelmondragon/packfinderz-backend/pkg/types"
-	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
 
@@ -124,10 +123,6 @@ func (s *registerService) Register(ctx context.Context, req RegisterRequest) err
 			enums.MembershipStatusActive,
 		); err != nil {
 			return pkgerrors.Wrap(pkgerrors.CodeInternal, err, "create membership")
-		}
-
-		if err := userRepo.UpdateStoreIDs(ctx, user.ID, []uuid.UUID{store.ID}); err != nil {
-			return pkgerrors.Wrap(pkgerrors.CodeInternal, err, "associate store with user")
 		}
 
 		return nil

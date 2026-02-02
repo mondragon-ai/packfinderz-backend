@@ -679,6 +679,7 @@ Redis-backed refresh sessions.
 ### `internal/auth`
 
 * `internal/auth.Service.Login` pairs membership data with `users.system_role`, lets system agents mint tokens with `role=agent` even without store records, and keeps `/api/v1/agent/*` guarded by `RequireRole("agent")` (internal/auth/service.go).
+* PF-198 removed the `users.store_ids` array so the service now relies entirely on the `store_memberships` table to resolve which stores a user can act on.
 * `api/middleware.Auth` parses the JWT via `pkg/auth.ParseAccessToken`, verifies the refresh session via `session.AccessSessionChecker.HasSession`, and seeds context with `user_id`, `role`, plus optional `store_id`/`store_type` so `middleware.RequireRole("agent")`/`("admin")` can block unauthorized routes even when `activeStoreId` is nil (api/middleware/auth.go:23-80; api/middleware/roles.go:1-27).
 
 ### `internal/analytics`

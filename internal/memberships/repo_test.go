@@ -52,7 +52,6 @@ func TestRepositoryMembershipFlow(t *testing.T) {
 		FirstName:    "Test",
 		LastName:     "Member",
 		IsActive:     true,
-		StoreIDs:     []uuid.UUID{},
 	}
 	if err := tx.Create(user).Error; err != nil {
 		t.Fatalf("create user: %v", err)

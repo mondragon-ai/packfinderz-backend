@@ -21,7 +21,6 @@ func mustCreateTestUser(t *testing.T, tx *gorm.DB) *models.User {
 		FirstName:    "Repo",
 		LastName:     "Tester",
 		IsActive:     true,
-		StoreIDs:     []uuid.UUID{},
 	}
 	if err := tx.Create(user).Error; err != nil {
 		t.Fatalf("create user: %v", err)

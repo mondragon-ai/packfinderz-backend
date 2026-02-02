@@ -285,7 +285,7 @@ Re-running the migration is safe because the statements use `CREATE EXTENSION IF
 
 ### Postgres (Authoritative)
 
-* Stores, users, memberships (store_memberships join + member_role/membership_status enums)
+- Stores, users, memberships (store_memberships join + member_role/membership_status enums). Store relationships now resolve exclusively through `store_memberships` since PF-198 removed the legacy `users.store_ids` array.
 * Products + `product_media` attachments (category/classification/unit/flavors/feelings/usage enums govern vendor listings)
 * Volume discounts (`product_volume_discounts`) for deterministic tiered pricing per product
 * Inventory (`inventory_items` tracks available/reserved counts per product), orders

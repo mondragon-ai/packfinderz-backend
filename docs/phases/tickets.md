@@ -219,11 +219,11 @@
 * **Phase 1 — Auth & Contract Hardening**
   **Goal:** Close auth gaps, remove deprecated behaviors, and lock contracts with tests.
 
-  * [ ] Ticket [PF-200]: Add "names" field to the agent registration DTO
-  * [ ] Ticket [PF-201]: Add auth middleware tests (missing/expired token, revoked session, missing activeStoreId)
-  * [ ] Ticket [PF-202]: Add RBAC guard tests for `/api/admin/*` and `/api/v1/agent/*`
-  * [ ] Ticket [PF-203]: Remove store IDs from User model/object (Goose migration + models + helpers)
-  * [ ] Ticket [PF-204]: Remove access + refresh token from login/register response bodies; return only via headers
+  * [x] Ticket [PF-195]: Add "names" field to the agent registration DTO
+  * [x] Ticket [PF-196]: Add auth middleware tests (missing/expired token, revoked session, missing activeStoreId)
+  * [x] Ticket [PF-197]: Add RBAC guard tests for `/api/admin/*` and `/api/v1/agent/*`
+  * [x] Ticket [PF-198]: Remove store IDs from User model/object (Goose migration + models + helpers)
+  * [ ] Ticket [PF-199]: Remove access + refresh token from login/register response bodies; return only via headers
   * [ ] Ticket [PF-205]: Modify register flow to allow creating a store when user already exists (user can own 0..N stores)
 
 * **Phase 2 — Media System Correctness + Lifecycle Jobs**
@@ -295,7 +295,7 @@
 
   * [ ] Ticket [PF-246]: Implement vendor fulfill endpoint (`POST /api/v1/vendor/orders/{orderId}/fulfill`) idempotently
   * [ ] Ticket [PF-247]: Transition fulfilled orders into hold/ready-for-dispatch semantics when all items in the order are no longer pending & then Emit outbox event `order_ready_for_dispatch` on fulfillment
-  
+
   * [ ] Ticket [PF-249]: Implement agent cash-collected endpoint (`POST /api/v1/agent/orders/{orderId}/cash-collected`)
   * [ ] Ticket [PF-250]: Append `ledger_events(cash_collected)` during cash-collected flow
   * [ ] Ticket [PF-251]: Set `payment_intents.status=settled` + `cash_collected_at`
