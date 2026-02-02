@@ -50,25 +50,44 @@ func main() {
 
 	dbClient, err := db.New(context.Background(), cfg.DB, logg)
 	requireResource(ctx, logg, "database", err)
-	defer dbClient.Close()
-
+	defer func() {
+		if err := dbClient.Close(); err != nil {
+			logg.Error(ctx, "failed to close database client", err)
+		}
+	}()
 	requireResource(ctx, logg, "migrations", migrate.MaybeRunDev(context.Background(), cfg, logg, dbClient))
 
 	redisClient, err := redis.New(context.Background(), cfg.Redis, logg)
 	requireResource(ctx, logg, "redis", err)
-	defer redisClient.Close()
+	defer func() {
+		if err := redisClient.Close(); err != nil {
+			logg.Error(ctx, "failed to close redis client", err)
+		}
+	}()
 
 	pubsubClient, err := pubsub.NewClient(context.Background(), cfg.GCP, cfg.PubSub, logg)
 	requireResource(ctx, logg, "pubsub", err)
-	defer pubsubClient.Close()
+	defer func() {
+		if err := pubsubClient.Close(); err != nil {
+			logg.Error(ctx, "failed to close pubsub client", err)
+		}
+	}()
 
 	gcsClient, err := gcs.NewClient(context.Background(), cfg.GCS, cfg.GCP, logg)
 	requireResource(ctx, logg, "gcs", err)
-	defer gcsClient.Close()
+	defer func() {
+		if err := gcsClient.Close(); err != nil {
+			logg.Error(ctx, "failed to close gcs client", err)
+		}
+	}()
 
 	bqClient, err := bigquery.NewClient(context.Background(), cfg.GCP, cfg.BigQuery, logg)
 	requireResource(ctx, logg, "bigquery", err)
-	defer bqClient.Close()
+	defer func() {
+		if err := bqClient.Close(); err != nil {
+			logg.Error(ctx, "failed to close bigquery client", err)
+		}
+	}()
 
 	mediaRepo := media.NewRepository(dbClient.DB())
 	mediaConsumer, err := consumer.NewConsumer(mediaRepo, pubsubClient.MediaSubscription(), logg)
