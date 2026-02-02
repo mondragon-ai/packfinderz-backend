@@ -344,6 +344,8 @@ Marketplace events (BigQuery):
 
 > `order_paid` and `cash_collected` handlers append `marketplace_events` rows with the revenue cents plus the canonical `occurred_at`, giving the query service explicit `event_type` rows for paid/cash revenue series instead of depending on publish timestamps.
 
+> `order_canceled`/`order_expired` handlers append termination rows (with cancellation reason or TTL metadata in the payload) so revenue KPIs can safely ignore them while future “dropped orders” queries can consume the same append-only stream.
+
 > `internal/analytics/writer.BigQueryWriter` wraps `pkg/bigquery.Client`, enforces consistent `items`/`payload` JSON encoding via `EncodeJSON`, retries transient insert failures with bounded backoff, and optionally batches rows before committing them to `marketplace_events` and `ad_event_facts`.
 
 > Canonical analytics DTOs (Pub/Sub envelope, BigQuery rows, and query request/response types) live under `internal/analytics/types`, while the routed event enums are defined in `pkg/enums/analytics_event_type.go` and `pkg/enums/ad_event_fact_type.go`.

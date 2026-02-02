@@ -29,6 +29,24 @@ func (h *orderExpiredHandler) Handle(ctx context.Context, envelope types.Envelop
 		"expired_at": event.ExpiredAt,
 	}
 	logCtx := h.logg.WithFields(ctx, fields)
-	h.logg.Info(logCtx, "order_expired handler stub")
+	row, err := buildTerminationRow(
+		envelope,
+		event.ExpiredAt,
+		event.OrderID.String(),
+		event.BuyerStoreID.String(),
+		event.VendorStoreID.String(),
+		event,
+	)
+	if err != nil {
+		h.logg.Error(logCtx, "failed to build termination row", err)
+		return err
+	}
+
+	if err := h.writer.InsertMarketplace(logCtx, row); err != nil {
+		h.logg.Error(logCtx, "failed to insert marketplace row", err)
+		return err
+	}
+
+	h.logg.Info(logCtx, "order_expired handler inserted marketplace row")
 	return nil
 }

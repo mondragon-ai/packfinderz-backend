@@ -29,6 +29,24 @@ func (h *orderCanceledHandler) Handle(ctx context.Context, envelope types.Envelo
 		"vendor_store": event.VendorStoreID,
 	}
 	logCtx := h.logg.WithFields(ctx, fields)
-	h.logg.Info(logCtx, "order_canceled handler stub")
+	row, err := buildTerminationRow(
+		envelope,
+		event.CanceledAt,
+		event.OrderID.String(),
+		event.BuyerStoreID.String(),
+		event.VendorStoreID.String(),
+		event,
+	)
+	if err != nil {
+		h.logg.Error(logCtx, "failed to build termination row", err)
+		return err
+	}
+
+	if err := h.writer.InsertMarketplace(logCtx, row); err != nil {
+		h.logg.Error(logCtx, "failed to insert marketplace row", err)
+		return err
+	}
+
+	h.logg.Info(logCtx, "order_canceled handler inserted marketplace row")
 	return nil
 }

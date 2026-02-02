@@ -544,6 +544,7 @@ All enums implement:
 * Any payload or insert failure deletes the idempotency key so retries are allowed, and the handler logs via `pkg/logger`.
 * `cmd/analytics-worker` now wires an analytics service that decodes the canonical envelope, writes `pf:evt:processed:analytics:<event_id>` with `PACKFINDERZ_EVENTING_IDEMPOTENCY_TTL`, and routes to the handler stencil so duplicate Pub/Sub deliveries stay idempotent.
 * `internal/analytics/router` validates canonical `event_type` routing and decodes the typed payload before invoking each handler stub, keeping the BigQuery writer interface consistent across events.
+* `order_canceled`/`order_expired` handlers now emit termination rows with the payload-encoded reason/ttl metadata so revenue queries can automatically filter them out.
 
 ### `internal/cart`
 * `Repository` secures `CartRecord` + `CartItem` persistence by scoping every operation to the owning `buyer_store_id`.

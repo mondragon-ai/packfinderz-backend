@@ -41,6 +41,8 @@ type OrderCanceledEvent struct {
 	CheckoutGroupID uuid.UUID `json:"checkout_group_id"`
 	BuyerStoreID    uuid.UUID `json:"buyer_store_id"`
 	VendorStoreID   uuid.UUID `json:"vendor_store_id"`
+	CanceledAt      time.Time `json:"canceled_at"`
+	Reason          string    `json:"reason,omitempty"`
 }
 
 // NotificationRequestedEvent tells downstream systems to alert a vendor.
@@ -87,6 +89,7 @@ type OrderExpiredEvent struct {
 	BuyerStoreID    uuid.UUID `json:"buyerStoreId"`
 	VendorStoreID   uuid.UUID `json:"vendorStoreId"`
 	ExpiredAt       time.Time `json:"expiredAt"`
+	TTLDays         *int      `json:"ttl_days,omitempty"`
 }
 
 // LicenseExpiringSoonEvent describes the payload for the warning.
