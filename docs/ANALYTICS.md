@@ -444,6 +444,8 @@ Payload SHOULD include:
 | Top products/categories | same as revenue                                    |
 | Fulfillment analytics   | deferred                                           |
 
+> Revenue time series queries rely on the `event_type` column (`order_created`, `order_paid`, `cash_collected`) plus each row’s recorded `occurred_at` so the analytics worker can append the actual event timestamps rather than using publish time.
+
 > The helper `internal/analytics/RevenueTimestamp` encodes the `paid_at → cash_collected_at → fallback` rule so ingestion handlers always pick the right timestamp when multiple fields are available.
 
 ---
