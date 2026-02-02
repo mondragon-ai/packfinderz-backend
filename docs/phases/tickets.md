@@ -1,826 +1,664 @@
-**Source of truth used:**
+## Phase 0 — Repo, Infra, CI, Foundations
 
-* Your `git log --oneline`
-* Your locked Master Context + Architecture docs
+**Goal:** A deployable, observable, production-grade Go monolith + worker binaries.
 
-# PHASED IMPLEMENTATION — REALITY-BASED
-
----
-
-## **Phase 0 — Repo, Infra, CI, Foundations** ✅ DONE
-
-**Goal:** A deployable, observable, production-grade Go monolith + workers
-
-**Completed (from commits):**
-
-* [x] Repo initialization & layout (`cmd/api`, `cmd/worker`, `pkg`, `internal`)
-* [x] Config + env loading
-* [x] Structured JSON logger with request/job correlation
-* [x] Canonical error codes + API envelopes
-* [x] Chi router + middleware stack
-* [x] Standard request validation layer
-* [x] Postgres bootstrap (Cloud SQL + Heroku compatible)
-* [x] Redis bootstrap (sessions, rate limits, idempotency)
-* [x] Goose migrations runner + hybrid policy
-* [x] Dockerfile + Heroku Procfile (web + worker)
-* [x] GitHub Actions CI pipeline (lint, test, build)
-* [x] Worker bootstrap wiring (full dependency graph)
-
-➡️ **Phase is complete and locked.**
+* [x] Ticket: Initialize repo and standard Go monolith layout (`cmd/api`, `cmd/worker`, `pkg`, `internal`)
+* [x] Ticket: Implement config + env loading
+* [x] Ticket: Implement structured JSON logging with request/job correlation
+* [x] Ticket: Standardize API error codes + response envelopes
+* [x] Ticket: Wire Chi router + middleware stack
+* [x] Ticket: Implement standard request validation layer
+* [x] Ticket: Bootstrap Postgres for Cloud SQL + Heroku compatibility
+* [x] Ticket: Bootstrap Redis for sessions, rate limits, idempotency
+* [x] Ticket: Add Goose migrations runner + hybrid policy conventions
+* [x] Ticket: Add Dockerfile + Heroku Procfile (web + worker)
+* [x] Ticket: Add GitHub Actions CI (lint, test, build)
+* [x] Ticket: Wire worker bootstrap dependency graph
 
 ---
 
-## **Phase 1 — Identity, Auth, Tenancy, RBAC** ✅ DONE
+## Phase 1 — Identity, Auth, Tenancy, RBAC
 
-**Goal:** Secure multi-store authentication with session revocation
+**Goal:** Secure multi-store authentication with session revocation and role-based access.
 
-**Completed:**
-
-* [x] User model + Argon2id password hashing
-* [x] Store model with address shape
-* [x] Store membership model + role enum
-* [x] JWT minting + parsing (claims enforced)
-* [x] Refresh token storage + rotation (Redis)
-* [x] Login endpoint (email/password)
-* [x] Register endpoint (user + first store + owner)
-* [x] Logout + refresh endpoints
-* [x] Active store switching (JWT refresh)
-* [x] Login brute-force rate limiting
-* [x] Store profile read/update endpoints
-* [x] Store user list / invite / remove endpoints
-
-➡️ **Auth + tenancy is production-grade and DONE.**
-
-**REMAINING (small, real hardening):**
-
-* [ ] Remove/retire deprecated token parser (`api/validators/token.go`) everywhere (per doc note)
-* [ ] Add auth middleware tests: missing/expired token, revoked session, missing activeStoreId
-* [ ] Add RBAC guard tests for `/api/admin/*` and `/api/v1/agent/*`
+* [x] Ticket: Implement User model with Argon2id password hashing
+* [x] Ticket: Implement Store model with address shape
+* [x] Ticket: Implement StoreMembership model with role enum
+* [x] Ticket: Implement JWT minting/parsing with enforced claims
+* [x] Ticket: Implement refresh token storage + rotation in Redis
+* [x] Ticket: Implement login endpoint (email/password)
+* [x] Ticket: Implement register endpoint (user + first store + owner membership)
+* [x] Ticket: Implement logout + refresh endpoints
+* [x] Ticket: Implement active store switching via refresh/JWT
+* [x] Ticket: Implement login brute-force rate limiting (Redis)
+* [x] Ticket: Implement store profile read/update endpoints
+* [x] Ticket: Implement store user list/invite/remove endpoints
+* [x] Ticket: Implement admin auth model + storeless admin role
+* [x] Ticket: Implement admin login endpoint (storeless) + token issuance
+* [x] Ticket: Implement dev-only admin register endpoint
+* [ ] Ticket: Remove/retire deprecated token parser (`api/validators/token.go`) across codebase
+* [ ] Ticket: Add auth middleware tests (missing/expired token, revoked session, missing activeStoreId)
+* [ ] Ticket: Add RBAC guard tests for `/api/admin/*` and `/api/v1/agent/*`
 
 ---
 
-## **Phase 2 — Media System (Canonical, Enforced)** ✅ DONE
+## Phase 2 — Media System
 
-**Goal:** Single, reusable media pipeline for all domains
+**Goal:** Single, reusable media pipeline with safe delete semantics.
 
-**Completed:**
-
-* [x] Media table + enums + lifecycle states
-* [x] Canonical metadata persistence
-* [x] GCS client bootstrap (API + worker)
-* [x] Presigned PUT upload flow (create media row)
-* [x] Pub/Sub consumer for GCS `OBJECT_FINALIZE`
-* [x] Media status transitions (`pending → uploaded`)
-* [x] Media list endpoint (store-scoped, paginated)
-* [x] Media delete endpoint (reference-aware)
-* [x] Presigned READ URL generation (TTL-based)
-
-➡️ **Media is correctly centralized and enforced.**
-
-**REMAINING (only if you truly need it):**
-
-* [ ] Optional: add “delete_requested → deleted” async delete path (if you want delete to be worker-safe)
-* [ ] Add media lifecycle GC scheduler: stale `pending` rows cleanup (no GCS object)
+* [x] Ticket: Implement media table + enums + GORM model for upload lifecycle
+* [x] Ticket: Implement canonical media metadata persistence
+* [x] Ticket: Bootstrap GCS client (API + worker)
+* [x] Ticket: Implement presigned PUT upload flow (create media row + signed PUT)
+* [x] Ticket: Implement Pub/Sub consumer for GCS `OBJECT_FINALIZE` to mark uploaded
+* [x] Ticket: Implement presigned READ URL generation (TTL-based)
+* [x] Ticket: Implement media list endpoint (store-scoped, paginated)
+* [x] Ticket: Implement media delete endpoint (reference-aware)
+* [x] Ticket: Enforce protected attachment checks on media delete
+* [ ] Ticket: Implement async delete lifecycle (`delete_requested → deleted`) if needed
+* [ ] Ticket: Implement stale `pending` media GC scheduler (row exists, no GCS object)
 
 ---
 
-## **Phase 3 — Compliance & Licensing (OMMA Core)**  ✅ DONE
+## Phase 3 — Compliance & Licensing
 
-**Goal:** Store-level compliance gating via licenses
+**Goal:** Store-level compliance gating via licenses and lifecycle automation.
 
-**Completed:**
+* [x] Ticket: Add licenses schema + GORM model (media_id required)
+* [x] Ticket: Implement license create endpoint (atomic metadata + media_id)
+* [x] Ticket: Implement license list endpoint (store-scoped)
+* [x] Ticket: Implement admin approve/reject license endpoint
+* [x] Ticket: Implement license delete endpoint (expired-only semantics)
+* [x] Ticket: Mirror license status to store KYC/compliance status
+* [x] Ticket: Emit license status outbox events + compliance notifications
+* [x] Ticket: Implement license expiry scheduler (14-day warn + expire)
+* [x] Ticket: Wire license lifecycle cron jobs into cron worker
+* [x] Ticket: Implement license retention scheduler (hard-delete expired after 30d + detach media if unreferenced)
+* [x] Ticket: Implement admin license queue list endpoint (pending verification, paginated)
 
-* [x] License model + migration (media_id required)
-* [x] License create endpoint (atomic metadata + media_id)
-* [x] License list endpoint (store-scoped)
-
-**Remaining (not yet implemented):**
-
-* [x] License delete endpoint (status + attachment safety)
-* [x] Admin approve/reject license endpoint
-* [x] Mirror license status → store KYC status
-* [x] Emit license status outbox events
-* [x] License expiry scheduler (14-day warn, expire)
-* [x] Compliance notifications (store + admin)
-
-➡️ **Creation path is correct; enforcement + lifecycle remain.**
-
-
-**REMAINING (cleanup/ops polish):**
-
-* [ ] License retention scheduler: hard-delete expired licenses after 30d + detach media if unreferenced
-* [ ] Admin “license queue” list endpoint (pending verification, paginated)
-* [ ] Audit log rows for: admin verify/reject + scheduler expiry flip
+* [ ] Ticket: Add audit log rows for admin verify/reject + scheduler expiry flip
 
 ---
 
-## **Phase 4 — Async Backbone (Outbox Pattern)** ✅ DONE
+## Phase 4 — Async Backbone: Outbox + DLQ
 
-**Goal:** Reliable eventing for all side effects
+**Goal:** Reliable eventing for side effects with retry/DLQ support.
 
-**Completed:**
-
-* [x] OutboxEvent model + enums + migration
-* [x] Outbox DTOs, registry, repo, service
-* [x] Outbox publisher worker
-* [x] Redis-backed idempotency strategy (publisher + consumers)
-* [x] Local execution + system documentation
-
-➡️ **This is a major milestone. Fully implemented.**
-
-**REMAINING (safety):**
-
-* [ ] Outbox cleanup scheduler: delete published rows older than 30d
-* [ ] DLQ policy + max retry conventions (document + minimal implementation hooks)
+* [x] Ticket: Implement outbox table/enums/envelope + migration
+* [x] Ticket: Implement outbox DTOs/registry/repo/service + wiring
+* [x] Ticket: Implement Redis-backed idempotency strategy (publisher + consumers)
+* [x] Ticket: Implement outbox dispatcher worker binary
+* [x] Ticket: Implement typed event→topic routing registry + payload validation
+* [x] Ticket: Implement DLQ table + model + repository
+* [x] Ticket: Publish terminal failures to DLQ
+* [x] Ticket: Implement outbox retention cleanup job (>30d published)
+* [x] Ticket: Implement notifications retention cleanup job (>30d)
+* [ ] Ticket: Document and implement DLQ retry policy + MAX_ATTEMPTS conventions (minimal hooks)
+* [ ] Ticket: Create DLQ replay tooling/runbook (safe requeue + idempotency expectations)
 
 ---
 
-## **Phase 5 — Products, Inventory, Pricing** ⚠️ MOSTLY COMPLETE
+## Phase 5 — Products, Inventory, Pricing
 
-**Goal:** Vendor listings with inventory correctness
+**Goal:** Vendor listings with inventory correctness and marketplace visibility gating.
 
-**Planned tickets:**
-
-* [x] Product model + migrations (media_id required)
-* [x] Inventory model + migrations
-* [x] Volume discount model + migrations
-* [x] Vendor create product endpoint
-* [x] Vendor update product endpoint (media immutable)
-* [x] Vendor delete product endpoint
-* [x] MOQ validation (client + server)
-* [x] Vendor visibility gating (license + subscription)
-
-
-**REMAINING (what’s actually still missing):**
-
-* [ ] **Inventory set endpoint** (`PUT /api/v1/inventory/{productId}`): service + repo update, idempotency required
-* [ ] Inventory list endpoint (vendor-only): paginated list of inventory rows with product summary
-* [ ] Product audit logging:
-
-  * [ ] Audit action schema + helper (`pkg/audit` or `internal/audit`)
-  * [ ] Emit audit rows on product create/update/delete + inventory set
-
-**Small “vendor summary” ticket (from your note):**
-
-* [ ] Add `VendorSummary` shape returned in product browse/detail:
-
-  * [ ] Repo query joins `stores` + optional logo media attachment
-  * [ ] DTO includes `{vendor_store_id, vendor_name, logo_gcs_key?, logo_url?}`
+* [x] Ticket: Add products schema + GORM model + repos
+* [x] Ticket: Add inventory schema + GORM model + repos
+* [x] Ticket: Add volume discounts schema + GORM model + repos
+* [x] Ticket: Implement vendor create product endpoint
+* [x] Ticket: Implement vendor update product endpoint
+* [x] Ticket: Implement vendor delete product endpoint
+* [x] Ticket: Implement MOQ validation in product flows
+* [x] Ticket: Enforce visibility gating (license + subscription + state)
+* [x] Ticket: Patch product create route for discount type + migration alignment
+* [ ] Ticket: Implement inventory set endpoint (`PUT /api/v1/inventory/{productId}`) with idempotency
+* [ ] Ticket: Implement inventory list endpoint (vendor-only) with pagination + product summary
+* [ ] Ticket: Implement audit action schema/helper for product/inventory actions
+* [ ] Ticket: Emit audit rows on product create/update/delete + inventory set
+* [ ] Ticket: Add VendorSummary to product browse/detail (join stores + optional logo attachment)
 
 ---
 
-## **Phase 6 — Cart & Checkout** ✅ DONE
+## Phase 6 — Cart Quote Contract: Authoritative, Server-Computed
 
-**Goal:** Multi-vendor checkout with atomic reservation
+**Goal:** Server-authoritative cart quote persisted as auditable snapshot (pre-checkout).
 
-**Planned tickets:**
-
-* [X] CartRecord + CartItem models
-* [X] Cart upsert endpoint
-* [X] Cart fetch endpoint
-* [X] Checkout submission endpoint
-* [X] CheckoutGroup creation
-* [X] VendorOrder creation per vendor
-* [X] Atomic inventory reservation logic
-* [X] Partial checkout semantics
-* [X] Checkout idempotency enforcement
-* [X] Emit `order_created` outbox event
-
-**REMAINING**
-
-* [ ] Checkout response contract tests (partial vendor failures + line-level failures)
-* [ ] “Converted cart” behavior: enforce `cart_records.status=converted` and reject future cart upserts if desired
-
----
-
-## Phase 7 — Orders: Read APIs + Decisioning + Fulfillment + TTL
-
-**Goal:** Everything after checkout: order list/detail, accept/reject, fulfill, expire, retry
-
-### 7A) Read APIs
-
-* [X] Migrations (if any missing indexes): buyer/vendor list indexes + “needs action” composite index
-* [X] Repo: buyer orders list (filters + cursor pagination)
-* [X] Repo: vendor orders list (filters + cursor pagination)
-* [X] Repo: order detail (preload line items + payment intent)
-* [X] Controller/routes:
-
-  * [X] `GET /api/v1/orders` (buyer/vendor perspective)
-  * [X] `GET /api/v1/orders/{orderId}`
-
-### 7B) Vendor decision flows
-
-* [X] DTOs: order-level decision request/response
-* [X] Service: `POST /api/v1/vendor/orders/{orderId}/decision`
-
-  * [X] State transition validation
-  * [X] Set `accepted|rejected|partially_accepted` based on item outcomes
-  * [X] Recompute `balance_due_cents` after partial accept
-  * [X] Release inventory for rejected line items (reverse reserve)
-* [X] Service: `POST /api/v1/vendor/orders/{orderId}/line-items/decision`
-
-  * [X] Per-line accept/reject + recompute order status + balance due
-  * [X] Emit outbox events: `order_decided` (and line-level payload detail)
-
-### 7C) Fulfillment -> almsot handled automatically with the (`POST /api/v1/vendor/orders/{orderId}/line-items/decision`) ticket
-
-* [ ] Service: `POST /api/v1/vendor/orders/{orderId}/fulfill`
-
-  * [ ] Mark accepted items fulfilled (idempotent)
-  * [ ] Set order status to `fulfilled` then `hold` (hold_for_pickup semantics)
-  * [ ] Emit outbox: `order_ready_for_dispatch`
-
-### 7D) Buyer actions
-
-* [X] Service: `POST /api/v1/orders/{orderId}/cancel` (pre-transit only)
-
-  * [X] Release reserved inventory for all non-fulfilled items
-  * [X] Order status to `canceled`
-  * [X] Emit outbox: `order_canceled`
-* [X] Service: `POST /api/v1/orders/{orderId}/nudge` (writes notification event; later email)
-* [X] Service: `POST /api/v1/orders/{orderId}/retry` (only `expired`)
-
-  * [X] Create new CheckoutGroup attempt from prior order snapshot (or re-run checkout-like flow)
-
-### 7E) Reservation TTL scheduler (5d + nudge + 5d + expire)
-
-* [ ] Scheduler: find orders `created_pending` beyond TTL window
-* [ ] Scheduler: emit “nudge” event once + extend TTL marker
-* [ ] Scheduler: expire after second window → `expired_at`, status `expired`
-* [ ] Scheduler: release inventory reservations idempotently
-* [ ] Emit outbox: `order_expired`
+* [x] Ticket: Migrate cart schema to authoritative quote model (enums + cart_records/cart_items/cart_vendor_groups)
+* [x] Ticket: Update/add GORM models for cart quote schema (CartRecord/CartItem/CartVendorGroup + enums + JSONB typing)
+* [x] Ticket: Implement CartRecord repo upsert (active cart per buyer_store)
+* [x] Ticket: Implement CartItem repo replace-on-quote (delete+insert) with tx handle
+* [x] Ticket: Implement CartVendorGroup repo replace-on-quote with tx handle
+* [x] Ticket: Implement atomic transaction wrapper across record + items + vendor groups
+* [x] Ticket: Implement quote DTOs (`QuoteCartRequest`, `CartQuote`) and controller subfolder organization
+* [x] Ticket: Refactor controller/service to quote-based contract (replace legacy upsert entrypoint)
+* [x] Ticket: Remove client-supplied totals/pricing; quote becomes intent-only
+* [x] Ticket: Implement vendor preload + product fetch pipeline grouped by vendor_store_id
+* [x] Ticket: Implement qty normalization + item status/warnings (MOQ/max/availability/vendor mismatch)
+* [x] Ticket: Implement pricing + volume discount resolution and persist quote fields
+* [x] Ticket: Implement vendor group aggregation and persist cart_vendor_groups
+* [x] Ticket: Compute/persist cart totals + valid_until
+* [x] Ticket: Enforce quote-only invariant (no inventory mutation/reservation)
+* [x] Ticket: Validate vendor promo ownership + apply to vendor group totals
+* [x] Ticket: Emit vendor-level warnings for invalid promos (soft)
+* [x] Ticket: Wire `POST /cart` endpoint to DTOs/service with validation
+* [x] Ticket: Normalize HTTP semantics (hard errors vs soft warnings)
+* [ ] Ticket: Implement cart quote mapping helpers (DB ↔ domain ↔ DTO) with unit tests
+* [ ] Ticket: Implement header-based idempotency middleware for `POST /cart` (`Idempotency-Key`, scoped to buyer_store_id + endpoint)
+* [ ] Ticket: Implement cart attribution token pass-through (validate signature/expiry only, persist on cart_records, echo in CartQuote)
+* [ ] Ticket: Implement cart conversion readiness (active→converted state transition + generate/persist checkout_group_id at conversion)
+* [ ] Ticket: Add structured logs and metrics in quote service (counts, warnings, duration)
+* [ ] Ticket: Add rate limiting for `POST /cart`
+* [ ] Ticket: Add regression tests for quote invariants (MOQ clamp, vendor invalid/mismatch, invalid promo, no inventory mutation)
+* [ ] Ticket: Implement “converted cart” behavior guardrails (reject future quote-upserts if desired)
 
 ---
 
-## Phase 8 — Delivery & Agents (Internal Logistics)
+## Phase 7 — Checkout Refactor Safety Locks
 
-**Goal:** Agent queue + assignment + pickup/deliver + cash collection
+**Goal:** Make the refactor safe to land incrementally without half-old/half-new behavior.
 
-### 8A) Agent identity + gating
-
-* [X] Ensure `users.system_role=agent` path works end-to-end (seed agent user + login + middleware)
-* [X] Add `/api/v1/agent/*` route group controllers/tests
-
-### 8B) Assignment + queues
-
-* [X] Migration: `order_assignments` (if not already in DB)
-* [X] Repo/service: create assignment on “ready for dispatch” (random auto-assign MVP)
-* [X] Endpoint: `GET /api/v1/agent/orders/queue` (unassigned hold orders)
-* [X] Endpoint: `GET /api/v1/agent/orders` (my active assignments)
-
-### 8C) State transitions
-
-* [X] Endpoint: `POST /api/v1/agent/orders/{orderId}/pickup` → status `in_transit`
-* [X] Endpoint: `POST /api/v1/agent/orders/{orderId}/deliver` → status `delivered`
-* [ ] Endpoint: `POST /api/v1/agent/orders/{orderId}/cash-collected`
-
-  * [ ] Create `ledger_events(cash_collected)`
-  * [ ] Set `payment_intents.status=settled` + `cash_collected_at`
-  * [ ] Emit outbox: `cash_collected`
+* [ ] Ticket: Write `CHECKOUT_REFACTOR.md` sequencing locks (what lands first, what’s forbidden until later)
+* [ ] Ticket: Add feature flag/config guard for selecting new checkout flow entrypoint (if parallel flows exist)
+* [ ] Ticket: Commit grep checklist of all references to `checkout_groups` and `AttributedAdClickID`
 
 ---
 
-## Phase 9 — Ledger, Payouts, Admin Ops
+## Phase 8 — Checkout Schema Refactor: Drop `checkout_groups`
 
-**Goal:** Append-only finance correctness + admin payout confirmation
+**Goal:** Remove persisted checkout_groups aggregate while keeping `checkout_group_id` as UUID anchor.
 
-* [X] Migration: `ledger_events` (append-only) + required indexes
-* [X] Repo/service: append ledger event helpers (no updates)
-* [X] Admin endpoint: `GET /api/v1/admin/orders/payouts` & `GET /api/v1/admin/orders/payouts/{orderID}` (delivered + settled, unpaid)
-* [X] Admin endpoint: `POST /api/v1/admin/orders/{orderId}/confirm-payout`
-
-  * [X] Create `ledger_events(vendor_payout)`
-  * [X] Set `payment_intents.status=paid` + `vendor_paid_at`
-  * [X] Set order status `closed`
-  * [X] Emit outbox: `order_paid`
-* [ ] Optional secondary endpoint: vendor “confirm paid” (audited, doesn’t flip truth)
+* [x] Ticket: Add Goose migration to drop `checkout_groups` table
+* [x] Ticket: Remove FK constraints referencing `checkout_groups(id)` (e.g., vendor_orders.checkout_group_id FK)
+* [x] Ticket: Ensure `vendor_orders.checkout_group_id` is UUID column (no FK)
+* [x] Ticket: Ensure `cart_records.checkout_group_id` remains (nullable pre-conversion)
+* [x] Ticket: Add/ensure index `idx_vendor_orders_checkout_group_id`
+* [x] Ticket: Add/ensure index `idx_cart_records_checkout_group_id`
+* [ ] Ticket: Validate migration against existing DB snapshot and resolve orphaned constraint issues
 
 ---
 
-## Phase 10 — Notifications (In-app)
+## Phase 9 — Checkout Schema: Persist Checkout-Confirmed Fields on Cart
 
-**Goal:** In-app notifications without polling loops
+**Goal:** Cart becomes auditable pre/post checkout (confirmed selections persisted).
 
-* [X] Migration: `notifications` table + indexes (store_id, read_at, created_at)
-* [X] Repo/service: list notifications (cursor pagination + unread filter)
-* [X] Endpoint: `GET /api/v1/notifications`
-* [X] Endpoint: `POST /api/v1/notifications/{id}/read` (idempotent)
-* [X] Endpoint: `POST /api/v1/notifications/read-all` (idempotent)
-* [ ] Cleanup scheduler: delete notifications older than 30d
+* [x] Ticket: Add Goose migration for `cart_records.payment_method`
+* [x] Ticket: Add Goose migration for `cart_records.shipping_line` (jsonb or explicit fields)
+* [x] Ticket: Add Goose migration for `cart_records.converted_at`
+* [x] Ticket: Update GORM `models.CartRecord` with new fields
 
 ---
 
-## Phase 11 — Analytics (Marketplace via BigQuery)
+## Phase 10 — Checkout Schema: Persist Checkout Snapshot on Vendor Orders
 
-**Goal:** BigQuery ingestion + vendor/admin analytics endpoints
+**Goal:** Orders persist checkout snapshot so downstream reads don’t recompute.
 
-### 11A) BigQuery infra + schema
-
-* [X] Create dataset + tables (`marketplace_events`, `ad_events`) with partition/cluster rules (this may be code + gcloud CLI --- break up accordingly)
-* [X] `pkg/bigquery` client bootstrap + readiness checks (API/worker if needed)
-
-### 11B) Ingestion worker (outbox consumer) 
-
-* [X] Consumer: `order_created` → insert BigQuery row
-* [X] Consumer: `cash_collected` → insert BigQuery row
-* [X] Consumer: `order_paid` → insert BigQuery row
-* [X] Idempotency keys per consumer (`pf:evt:processed:<consumer>:<event_id>`)
-
-### 11C) Query APIs
-
-* [X] Vendor analytics endpoint: `GET /api/v1/vendor/analytics` (time presets + series + KPIs)
-* [ ] Admin analytics endpoint: `GET /api/v1/admin/analytics` (global KPIs)
+* [x] Ticket: Add Goose migration for `vendor_orders.cart_id` (UUID; backfill-safe)
+* [x] Ticket: Add Goose migration for `vendor_orders.currency`
+* [x] Ticket: Add Goose migration for `vendor_orders.shipping_address` (address_t)
+* [x] Ticket: Add Goose migration for `vendor_orders.discounts_cents` (rename/standardize plan if needed)
+* [x] Ticket: Add Goose migration for `vendor_orders.warnings` (jsonb)
+* [x] Ticket: Add Goose migration for `vendor_orders.promo` (jsonb)
+* [x] Ticket: Add Goose migration for `vendor_orders.payment_method`
+* [x] Ticket: Add Goose migration for `vendor_orders.shipping_line` (jsonb or explicit fields)
+* [x] Ticket: Add Goose migration for `vendor_orders.attributed_token` (jsonb nullable)
+* [x] Ticket: Update GORM `models.VendorOrder` to match new columns + JSON serializers
 
 ---
 
+## Phase 11 — Checkout Schema: Persist Snapshot + Attribution on Order Line Items
 
-## Phase 12 — Subscriptions & Billing (Stripe CC)
+**Goal:** Line items become stable cart snapshots with deterministic attribution storage.
 
-**Goal:** Vendor subscription gating + billing history
-
-### 12A) Stripe integration
-
-* [X] Stripe client bootstrap + config/secrets
-* [X] Migrations: `subscriptions`, `payment_methods`, `charges`, `usage_charges` (if not already applied) (models, repos, enums & services)
-
-### 12B) Subscription flows
-
-Combine these:
-* [X] `POST /api/v1/vendor/subscriptions` (create subscription, idempotent)
-* [X] `POST /api/v1/vendor/subscriptions/cancel` (idempotent)
-* [X] `GET /api/v1/vendor/subscriptions` -> there should be a one to 0 or a one to one relationship (only return the single active sub)
-
-seperate webhook endpoint we can link or subscribe to 
-* [X] Webhook consumer (Stripe) updates subscription state + mirrors `stores.subscription_active`
-
-### 12C) Billing history
-
-* [X] `GET /api/v1/vendor/billing/charges` (ads + subscriptions)
-
-* [X] Enforce gating everywhere:
-  * [X] browse/search hides vendor listings if `subscription_active=false` (should be done already but verify)
-
+* [x] Ticket: Add Goose migration for `order_line_items.cart_item_id` (uuid nullable initially)
+* [x] Ticket: Add Goose migration for `order_line_items.warnings` (jsonb)
+* [x] Ticket: Add Goose migration for `order_line_items.applied_volume_discount` (jsonb)
+* [x] Ticket: Add Goose migration for `order_line_items.moq` and `order_line_items.max_qty`
+* [x] Ticket: Add Goose migration for `order_line_items.line_subtotal_cents`
+* [x] Ticket: Add Goose migration for `order_line_items.attributed_token` (jsonb nullable)
+* [x] Ticket: Update GORM `models.OrderLineItem` to match new columns + JSON serializers
 
 ---
 
-## Phase 13 — Integration Test Harness (API-Level, Scripted)
+## Phase 12 — Checkout API Boundary: DTO + Controller Wiring + Idempotency Header
 
-**Goal:** Deterministic, repeatable, end-to-end validation using *real HTTP calls* (not DB seeding).
+**Goal:** Stabilize the HTTP contract before rewriting service internals.
 
-### 13A) Integration harness foundation (infra only)
-
-* [ ] **Ticket:** Create `/scripts/integration/` scaffold
-  *Purpose:* Dedicated integration test entrypoint
-  *Notes:*
-
-  * Callable via `make integration-test`
-  * Reads `API_BASE_URL`, `[STORE|BUYER|ADMIN|AGENT]_EMAIL`, `[STORE|BUYER|ADMIN|AGENT]_PASSWORD` from env for passowrd where the email could be a var set inside the script
-  * No domain logic yet
-  * Load the env vars to be used in the scripts
-
-* [ ] **Ticket:** Implement shared HTTP client helper
-  *Scope:* one file
-  *Includes:* base URL, retries, timeout, JSON encode/decode, status assertions
-
-* [ ] **Ticket:** Implement colored JSON console logger
-  *Purpose:* readable stdout for CI + humans
-  *Explicitly:* no business logic, logging only
+* [x] Ticket: Implement checkout request DTO (`cart_id`, `shipping_address`, `payment_method`, optional `shipping_line`)
+* [x] Ticket: Add checkout request validation (required fields + enums)
+* [x] Ticket: Enforce idempotency header on `POST /checkout` (middleware or handler)
+* [x] Ticket: Wire idempotency key from headers into checkout service input
+* [x] Ticket: Remove `AttributedAdClickID` handling from controller/DTOs (use cart_records tokens only)
+* [x] Ticket: Update checkout response mapping to include confirmed shipping/payment/shipping_line fields
+* [x] Ticket: Refactor checkout controller DTOs/helpers into dedicated subfolder (mirror cart controller pattern)
 
 ---
 
-### 13B) Auth flows (script-only, no backend changes)
+## Phase 13 — Checkout Service Refactor: Load + Validate Cart by Buyer Store
 
-* [ ] **Ticket:** Scripted register flow (buyer + vendor flags)
-  *Creates:* buyer store, vendor store
-  *Outputs:* store IDs, user IDs, access token + refresh token
+**Goal:** Establish canonical checkout entrypoint and fail early before writes.
 
-* [ ] **Ticket:** Scripted login flow (buyer + vendor flags)
-  *Consumes:* email (inline)/password (env var)
-  *Outputs:* access token + refresh token
-
-* [ ] **Ticket:** In-memory token store helper
-  *Purpose:* persist token across script steps
-  *Explicit:* no file persistence yet store in terminal var to be used echo. 
-
-* [ ] **Ticket:** Auth header injection helper
-  *Guarantee:* no script manually sets headers token from the previous ticket
+* [x] Ticket: Load CartRecord by `(buyer_store_id, cart_id)` inside DB transaction in checkout service
+* [x] Ticket: Validate cart `status=active`
+* [x] Ticket: Validate cart contains at least one orderable item (`cart_items.status=ok`)
+* [x] Ticket: Return deterministic validation errors (wrong buyer_store, wrong status, no ok items)
+* [x] Ticket: Add repo helper to load cart with ok-items count (single query, tx-safe)
 
 ---
 
-### 13C) Media seeding (pure media pipeline validation)
+## Phase 14 — Checkout Finalization: Convert Cart + Reuse Checkout Group ID
 
-* [ ] **Ticket:** Add static media fixtures
-  *Path:* `fixtures/media/*`
-  *Includes:* image, video, PDF (COA-like) (image for product/ad, video for prodcut/ad, image for avatar, image for logo, image for store banner, PDF for license PDF for coa)
+**Goal:** Cart is conversion source of truth; anchor created once and reused on retries.
 
-* [ ] **Ticket:** Script: request presigned upload URL
-  *Scope:* media create endpoint only
-  *Outputs:* media_id + signed URL -> store that signed URL to be used in the next ticket
-
-* [ ] **Ticket:** Script: stream file upload to GCS
-  *Explicit:* upload via signed URL (PUT)
-  *No polling yet*
-
-* [ ] **Ticket:** Script: poll media status until `uploaded`
-  *Stops at:* timeout or success
-  *Guarantee:* downstream steps only run with valid media IDs
+* [x] Ticket: Persist `cart_records.shipping_address` from checkout input
+* [x] Ticket: Persist `cart_records.payment_method` from checkout input
+* [x] Ticket: Persist optional `cart_records.shipping_line` from checkout input
+* [x] Ticket: Set `cart_records.converted_at`
+* [x] Ticket: Transition `cart_records.status` from `active → converted`
+* [x] Ticket: Generate `cart_records.checkout_group_id` if null
+* [x] Ticket: Ensure retries reuse existing checkout_group_id (no regeneration)
+* [x] Ticket: Add repo helper to finalize cart atomically (single guarded update)
 
 ---
 
-### 13D) Domain seeding (linear, dependency-aware)
+## Phase 15 — Checkout Writes: Vendor Orders + Line Items + Payment Intents
 
-* [ ] **Ticket:** Script: create license using media_id
-  *Consumes:* media IDs from 13C
-  *Validates:* license is `pending`
+**Goal:** Create vendor orders deterministically from cart snapshot and create payment intents per vendor order.
 
-* [ ] **Ticket:** Script: admin approve / reject license
-  *Includes:* admin login + decision toggle
-
-* [ ] **Ticket:** Script: create product with gallery + COA + set inventory
-  *Consumes:* multiple media IDs | null
-  *Validates:* product visible after approval
-
-* [ ] **Ticket:** Script: product(s) → cart → checkout → order → agent deliver → payout
-  *Guarantee:* full happy-path money flow works
-
----
-
-## Phase 14 — Media Attachments (Canonical Linking Layer)
-
-**Goal:** One normalized attachment model with safe delete semantics.
-
-### 14A) Attachment schema & rules (data only)
-
-* [X] **Ticket:** Finalize `media_attachments` table
-  *Fields:* media_id, entity_type, entity_id, store_id, created_at, gcs_key
-  *Indexes:* entity lookup + media lookup
-
-* [X] **Ticket:** Define attachment lifecycle rules (code comments + docs)
-  *Explicit:*
-
-  * One attachment row per usage
-  * Media delete requires zero “protected” attachments (licenses)
+* [x] Ticket: Load `cart_vendor_groups` and group by `vendor_store_id`
+* [x] Ticket: Create one `vendor_orders` row per vendor with eligible items
+* [x] Ticket: Populate vendor order snapshot fields from cart + confirmed checkout fields
+* [x] Ticket: Ensure vendor totals come from `cart_vendor_groups` (no recomputation)
+* [x] Ticket: Bulk create vendor orders within checkout transaction (repo method)
+* [x] Ticket: Create order_line_items from `cart_items.status=ok` with `cart_item_id` linkage
+* [x] Ticket: Persist line item warnings + applied_volume_discount + moq/max_qty + line_subtotal snapshot fields
+* [x] Ticket: Skip vendor order creation when vendor has zero `status=ok` items
+* [x] Ticket: Surface vendor-level rejection reason in checkout response when vendor has no eligible items
+* [x] Ticket: Bulk create order line items per vendor order (repo method)
+* [ ] Ticket: Create one payment_intent per vendor order inside checkout transaction
+* [ ] Ticket: Set payment intent amount from `vendor_orders.total_cents`
+* [ ] Ticket: Set payment intent method from checkout-confirmed payment_method
+* [ ] Ticket: Keep existing default payment status behavior (no processing changes)
 
 ---
 
-### 14B) Domain integrations (split intentionally)
+## Phase 16 — Inventory Reservation at Checkout + Deterministic Totals
 
-> These are intentionally **separate tickets** to avoid cross-domain edits.
+**Goal:** Reservation is checkout-only; failures map to line items and vendor-level rejection; pricing is cart-truth.
 
-* [ ] **Ticket:** License ↔ media attachment wiring
-* [ ] **Ticket:** Product ↔ media attachment wiring (gallery + COA)
-* [ ] **Ticket:** Store ↔ media attachment wiring (logo/banner)
-* [ ] **Ticket:** User ↔ media attachment wiring (avatar)
-* [ ] **Ticket:** Ad ↔ media attachment wiring
-
----
-
-## Phase 15 — Workers (Dedicated Binaries, One Responsibility Each)
-
----
-
-### 15A) Daily Cron Worker (time-based orchestration only)
-
-**Goal:** All time-based invariants, zero Pub/Sub.
-
-* [X] **Ticket:** Create `cmd/cron-worker` binary
-  *Includes:* scheduler registry, locking, metrics
-
-* [X] **Ticket:** License lifecycle jobs
-  *Jobs:* 14d warning, expired, >30d hard delete
-
-* [X] **Ticket:** Order TTL job
-  *Jobs:* nudge → expire → inventory release
-
-* [X] **Ticket:** Notification cleanup job (>30d)
-
-* [X] **Ticket:** Outbox cleanup job (>30d published)
-
-* [X] **Ticket:** Concurrency model decision
-  *Explicit:* sequential vs goroutines (documented rationale)
+* [x] Ticket: Build reservation requests only for `cart_items.status=ok`
+* [x] Ticket: Execute reservation inside checkout transaction
+* [x] Ticket: Map reservation failures to `order_line_items.status=rejected` with reason/notes
+* [x] Ticket: Mark vendor rejected in response when all items fail reservation (still return vendor card)
+* [x] Ticket: Implement helper to apply reservation results and recompute affected totals
+* [x] Ticket: Remove/bypass unit price/discount recomputation in checkout execution path
+* [x] Ticket: Ensure vendor totals only change due to rejected items post-reservation
+* [x] Ticket: Implement final totals recompute that subtracts rejected subtotals only (no tier/promo recompute)
+* [x] Ticket: Ensure checkout response is deterministic for identical cart snapshot + reservation results
 
 ---
 
-### 15B) Outbox Dispatcher Worker
+## Phase 17 — Checkout Idempotency + Exactly-Once-ish Outbox Emission
 
-**Goal:** Translate DB events → Pub/Sub messages safely.
+**Goal:** Safe retries: no duplicate orders/outbox rows; emit exactly two events on success.
 
-Most services, repos, etc live and new ones will also live here `pkg/outbox/**/*`
-
-* [X] **Ticket:** Finalize `cmd/outbox-publisher` binary
-* [X] **Ticket:** Event → topic routing registry switch case per event_type & Typed payload validation per event_type
-* [X] **Ticket:** Retry + max-attempt policy defined
-* [X] **Ticket:** DLQ model + migration + repo defined
-* [X] **Ticket:** DLQ publish on terminal failure
-
----
-
-### 15C) Media Processing Worker (GCS-triggered)
-
-**Goal:** Heavy processing off request path.
-
-* [ ] **Ticket:** Create `cmd/media-worker` binary
-* [ ] **Ticket:** Subscribe to GCS finalize events (env-driven)
-* [ ] **Ticket:** Image/video compression helper
-* [ ] **Ticket:** OCR provider abstraction (OpenAI vs Document AI)
-* [ ] **Ticket:** OCR text generation + storage (`ocr.txt`)
-* [ ] **Ticket:** Update media row with derived assets
-* [ ] **Ticket:** Emit `media_processed` outbox event
+* [ ] Ticket: Implement “already converted” early return path (lookup by checkout_group_id + load existing orders/lines/intents)
+* [ ] Ticket: Prevent duplicate vendor orders on retry (uniqueness anchored on checkout_group_id+vendor_store_id and/or cart_id)
+* [ ] Ticket: Prevent duplicate outbox rows on retry for same conversion anchor
+* [ ] Ticket: Add repo helper to fetch full checkout result by checkout_group_id
+* [ ] Ticket: Define/extend outbox payload for Notifications checkout-converted event
+* [ ] Ticket: Define/extend outbox payload for Analytics checkout-converted event (cart totals + attribution refs/tokens)
+* [ ] Ticket: Emit Notifications outbox event in same transaction as vendor order creation
+* [ ] Ticket: Emit Analytics outbox event in same transaction as cart conversion
+* [ ] Ticket: Add outbox payload versioning rules for these events
 
 ---
 
-### 15D) Media Deletion Worker  (GCS-triggered || outbox event from DELETE /media/{mediaID})
+## Phase 18 — Checkout Attribution Materialization
 
-**Goal:** Safe cascading deletes after API validation.
+**Goal:** Replace request-time attribution with deterministic selection from cart tokens.
 
-* [X] **Ticket:** Create `cmd/media-delete-worker` binary
-* [X] **Ticket:** Consume `media_deleted` events
-* [ ] **Ticket:** Resolve and delete all attachment references -> currently no opp need the actual detatch per entity 
-* [ ] **Ticket:** Delete GCS originals + derived artifacts
-
----
-
-## Phase 16 — Analytics Engine Foundations
-
-**Goal:** Establish immutable analytics storage, canonical schemas, and shared types so ingestion can be deterministic and queryable.
-
-* [X] Ticket: Finalize BigQuery dataset + tables (`marketplace_events`, `ad_event_facts`)
-* [X] Ticket: Define BigQuery table partitioning strategy (`DATE(occurred_at)`)
-* [X] Ticket: Check in BigQuery schema definitions / CLI commands to repo
-* [X] Ticket: Define canonical analytics event enums (order + ad events)
-* [X] Ticket: Define Pub/Sub analytics envelope DTO
-* [X] Ticket: Define BigQuery row DTOs (MarketplaceEventRow, AdEventFactRow)
-* [X] Ticket: Define shared timestamp selection helpers (created vs paid vs cash)
+* [ ] Ticket: Validate ad tokens during checkout (decode/verify signature, expiry, enums, buyer_store_id binding)
+* [ ] Ticket: Define deterministic selection rules (click > impression, newest wins, stable tie-break)
+* [ ] Ticket: Materialize order-level attribution into `vendor_orders.attributed_token`
+* [ ] Ticket: Materialize line-item attribution into `order_line_items.attributed_token`
+* [ ] Ticket: Persist attribution blobs within checkout transaction boundary
 
 ---
 
-## Phase 16a — Analytics Worker Infrastructure
+## Phase 19 — Checkout Legacy Cleanup
 
-**Goal:** Create a reliable, idempotent analytics consumer that can safely process domain events.
+**Goal:** Remove deprecated artifacts end-to-end; one authoritative checkout flow.
 
-* [X] Ticket: Create `cmd/analytics-worker` binary scaffold
-* [X] Ticket: Initialize Pub/Sub client + subscription (`analytics-sub`)
-* [X] Ticket: Implement Redis idempotency gate (`pf:evt:processed:analytics:<event_id>`)
-* [X] Ticket: Define ACK/NACK retry policy for analytics consumer
-* [X] Ticket: Add structured logging with `event_id` correlation
-* [X] Ticket: Graceful shutdown handling for worker
-
----
-
-## Phase 16b — Event Routing & Handler Skeletons
-
-**Goal:** Route analytics events cleanly without business logic entanglement.
-
-* [X] Ticket: Implement analytics event router (`switch(event_type)`)
-* [X] Ticket: Validate supported analytics event types
-* [X] Ticket: Create handler interfaces/contracts (no god functions)
-* [X] Ticket: Stub handlers for:
-
-  * `order_created`
-  * `order_paid`
-  * `cash_collected`
-  * `order_canceled`
-  * `order_expired`
-  * `ad_impression`
-  * `ad_click`
-  * `ad_daily_charge_recorded`
+* [x] Ticket: Remove `CreateCheckoutGroup` and related repo/service methods
+* [x] Ticket: Remove remaining references to dropped `checkout_groups` table
+* [x] Ticket: Remove `AttributedAdClickID` usage from DTOs/service inputs/outbox payloads
+* [x] Ticket: Normalize imports/helpers to canonical models in `pkg/db/models/*`
+* [x] Ticket: Delete dead structs/helpers tied to legacy checkout flow
 
 ---
 
-## Phase 16c — BigQuery Write Layer
+## Phase 20 — Checkout Regression Test Suite
 
-**Goal:** Provide a single, reliable path for inserting analytics rows into BigQuery.
+**Goal:** Prevent reintroducing old behavior and lock correctness of refactor.
 
-* [X] Ticket: Implement BigQuery writer client abstraction
-* [X] Ticket: Add retry logic for transient BQ insert failures
-* [X] Ticket: Implement JSON serialization helpers for `items` + `payload`
-* [X] Ticket: Support inserts into `marketplace_events`
+* [ ] Ticket: Add regression test for idempotent checkout retry (no duplicate vendor orders, no duplicate outbox rows)
+* [ ] Ticket: Add regression test for cart expired/already converted behavior
+* [ ] Ticket: Add regression test for partial reservation failures (line rejected + vendor-level handling)
+* [ ] Ticket: Add regression test for attribution selection rules (click/impression priority + tie-break)
+* [ ] Ticket: Add regression test for exactly two outbox events on successful conversion
+* [ ] Ticket: Add compile-level/schema drift tests for GORM model changes
+
+---
+
+## Phase 21 — Orders: Read APIs + Decisioning + Fulfillment + TTL
+
+**Goal:** Post-checkout lifecycle: read APIs, vendor decisions, fulfillment, expiration, retries.
+
+* [x] Ticket: Add missing order indexes for list/detail/action queues
+* [x] Ticket: Implement buyer orders list repo/service (filters + pagination)
+* [x] Ticket: Implement vendor orders list repo/service (filters + pagination)
+* [x] Ticket: Implement order detail repo/service (preload line items + payment intent)
+* [x] Ticket: Implement orders list endpoint (`GET /api/v1/orders`) for buyer/vendor perspective
+* [x] Ticket: Implement order detail endpoint (`GET /api/v1/orders/{orderId}`)
+* [x] Ticket: Implement vendor order decision endpoint (order-level decisioning + transitions)
+* [x] Ticket: Implement vendor line-item decision endpoint (accept/reject + recompute + release inventory)
+* [x] Ticket: Emit outbox events for order decisioning (order_decided with line-level detail)
+* [x] Ticket: Implement buyer cancel endpoint (pre-transit) + release inventory + emit outbox
+* [x] Ticket: Implement buyer nudge endpoint (notification event)
+* [x] Ticket: Implement buyer retry endpoint (expired-only) to create new attempt
+* [x] Ticket: Implement order TTL cron job (nudge → expire → inventory release) and emit outbox
+* [ ] Ticket: Implement vendor fulfill endpoint (`POST /api/v1/vendor/orders/{orderId}/fulfill`) idempotently
+* [ ] Ticket: Transition fulfilled orders into hold/ready-for-dispatch semantics
+* [ ] Ticket: Emit outbox event `order_ready_for_dispatch` on fulfillment
+
+---
+
+## Phase 22 — Delivery & Agents
+
+**Goal:** Agent queue + assignment + pickup/deliver + cash collection.
+
+* [x] Ticket: Ensure `users.system_role=agent` auth path works end-to-end
+* [x] Ticket: Add `/api/v1/agent/*` route group controllers/tests scaffold
+* [x] Ticket: Add `order_assignments` migration
+* [x] Ticket: Implement assignment creation for dispatchable orders (random auto-assign MVP)
+* [x] Ticket: Implement agent queue endpoint (unassigned hold orders)
+* [x] Ticket: Implement agent “my assignments” endpoint
+* [x] Ticket: Implement agent pickup endpoint (status `in_transit`)
+* [x] Ticket: Implement agent deliver endpoint (status `delivered`)
+* [ ] Ticket: Implement agent cash-collected endpoint (`POST /api/v1/agent/orders/{orderId}/cash-collected`)
+* [ ] Ticket: Append `ledger_events(cash_collected)` during cash-collected flow
+* [ ] Ticket: Set `payment_intents.status=settled` + `cash_collected_at`
+* [ ] Ticket: Emit outbox event `cash_collected`
+
+---
+
+## Phase 23 — Ledger, Payouts, Admin Ops
+
+**Goal:** Append-only finance correctness + admin payout confirmation.
+
+* [x] Ticket: Add `ledger_events` table + indexes (append-only)
+* [x] Ticket: Implement ledger append helpers (repo + service)
+* [x] Ticket: Implement admin payout queue endpoints
+* [x] Ticket: Implement admin payout detail endpoint
+* [x] Ticket: Implement admin confirm payout endpoint (ledger event + payment intent paid + order closed + outbox)
+* [ ] Ticket: Implement optional vendor “confirm paid” endpoint (audited; non-authoritative)
+
+---
+
+## Phase 24 — Notifications: In-App
+
+**Goal:** In-app notifications with read tracking and retention cleanup.
+
+* [x] Ticket: Add notifications schema + indexes
+* [x] Ticket: Implement notifications list service (cursor pagination + unread filter)
+* [x] Ticket: Implement notifications list endpoint (`GET /api/v1/notifications`)
+* [x] Ticket: Implement mark notification read endpoint (idempotent)
+* [x] Ticket: Implement mark-all read endpoint (idempotent)
+* [x] Ticket: Implement notifications cleanup scheduler (>30d)
+
+---
+
+## Phase 25 — Subscriptions & Billing
+
+**Goal:** Vendor subscription gating + billing history.
+
+* [x] Ticket: Bootstrap Stripe client + config/secrets
+* [x] Ticket: Add billing/subscription schema (`subscriptions`, `payment_methods`, `charges`, `usage_charges`)
+* [x] Ticket: Implement create subscription endpoint (idempotent)
+* [x] Ticket: Implement cancel subscription endpoint (idempotent)
+* [x] Ticket: Implement get subscription endpoint (single active)
+* [x] Ticket: Implement Stripe webhook consumer to mirror subscription state to `stores.subscription_active`
+* [x] Ticket: Implement vendor billing history endpoint (`GET /api/v1/vendor/billing/charges`)
+* [x] Ticket: Enforce subscription gating across marketplace browse/search
+
+---
+
+## Phase 26 — BigQuery Analytics: Marketplace Ingestion + Vendor Analytics
+
+**Goal:** BigQuery ingestion + vendor analytics endpoint for marketplace events.
+
+* [x] Ticket: Create BigQuery dataset + tables (`marketplace_events`, `ad_events`) with partition/cluster rules
+* [x] Ticket: Implement `pkg/bigquery` client bootstrap + readiness checks
+* [x] Ticket: Implement outbox consumers that insert BigQuery rows for `order_created`, `cash_collected`, `order_paid`
+* [x] Ticket: Add consumer idempotency keys per event (`pf:evt:processed:<consumer>:<event_id>`)
+* [x] Ticket: Implement vendor analytics endpoint (`GET /api/v1/vendor/analytics`) with time presets + KPIs + series
+* [ ] Ticket: Implement admin analytics endpoint (`GET /api/v1/admin/analytics`) for global KPIs
+
+---
+
+## Phase 27 — Analytics Worker + Engine
+
+**Goal:** Idempotent analytics consumer with routing, BigQuery write layer, and ad/attribution expansions.
+
+* [x] Ticket: Finalize BigQuery dataset + tables (`marketplace_events`, `ad_event_facts`)
+* [x] Ticket: Define BigQuery partitioning strategy (`DATE(occurred_at)`)
+* [x] Ticket: Check in BigQuery schema definitions / CLI commands to repo
+* [x] Ticket: Define canonical analytics event enums (order + ad events)
+* [x] Ticket: Define Pub/Sub analytics envelope DTO
+* [x] Ticket: Create Pub/Sub topic `analytics` via CLI
+* [x] Ticket: Create Pub/Sub subscription `analytics-sub` via CLI
+* [x] Ticket: Define BigQuery row DTOs (MarketplaceEventRow, AdEventFactRow)
+* [x] Ticket: Define shared timestamp selection helpers (created vs paid vs cash)
+* [x] Ticket: Create `cmd/analytics-worker` binary scaffold
+* [x] Ticket: Initialize Pub/Sub client + subscription (`analytics-sub`)
+* [x] Ticket: Implement Redis idempotency gate (`pf:evt:processed:analytics:<event_id>`)
+* [x] Ticket: Define ACK/NACK retry policy for analytics consumer
+* [x] Ticket: Add structured logging with event_id correlation
+* [x] Ticket: Add graceful shutdown handling
+* [x] Ticket: Implement analytics router (`switch(event_type)`) and validate supported types
+* [x] Ticket: Create handler interfaces/contracts and stub handlers for all listed event types
+* [x] Ticket: Implement BigQuery writer abstraction + retry for transient insert failures
+* [x] Ticket: Implement JSON serialization helpers for `items` and `payload`
+* [x] Ticket: Support inserts into `marketplace_events`
 * [ ] Ticket: Support inserts into `ad_event_facts`
-* [X] Ticket: Wire writer into analytics worker handlers
-
----
-
-## Phase 16d — Marketplace Event Ingestion
-
-**Goal:** Persist all order lifecycle analytics as immutable facts.
-
-* [X] Ticket: Map `order_created` payload → `marketplace_events` row
-* [X] Ticket: Build `items` JSON snapshot from order line items
-* [X] Ticket: Extract buyer geo fields from shipping address snapshot
-* [X] Ticket: Compute revenue fields (gross/net/discounts)
-* [X] Ticket: Handle `order_paid` → marketplace analytics row
-* [X] Ticket: Handle `cash_collected` → marketplace analytics row
-* [X] Ticket: Handle `order_canceled` → marketplace analytics row
-* [X] Ticket: Handle `order_expired` → marketplace analytics row
-
----
-
-## Phase 16e — Ad Attribution & Conversion Analytics
-
-**Goal:** Enable ROAS and conversion metrics using token-based attribution receipts.
-
-* [ ] Ticket: Implement attribution token decode utilities
-* [ ] Ticket: Define deterministic token selection strategy (last-applicable)
-* [ ] Ticket: Attribute store-level ads → full order revenue
-* [ ] Ticket: Attribute product-level ads → matching line-item revenue
+* [x] Ticket: Wire writer into analytics worker handlers
+* [x] Ticket: Map `order_created` payload to `marketplace_events` row
+* [x] Ticket: Build `items` JSON snapshot from order line items
+* [x] Ticket: Extract buyer geo fields from shipping address snapshot
+* [x] Ticket: Compute revenue fields (gross/net/discounts)
+* [x] Ticket: Handle marketplace ingestion for `order_paid`, `cash_collected`, `order_canceled`, `order_expired`
+* [ ] Ticket: Implement attribution token decode utilities for analytics
+* [ ] Ticket: Implement deterministic token selection strategy (last-applicable)
+* [ ] Ticket: Attribute store-level ads to full order revenue
+* [ ] Ticket: Attribute product-level ads to matching line-item revenue
 * [ ] Ticket: Emit `ad_event_facts` rows with `type=conversion`
 * [ ] Ticket: Ensure marketplace events always write even without tokens
-
----
-
-## Phase 16f — Ad Spend Ingestion (Nightly Billing)
-
-**Goal:** Make ad spend a first-class analytics fact.
-
 * [ ] Ticket: Emit `ad_daily_charge_recorded` from nightly billing job
-* [ ] Ticket: Route charge events through analytics worker
+* [ ] Ticket: Route ad daily charge events through analytics worker
 * [ ] Ticket: Write `ad_event_facts` rows with `type=charge`
 * [ ] Ticket: Normalize `occurred_at` for daily spend events
-* [ ] Ticket: Ensure spend can be computed as `SUM(cost_cents)`
-
----
-
-## Phase 16g — Marketplace Analytics Query Layer
-
-**Goal:** Power the marketplace dashboard entirely from BigQuery.
-
-* [X] Ticket: Implement marketplace analytics query service
-* [X] Ticket: Orders over time query (created events)
-* [X] Ticket: Revenue over time query (paid/cash fallback logic)
-* [X] Ticket: Discounts over time query
-* [X] Ticket: Net revenue over time query
-* [X] Ticket: Top products query via `UNNEST(items)`
-* [X] Ticket: Top categories query via `UNNEST(items)`
-* [X] Ticket: Top ZIPs query (bar chart MVP)
-* [X] Ticket: AOV calculation
-* [X] Ticket: New vs returning buyer computation
-
----
-
-## Phase 16h — Ad Analytics Query Layer
-
-**Goal:** Power advertiser dashboards with spend + ROAS.
-
-* [ ] Ticket: Implement ad analytics query service
-* [ ] Ticket: Spend query (`type=charge`)
-* [ ] Ticket: Impressions query
-* [ ] Ticket: Clicks query
-* [ ] Ticket: CPM/CPC derived metrics
-* [ ] Ticket: ROAS query (attributed revenue / spend)
-* [ ] Ticket: Daily impressions/clicks time series
-
----
-
-## Phase 16i — Analytics API Endpoints
-
-**Goal:** Expose analytics data to the frontend safely and efficiently.
-
-* [ ] Ticket: Marketplace analytics API endpoints
-* [ ] Ticket: Enforce store scoping via `activeStoreId`
-* [ ] Ticket: Timeframe validation + defaults
-* [ ] Ticket: Ad analytics API endpoints
+* [ ] Ticket: Ensure spend computable as `SUM(cost_cents)`
+* [x] Ticket: Implement marketplace analytics query service (BQ-backed)
+* [x] Ticket: Implement orders-over-time query
+* [x] Ticket: Implement revenue-over-time query (paid/cash fallback logic)
+* [x] Ticket: Implement discounts/net revenue/AOV computations
+* [x] Ticket: Implement top products/categories queries via `UNNEST(items)`
+* [x] Ticket: Implement top ZIPs query
+* [x] Ticket: Implement new vs returning buyer computation
+* [ ] Ticket: Implement ad analytics query service (spend/impressions/clicks/ROAS/time series)
+* [x] Ticket: Implement marketplace analytics API endpoints
+* [x] Ticket: Enforce store scoping via `activeStoreId`
+* [x] Ticket: Implement timeframe validation + defaults
+* [ ] Ticket: Implement ad analytics API endpoints
 * [ ] Ticket: Enforce advertiser ownership for ads
-* [ ] Ticket: Shape responses to frontend dashboard contracts
+* [ ] Ticket: Shape ad analytics responses to frontend dashboard contracts
+* [ ] Ticket: Add unit tests for marketplace mapping logic
+* [ ] Ticket: Add unit tests for attribution token decoding
+* [ ] Ticket: Add unit tests for analytics SQL builders
+* [ ] Ticket: Add integration test harness (handler → BQ writer)
+* [ ] Ticket: Add one-time BigQuery backfill script from Postgres orders
+* [ ] Ticket: Define deterministic event_id strategy for backfill runs
 
 ---
 
-## Phase 16j — Testing, Validation & Backfill
+## Phase 28 — Media Attachments: Canonical Linking Layer
 
-**Goal:** Make analytics safe to ship and useful immediately.
+**Goal:** Normalize attachments across domains and enforce safe delete semantics.
 
-* [ ] Ticket: Unit tests for marketplace mapping logic
-* [ ] Ticket: Unit tests for attribution token decoding
-* [ ] Ticket: Unit tests for analytics SQL builders
-* [ ] Ticket: Integration test harness (handler → BQ writer)
-* [ ] Ticket: One-time BigQuery backfill script from Postgres orders
-* [ ] Ticket: Deterministic event_id strategy for backfill runs
-
-
----
-
-## Phase 17 — Notifications (Email Pipeline)
-
-* [ ] **Ticket:** Notification template definitions
-* [ ] **Ticket:** Email sender interface
-* [ ] **Ticket:** Stub email sender (log-only)
-* [ ] **Ticket:** SendGrid adapter (future swap)
+* [x] Ticket: Finalize `media_attachments` table + indexes
+* [x] Ticket: Define attachment lifecycle rules (docs/comments) and protected attachment semantics
+* [ ] Ticket: Wire license ↔ media attachments
+* [ ] Ticket: Wire product ↔ media attachments (gallery + COA)
+* [ ] Ticket: Wire store ↔ media attachments (logo/banner)
+* [ ] Ticket: Wire user ↔ media attachments (avatar)
+* [ ] Ticket: Wire ad ↔ media attachments
 
 ---
 
-## Phase 18 — COA → OpenAI Product Drafts
+## Phase 29 — Workers: Dedicated Binaries
 
-* [ ] **Ticket:** OpenAI client bootstrap
-* [ ] **Ticket:** COA OCR → structured parser
-* [ ] **Ticket:** Product draft JSON generator
-* [ ] **Ticket:** Persist draft + status
+**Goal:** One-responsibility workers for time-based jobs, outbox dispatch, and media processing/deletion.
 
----
-
-## Phase 19 — Ads Engine (Serve + Track + Token Attribution + Rollup + Bill Bridge)
-
-**Goal:** Ship a production-viable CPM ad engine with request-time serving, Redis counters + dedupe guards, signed client-side attribution tokens frozen at checkout (order + line-item attribution), daily Postgres rollups, and billing bridge via `usage_charges` + Pub/Sub fanout.
-
-### 19A) Core constants, models, schema
-
-* [ ] Ticket: Define ad engine constants + Redis key schema + TTL conventions (imps/clicks/spend + dedupe keys)
-* [ ] Ticket: Add/confirm enums: ad status, placement, billing model (CPM), token event type (impression|click), token target type (store|product)
-* [ ] Ticket: Add Postgres migration: `cart_records.attribution_tokens` JSONB (bounded array) + indexes as needed (store_id, updated_at)
-* [ ] Ticket: Add Postgres migration: `vendor_orders.attribution` JSONB (order-level) + indexable columns if desired (attributed_ad_id, attribution_type)
-* [ ] Ticket: Add Postgres migration: `vendor_order_line_items.attribution` JSONB nullable (line-item level) + indexable columns if desired (attributed_ad_id)
-* [ ] Ticket: Postgres schema: `ad_daily_rollups` table (per ad per day: imps, clicks, spend_cents) + unique(ad_id, day) + indexes
-* [ ] Ticket: Postgres schema: ensure `usage_charges` uniqueness supports idempotent daily ad spend charges (store_id + type + for_date)
-
-### 19B) Attribution token system (server-signed, client-carried)
-
-* [ ] Ticket: Define token schema (“attribution receipt”): fields + versioning + size constraints (ad_id, creative_id, placement, target_type, target_id, buyer_store_id, occurred_at, expires_at, event_type, request_id/nonce)
-* [ ] Ticket: Implement token signing + verification utility (HMAC/JWT HS256) in shared pkg (strict validation + clock skew rules)
-* [ ] Ticket: Add server-side “token validation” helper: verify signature, expiry, buyer_store match, enum sanity, and dedupe rules (token_id/request_id)
-* [ ] Ticket: Define token precedence rules (deterministic): click > impression; for order-level store attribution only target_type=store; for line-item attribution only target_type=product; most-recent wins; stable tie-break hash
-
-### 19C) Ad serving & tracking APIs (serve, impression, click)
-
-* [ ] Ticket: Repo layer: fetch eligible candidate ads for `/ads/serve` (status=active, placement match, time window, joins for store gating)
-* [ ] Ticket: Service: implement eligibility filter pipeline (subscription_active + kyc verified + status/time window + geo hook)
-* [ ] Ticket: Redis helper: budget gate read (imps/clicks/spend today) + “exhausted” evaluation vs daily_budget_cents
-* [ ] Ticket: Serving algorithm: highest bid wins selector + deterministic tie-break (hash(request_id + placement + day + ad_id))
-* [ ] Ticket: DTOs: `ServeAdRequest/Response` includes creative payload + **signed impression token** + **signed click token** + request_id
-* [ ] Ticket: Controller + route: `GET /ads/serve` returns winning creative + tokens (hero placement still targets store or product)
-* [ ] Ticket: Redis dedupe helper: impression dedupe via `SETNX` keyed by (request_id + placement + ad_id) with TTL
-* [ ] Ticket: Controller + route: `POST /ads/impression` verifies token + increments Redis imps + spend (CPM bid_cents/1000) with dedupe guard
-* [ ] Ticket: Redis dedupe helper: click dedupe via `SETNX` keyed by (request_id + ad_id) with TTL
-* [ ] Ticket: Controller + route: `GET /ads/click` verifies token + increments Redis clicks (no Postgres click row) + 302 redirect to destination URL
-
-### 19D) Cart persistence of tokens (client → server)
-
-* [ ] Ticket: Update cart DTOs to accept `attribution_tokens[]` from client (bounded list)
-* [ ] Ticket: Cart service: normalize tokens on cart save (validate signature/expiry/store match; dedupe; cap to max N; keep most recent per (ad_id,event_type,target_id))
-* [ ] Ticket: Cart repo: persist normalized `cart_records.attribution_tokens` and return the normalized set to client (so client converges)
-* [ ] Ticket: Add guardrails: reject unreasonably large payloads; structured logs for invalid tokens; do not hard-fail checkout if tokens invalid (drop tokens)
-
-### 19E) Checkout-time attribution materialization (immediate during checkout validation)
-
-* [ ] Ticket: Checkout validation: load `cart_records.attribution_tokens` and compute per-vendor-order candidate sets (by vendor_store_id + product_ids)
-* [ ] Ticket: Compute **order-level attribution** (store-only): choose best token where target_type=store AND target_id==vendor_store_id using click>impression + recency + tie-break; set `vendor_orders.attribution`
-* [ ] Ticket: Compute **line-item attribution** (product-only): for each line item choose best token where target_type=product AND target_id==product_id using click>impression + recency + tie-break; set `vendor_order_line_items.attribution` (or null)
-* [ ] Ticket: Ensure deterministic attribution reasons are stored (e.g., `reason=store_click_match`, `reason=product_impression_match`, `reason=none`) for analytics/debuggability
-* [ ] Ticket: Wire attribution persistence into the same transaction that creates checkout_group + vendor_orders + line_items (no partial writes)
-
-### 19F) Daily rollup + billing bridge + outbox fanout
-
-* [ ] Ticket: Scheduler job: daily ad rollup reads Redis counters for day N and writes `ad_daily_rollups` + `usage_charges` (idempotent)
-* [ ] Ticket: Rollup rounding policy: deterministic conversion of spend float → cents (document + implement helper; avoid drift)
-* [ ] Ticket: Outbox emission: write `OutboxEvent` for `ad_spend_rolled_up` after successful rollup transaction
-* [ ] Ticket: Pub/Sub topic wiring: publish rollup outbox events and add consumer skeletons for analytics + billing
-* [ ] Ticket: Billing consumer: bridge daily `usage_charges` into `charges` / Stripe-metered usage interface (stub if not shipping Stripe yet)
-
-### 19G) Analytics propagation (BigQuery)
-
-* [ ] Ticket: Define analytics payload contract for ads: include rollups + checkout attribution snapshot (order + line-item attributions)
-* [ ] Ticket: Analytics consumer: on order/checkout events, extract vendor_order.attribution + line_item.attribution and insert rows into BigQuery ad attribution table(s)
-* [ ] Ticket: Analytics consumer: on rollup events, insert/update BigQuery ad daily rollup table(s) (partitioning + clustering consistent with your BQ design)
-* [ ] Ticket: Ensure “EVERY ad associated with the order” is emitted: one row per attributed ad per line item (product) plus optional order-level store row (store)
-
-### 19H) Failure modes, observability, tests
-
-* [ ] Ticket: Failure mode behavior: Redis unavailable => serve no ads; impression/click endpoints fail closed; structured logs
-* [ ] Ticket: Observability: metrics/logs for serve decisions (candidate counts, exclusion reasons, dedupe hits, winner, budget-gated)
-* [ ] Ticket: Load-shedding: per-request candidate limit + optional short-lived caching of candidate IDs per placement/state (separate small ticket)
-* [ ] Ticket: Integration tests: serve→impression→click counters→cart token persist→checkout attribution (order + line-item)→rollup→usage_charges (deterministic tie-break coverage)
-
+* [x] Ticket: Implement `cmd/cron-worker` binary with scheduler registry + locking + metrics
+* [x] Ticket: Implement license lifecycle jobs in cron worker (warn/expire/hard delete)
+* [x] Ticket: Implement order TTL job in cron worker (nudge/expire/release)
+* [x] Ticket: Implement notification cleanup job in cron worker
+* [x] Ticket: Implement outbox cleanup job in cron worker
+* [x] Ticket: Document concurrency model decision for cron worker
+* [x] Ticket: Finalize `cmd/outbox-publisher` main loop (poll, `FOR UPDATE SKIP LOCKED`, sleep jitter)
+* [x] Ticket: Make outbox batch size configurable
+* [x] Ticket: Add structured logging per outbox publish attempt
+* [x] Ticket: Implement bounded retry policy (retryable vs terminal)
+* [x] Ticket: Persist attempts + last_error and enforce MAX_ATTEMPTS
+* [x] Ticket: Mark published only after Pub/Sub ACK
+* [x] Ticket: Implement DLQ write + mark terminal atomically
+* [x] Ticket: Ensure dispatcher excludes terminal rows
+* [ ] Ticket: Create `cmd/media-worker` binary
+* [ ] Ticket: Subscribe media-worker to GCS finalize events (env-driven)
+* [ ] Ticket: Implement image/video compression helper
+* [ ] Ticket: Implement OCR provider abstraction (OpenAI vs Document AI)
+* [ ] Ticket: Implement OCR text generation + store derived asset (`ocr.txt`)
+* [ ] Ticket: Update media row with derived artifacts
+* [ ] Ticket: Emit `media_processed` outbox event
+* [x] Ticket: Create `cmd/media-delete-worker` binary
+* [x] Ticket: Consume `media_deleted` events in media-delete-worker
+* [ ] Ticket: Detach all attachment references by entity type prior to deletion
+* [ ] Ticket: Delete GCS originals + derived artifacts (not-found treated as success)
+* [ ] Ticket: Persist deletion outcomes/status updates
 
 ---
 
-## Phase 20 — Ops, Observability, Hardening
+## Phase 30 — Integration Test Harness
 
-* [ ] Worker metrics + DLQ visibility
-* [ ] Replay & recovery runbooks
-* [ ] Feature flags
-* [ ] Backup/restore drills
+**Goal:** Deterministic end-to-end validation using real HTTP calls.
+
+* [x] Ticket: Create initial integration scaffold (partial)
+* [x] Ticket: Implement initial register scripts (partial/dud per note)
+* [ ] Ticket: Create `/scripts/integration/` scaffold and `make integration-test`
+* [ ] Ticket: Implement shared HTTP client helper (base URL, retries, timeouts, JSON, assertions)
+* [ ] Ticket: Implement colored JSON console logger (stdout-only)
+* [ ] Ticket: Implement scripted register flow (buyer + vendor) and output IDs/tokens
+* [ ] Ticket: Implement scripted login flow (buyer + vendor)
+* [ ] Ticket: Implement in-memory token store helper for scripts
+* [ ] Ticket: Implement auth header injection helper (no manual header wiring)
+* [ ] Ticket: Add static media fixtures (`fixtures/media/*`) including image/video/PDF
+* [ ] Ticket: Script media create (request presigned upload URL) and store media_id + signed URL
+* [ ] Ticket: Script upload via signed URL (PUT stream to GCS)
+* [ ] Ticket: Script poll media status until `uploaded` with timeout
+* [ ] Ticket: Script create license using media_id and validate `pending`
+* [ ] Ticket: Script admin approve/reject license (admin login + decision toggle)
+* [ ] Ticket: Script create product with gallery + COA + set inventory
+* [ ] Ticket: Script full happy-path: product → cart → checkout → agent deliver → payout
 
 ---
 
-## Phase 21 — Deferred / Explicitly Parked
+## Phase 31 — Notifications: Email Pipeline
 
-* ACH
-* MFA / TOTP
-* Seed-to-sale
-* Address validation
-* Blockchain / NFTs
+**Goal:** Email notification delivery via adapter interface and SendGrid integration.
+
+* [ ] Ticket: Define notification email templates
+* [ ] Ticket: Define email sender interface
+* [ ] Ticket: Implement stub email sender (log-only)
+* [ ] Ticket: Implement SendGrid adapter (future swap)
 
 ---
 
-### Final note (important)
+## Phase 32 — COA → OpenAI Product Drafts
 
-At this point, **the biggest risk is no longer missing tickets** — it’s *ticket blast radius*.
-This rewrite ensures:
+**Goal:** OCR/parse COA PDFs into structured product draft JSON and persist draft state.
 
-* each ticket ≈ **one concern**
-* each worker binary evolves independently
-* an LLM cannot “helpfully” refactor half the repo in one go
+* [ ] Ticket: Implement OpenAI client bootstrap
+* [ ] Ticket: Implement COA OCR → structured parser
+* [ ] Ticket: Implement product draft JSON generator from parsed COA
+* [ ] Ticket: Persist product draft + status
 
-If you want next:
+---
 
-* I can **annotate which Go packages each ticket should touch**, or
-* Convert **Phase 13 or Phase 15** directly into **LLM-safe Jira tickets**.
+## Phase 33 — Ads Engine
 
-You’re now designing *systems that survive assistants*.
+**Goal:** CPM ad engine with Redis counters + signed tokens, checkout-time attribution, daily rollups, and analytics/billing fanout.
+
+* [ ] Ticket: Define ad engine constants + Redis key schema + TTL conventions
+* [ ] Ticket: Add/confirm ad enums (status, placement, billing model, token event type, token target type)
+* [ ] Ticket: Add migration for `cart_records.attribution_tokens` JSONB + indexes as needed
+* [ ] Ticket: Add migration for `vendor_orders.attribution` JSONB + optional indexable fields
+* [ ] Ticket: Add migration for `vendor_order_line_items.attribution` JSONB + optional indexable fields
+* [ ] Ticket: Add `ad_daily_rollups` table schema (unique ad_id+day + indexes)
+* [ ] Ticket: Ensure `usage_charges` uniqueness supports idempotent daily ad spend (store_id+type+for_date)
+* [ ] Ticket: Define attribution token schema (versioning, size constraints, required fields)
+* [ ] Ticket: Implement token signing + verification utility (HMAC/JWT HS256) with strict validation rules
+* [ ] Ticket: Implement server-side token validation helper (signature/expiry/buyer_store match/enums/dedupe)
+* [ ] Ticket: Define deterministic precedence rules (click>impression, recency, stable tie-break)
+* [ ] Ticket: Implement repo to fetch eligible ads for `/ads/serve` (status/placement/time window + gating joins)
+* [ ] Ticket: Implement service eligibility filters (subscription_active, kyc verified, status/time window, geo hook)
+* [ ] Ticket: Implement Redis budget gate evaluation vs daily_budget_cents
+* [ ] Ticket: Implement serve algorithm (highest bid wins + deterministic tie-break)
+* [ ] Ticket: Implement serve DTOs returning creative + signed impression/click tokens + request_id
+* [ ] Ticket: Implement route `GET /ads/serve`
+* [ ] Ticket: Implement Redis impression dedupe helper (SETNX with TTL)
+* [ ] Ticket: Implement route `POST /ads/impression` (verify token + increment Redis imps + spend with dedupe)
+* [ ] Ticket: Implement Redis click dedupe helper (SETNX with TTL)
+* [ ] Ticket: Implement route `GET /ads/click` (verify token + increment clicks + 302 redirect)
+* [ ] Ticket: Update cart DTOs to accept bounded `attribution_tokens[]`
+* [ ] Ticket: Normalize tokens on cart save (validate/dedupe/cap; keep most recent per key)
+* [ ] Ticket: Persist normalized `cart_records.attribution_tokens` and return normalized set to client
+* [ ] Ticket: Add guardrails for payload size + logs for invalid tokens; drop invalid tokens without failing checkout
+* [ ] Ticket: Compute per-vendor-order attribution candidates from cart tokens at checkout-time
+* [ ] Ticket: Materialize order-level attribution (store-only match by vendor_store_id) into vendor_orders.attribution
+* [ ] Ticket: Materialize line-item attribution (product-only match by product_id) into line_items.attribution
+* [ ] Ticket: Persist deterministic attribution reasons for debugging
+* [ ] Ticket: Persist attribution within same checkout transaction (no partial writes)
+* [ ] Ticket: Implement daily rollup job (read Redis day N → write ad_daily_rollups + usage_charges idempotently)
+* [ ] Ticket: Implement deterministic rounding policy helper for spend calculations
+* [ ] Ticket: Emit outbox event `ad_spend_rolled_up` after successful rollup transaction
+* [ ] Ticket: Add Pub/Sub topic wiring and consumer skeletons for analytics + billing
+* [ ] Ticket: Implement billing consumer to bridge daily usage_charges into Stripe usage/charges (stub allowed)
+* [ ] Ticket: Define analytics payload contract for ads (rollups + checkout attribution snapshot)
+* [ ] Ticket: Implement analytics consumer inserts for order attribution into BigQuery ad tables
+* [ ] Ticket: Implement analytics consumer inserts for rollups into BigQuery rollup tables
+* [ ] Ticket: Ensure one row per attributed ad per line item plus optional order-level store row
+* [ ] Ticket: Define failure mode behavior for Redis outages (serve none; track fail closed) with structured logs
+* [ ] Ticket: Add observability for serve/track (candidate counts, exclusion reasons, dedupe hits, winner, budget gating)
+* [ ] Ticket: Add load shedding ticket (candidate limit + optional short-lived caching)
+* [ ] Ticket: Add integration tests for serve→impression→click→cart token persist→checkout attribution→rollup→usage_charges
+
+---
+
+## Phase 34 — Ops, Observability, Hardening
+
+**Goal:** Operational safety: visibility, recovery, and controlled rollout.
+
+* [ ] Ticket: Implement worker metrics and DLQ visibility views/queries
+* [ ] Ticket: Write replay and recovery runbooks (DLQ replay, idempotency expectations)
+* [ ] Ticket: Add/standardize feature flags for risky rollouts
+* [ ] Ticket: Perform backup/restore drills and document procedure
