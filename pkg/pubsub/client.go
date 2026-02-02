@@ -56,9 +56,9 @@ func NewClient(ctx context.Context, gcp config.GCPConfig, cfg config.PubSubConfi
 		return nil, err
 	}
 
-	if logg != nil {
-		logg.Info(ctx, "pubsub client initialized")
-	}
+	// if logg != nil {
+	// 	logg.Info(ctx, "pubsub client initialized")
+	// }
 
 	return c, nil
 }

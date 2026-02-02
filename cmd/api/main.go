@@ -2,10 +2,9 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"os"
-
-	"github.com/joho/godotenv"
 
 	"github.com/angelmondragon/packfinderz-backend/api/routes"
 	"github.com/angelmondragon/packfinderz-backend/internal/analytics"
@@ -34,20 +33,17 @@ import (
 	"github.com/angelmondragon/packfinderz-backend/pkg/redis"
 	"github.com/angelmondragon/packfinderz-backend/pkg/storage/gcs"
 	"github.com/angelmondragon/packfinderz-backend/pkg/stripe"
+	"github.com/joho/godotenv"
 )
 
 func main() {
+	ctx := context.Background()
 	logg := logger.New(logger.Options{ServiceName: "api"})
 
-	if err := godotenv.Load(); err != nil {
-		logg.Warn(context.Background(), ".env file not found, relying on environment")
-	}
+	_ = godotenv.Load()
 
 	cfg, err := config.Load()
-	if err != nil {
-		logg.Error(context.Background(), "failed to load config", err)
-		os.Exit(1)
-	}
+	requireResource(ctx, logg, "config", err)
 
 	logg = logger.New(logger.Options{
 		ServiceName: "api",
@@ -56,71 +52,31 @@ func main() {
 	})
 
 	stripeClient, err := stripe.NewClient(context.Background(), cfg.Stripe, logg)
-	if err != nil {
-		logg.Error(context.Background(), "failed to bootstrap stripe client", err)
-		os.Exit(1)
-	}
+	requireResource(ctx, logg, "stripe client", err)
 
 	dbClient, err := db.New(context.Background(), cfg.DB, logg)
-	if err != nil {
-		logg.Error(context.Background(), "failed to bootstrap database", err)
-		os.Exit(1)
-	}
-	defer func() {
-		if err := dbClient.Close(); err != nil {
-			logg.Error(context.Background(), "error closing database", err)
-		}
-	}()
+	requireResource(ctx, logg, "database", err)
+	defer dbClient.Close()
 
-	if err := migrate.MaybeRunDev(context.Background(), cfg, logg, dbClient); err != nil {
-		logg.Error(context.Background(), "failed to run dev migrations", err)
-		os.Exit(1)
-	}
+	requireResource(ctx, logg, "migrations", migrate.MaybeRunDev(context.Background(), cfg, logg, dbClient))
 
 	redisClient, err := redis.New(context.Background(), cfg.Redis, logg)
-	if err != nil {
-		logg.Error(context.Background(), "failed to bootstrap redis", err)
-		os.Exit(1)
-	}
-	defer func() {
-		if err := redisClient.Close(); err != nil {
-			logg.Error(context.Background(), "error closing redis", err)
-		}
-	}()
+	requireResource(ctx, logg, "redis", err)
+	defer redisClient.Close()
 
 	sessionManager, err := session.NewManager(redisClient, cfg.JWT)
-	if err != nil {
-		logg.Error(context.Background(), "failed to create session manager", err)
-		os.Exit(1)
-	}
+	requireResource(ctx, logg, "session manager", err)
 
 	gcsClient, err := gcs.NewClient(context.Background(), cfg.GCS, cfg.GCP, logg)
-	if err != nil {
-		logg.Error(context.Background(), "failed to bootstrap gcs", err)
-		os.Exit(1)
-	}
-	defer func() {
-		if err := gcsClient.Close(); err != nil {
-			logg.Error(context.Background(), "error closing gcs client", err)
-		}
-	}()
+	requireResource(ctx, logg, "gcs", err)
+	defer gcsClient.Close()
 
 	bqClient, err := bigquery.NewClient(context.Background(), cfg.GCP, cfg.BigQuery, logg)
-	if err != nil {
-		logg.Error(context.Background(), "failed to bootstrap bigquery", err)
-		os.Exit(1)
-	}
-	defer func() {
-		if err := bqClient.Close(); err != nil {
-			logg.Error(context.Background(), "error closing bigquery client", err)
-		}
-	}()
+	requireResource(ctx, logg, "bigquery", err)
+	defer bqClient.Close()
 
 	analyticsService, err := analytics.NewService(bqClient, cfg.GCP.ProjectID, cfg.BigQuery.Dataset, cfg.BigQuery.MarketplaceEventsTable)
-	if err != nil {
-		logg.Error(context.Background(), "failed to create analytics service", err)
-		os.Exit(1)
-	}
+	requireResource(ctx, logg, "analytics service", err)
 
 	usersRepo := users.NewRepository(dbClient.DB())
 	membershipsRepo := memberships.NewRepository(dbClient.DB())
@@ -130,53 +86,35 @@ func main() {
 		SessionManager:  sessionManager,
 		JWTConfig:       cfg.JWT,
 	})
-	if err != nil {
-		logg.Error(context.Background(), "failed to create auth service", err)
-		os.Exit(1)
-	}
+	requireResource(ctx, logg, "auth service", err)
 
 	registerService, err := auth.NewRegisterService(auth.RegisterServiceParams{
 		DB:             dbClient,
 		PasswordConfig: cfg.Password,
 	})
-	if err != nil {
-		logg.Error(context.Background(), "failed to create register service", err)
-		os.Exit(1)
-	}
+	requireResource(ctx, logg, "register service", err)
 	adminRegisterService, err := auth.NewAdminRegisterService(auth.AdminRegisterServiceParams{
 		DB:             dbClient,
 		PasswordConfig: cfg.Password,
 	})
-	if err != nil {
-		logg.Error(context.Background(), "failed to create admin register service", err)
-		os.Exit(1)
-	}
+	requireResource(ctx, logg, "admin register service", err)
 
 	switchService, err := auth.NewSwitchStoreService(auth.SwitchStoreServiceParams{
 		MembershipsRepo: membershipsRepo,
 		SessionManager:  sessionManager,
 		JWTConfig:       cfg.JWT,
 	})
-	if err != nil {
-		logg.Error(context.Background(), "failed to create switch store service", err)
-		os.Exit(1)
-	}
+	requireResource(ctx, logg, "switch store service", err)
 
 	storeRepo := stores.NewRepository(dbClient.DB())
 	storeService, err := stores.NewService(storeRepo, membershipsRepo, usersRepo, cfg.Password)
-	if err != nil {
-		logg.Error(context.Background(), "failed to create store service", err)
-		os.Exit(1)
-	}
+	requireResource(ctx, logg, "store service", err)
 
 	billingRepo := billing.NewRepository(dbClient.DB())
 	billingService, err := billing.NewService(billing.ServiceParams{
 		Repo: billingRepo,
 	})
-	if err != nil {
-		logg.Error(context.Background(), "failed to create billing service", err)
-		os.Exit(1)
-	}
+	requireResource(ctx, logg, "billing service", err)
 
 	subscriptionsService, err := subscriptions.NewService(subscriptions.ServiceParams{
 		BillingRepo:       billingRepo,
@@ -185,10 +123,7 @@ func main() {
 		DefaultPriceID:    cfg.Stripe.SubscriptionPriceID,
 		TransactionRunner: dbClient,
 	})
-	if err != nil {
-		logg.Error(context.Background(), "failed to create subscription service", err)
-		os.Exit(1)
-	}
+	requireResource(ctx, logg, "subscription service", err)
 
 	stripeWebhookService, err := stripewebhook.NewService(stripewebhook.ServiceParams{
 		BillingRepo:       billingRepo,
@@ -196,16 +131,10 @@ func main() {
 		StripeClient:      subscriptions.NewStripeClient(stripeClient),
 		TransactionRunner: dbClient,
 	})
-	if err != nil {
-		logg.Error(context.Background(), "failed to create stripe webhook service", err)
-		os.Exit(1)
-	}
+	requireResource(ctx, logg, "stripe webhook service", err)
 
 	stripeWebhookGuard, err := stripewebhook.NewIdempotencyGuard(redisClient, cfg.Eventing.OutboxIdempotencyTTL, "stripe-webhook")
-	if err != nil {
-		logg.Error(context.Background(), "failed to create stripe webhook guard", err)
-		os.Exit(1)
-	}
+	requireResource(ctx, logg, "stripe webhook guard", err)
 
 	mediaRepo := media.NewRepository(dbClient.DB())
 	mediaAttachmentRepo := media.NewMediaAttachmentRepository(dbClient.DB())
@@ -218,17 +147,11 @@ func main() {
 		cfg.GCS.UploadURLExpiry,
 		cfg.GCS.DownloadURLExpiry,
 	)
-	if err != nil {
-		logg.Error(context.Background(), "failed to create media service", err)
-		os.Exit(1)
-	}
+	requireResource(ctx, logg, "media service", err)
 
 	productRepo := products.NewRepository(dbClient.DB())
 	productService, err := products.NewService(productRepo, dbClient, storeRepo, membershipsRepo, mediaRepo)
-	if err != nil {
-		logg.Error(context.Background(), "failed to create product service", err)
-		os.Exit(1)
-	}
+	requireResource(ctx, logg, "product service", err)
 
 	cartRepo := cart.NewRepository(dbClient.DB())
 	cartService, err := cart.NewService(
@@ -238,34 +161,22 @@ func main() {
 		productRepo,
 		cart.NoopPromoLoader(),
 	)
-	if err != nil {
-		logg.Error(context.Background(), "failed to create cart service", err)
-		os.Exit(1)
-	}
+	requireResource(ctx, logg, "cart service", err)
 
 	outboxRepo := outbox.NewRepository(dbClient.DB())
 	outboxPublisher := outbox.NewService(outboxRepo, logg)
 
 	ledgerRepo := ledger.NewRepository(dbClient.DB())
 	ledgerService, err := ledger.NewService(ledgerRepo)
-	if err != nil {
-		logg.Error(context.Background(), "failed to create ledger service", err)
-		os.Exit(1)
-	}
+	requireResource(ctx, logg, "ledger service", err)
 
 	ordersRepo := orders.NewRepository(dbClient.DB())
 	ordersService, err := orders.NewService(ordersRepo, dbClient, outboxPublisher, orders.NewInventoryReleaser(), orders.NewInventoryReserver(), ledgerService)
-	if err != nil {
-		logg.Error(context.Background(), "failed to create orders service", err)
-		os.Exit(1)
-	}
+	requireResource(ctx, logg, "orders service", err)
 
 	notificationsRepo := notifications.NewRepository(dbClient.DB())
 	notificationsService, err := notifications.NewService(notificationsRepo)
-	if err != nil {
-		logg.Error(context.Background(), "failed to create notifications service", err)
-		os.Exit(1)
-	}
+	requireResource(ctx, logg, "notifications service", err)
 	checkoutService, err := checkoutsvc.NewService(
 		dbClient,
 		cartRepo,
@@ -275,10 +186,7 @@ func main() {
 		nil,
 		outboxPublisher,
 	)
-	if err != nil {
-		logg.Error(context.Background(), "failed to create checkout service", err)
-		os.Exit(1)
-	}
+	requireResource(ctx, logg, "checkout service", err)
 
 	licenseService, err := licenses.NewService(
 		licenses.NewRepository(dbClient.DB()),
@@ -291,10 +199,7 @@ func main() {
 		dbClient,
 		outboxPublisher,
 	)
-	if err != nil {
-		logg.Error(context.Background(), "failed to create license service", err)
-		os.Exit(1)
-	}
+	requireResource(ctx, logg, "license service", err)
 
 	port := os.Getenv("PORT")
 	if port == "" {
@@ -305,12 +210,12 @@ func main() {
 	if id == "" {
 		id = "local"
 	}
-	ctx := logg.WithFields(context.Background(), map[string]any{
+	serverCtx := logg.WithFields(ctx, map[string]any{
 		"env":      cfg.App.Env,
 		"addr":     addr,
 		"instance": id,
 	})
-	logg.Info(ctx, "starting api server")
+	logg.Info(serverCtx, "api ready")
 
 	server := &http.Server{
 		Addr: addr,
@@ -345,7 +250,15 @@ func main() {
 	}
 
 	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-		logg.Error(ctx, "api server stopped unexpectedly", err)
+		logg.Error(serverCtx, "api not working", err)
 		os.Exit(1)
 	}
+}
+
+func requireResource(ctx context.Context, logg *logger.Logger, resource string, err error) {
+	if err == nil {
+		return
+	}
+	logg.Error(ctx, fmt.Sprintf("resource not working: %s", resource), err)
+	os.Exit(1)
 }

@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"flag"
+	"fmt"
 	"os"
 
 	"github.com/angelmondragon/packfinderz-backend/pkg/config"
@@ -13,12 +14,11 @@ import (
 )
 
 func main() {
+	ctx := context.Background()
 	// bootstrap logger early (then re-init after config load)
 	logg := logger.New(logger.Options{ServiceName: "migrate"})
 
-	if err := godotenv.Load(); err != nil {
-		logg.Warn(context.Background(), ".env file not found, relying on environment")
-	}
+	_ = godotenv.Load()
 
 	// Flags
 	cmd := flag.String("cmd", "up", "migration command: up|down|status|version|create|validate")
@@ -31,10 +31,7 @@ func main() {
 	flag.Parse()
 
 	cfg, err := config.Load()
-	if err != nil {
-		logg.Error(context.Background(), "failed to load config", err)
-		os.Exit(1)
-	}
+	requireResource(ctx, logg, "config", err)
 
 	logg = logger.New(logger.Options{
 		ServiceName: "migrate",
@@ -42,7 +39,7 @@ func main() {
 		WarnStack:   cfg.App.LogWarnStack,
 	})
 
-	ctx := logg.WithFields(context.Background(), map[string]any{
+	ctx = logg.WithFields(context.Background(), map[string]any{
 		"env": cfg.App.Env,
 		"cmd": *cmd,
 		"dir": *dir,
@@ -52,79 +49,77 @@ func main() {
 	switch *cmd {
 	case "create":
 		if *name == "" {
-			logg.Error(ctx, "missing -name for create", nil)
+			fmt.Fprintln(os.Stderr, "missing -name for create")
 			os.Exit(1)
 		}
+		logg.Info(ctx, "migrate ready")
 		path, err := migrate.CreateSQLMigration(*dir, *name)
 		if err != nil {
-			logg.Error(ctx, "failed to create migration", err)
+			fmt.Fprintf(os.Stderr, "failed to create migration: %v\n", err)
 			os.Exit(1)
 		}
-		logg.Info(ctx, "created migration: "+path)
+		fmt.Println("created migration:", path)
 		return
 
 	case "validate":
+		logg.Info(ctx, "migrate ready")
 		if err := migrate.ValidateDir(*dir); err != nil {
-			logg.Error(ctx, "migration validation failed", err)
+			fmt.Fprintf(os.Stderr, "migration validation failed: %v\n", err)
 			os.Exit(1)
 		}
-		logg.Info(ctx, "migration validation passed")
+		fmt.Println("migration validation passed")
 		return
 	}
 
 	// Everything else needs DB
 	dbClient, err := db.New(context.Background(), cfg.DB, logg)
-	if err != nil {
-		logg.Error(ctx, "failed to bootstrap database", err)
-		os.Exit(1)
-	}
-	defer func() {
-		if cerr := dbClient.Close(); cerr != nil {
-			logg.Error(ctx, "failed to close database", cerr)
-		}
-	}()
+	requireResource(ctx, logg, "database", err)
+	defer dbClient.Close()
 
 	sqlDB, err := dbClient.DB().DB()
-	if err != nil {
-		logg.Error(ctx, "failed to access sql DB", err)
-		os.Exit(1)
-	}
+	requireResource(ctx, logg, "sql database", err)
 
-	logg.Info(ctx, "running migrations")
+	logg.Info(ctx, "migrate ready")
 
 	switch *cmd {
 	case "up":
 		if err := migrate.Run(ctx, sqlDB, *dir, "up"); err != nil {
-			logg.Error(ctx, "goose up failed", err)
+			fmt.Fprintf(os.Stderr, "goose up failed: %v\n", err)
 			os.Exit(1)
 		}
 
 	case "down":
 		if err := migrate.Run(ctx, sqlDB, *dir, "down"); err != nil {
-			logg.Error(ctx, "goose down failed", err)
+			fmt.Fprintf(os.Stderr, "goose down failed: %v\n", err)
 			os.Exit(1)
 		}
 
 	case "status":
 		if err := migrate.Run(ctx, sqlDB, *dir, "status"); err != nil {
-			logg.Error(ctx, "goose status failed", err)
+			fmt.Fprintf(os.Stderr, "goose status failed: %v\n", err)
 			os.Exit(1)
 		}
 
 	case "version":
 		if *version == "" {
-			logg.Error(ctx, "missing -version for version command", nil)
+			fmt.Fprintln(os.Stderr, "missing -version for version command")
 			os.Exit(1)
 		}
 		if err := migrate.MigrateToVersion(ctx, sqlDB, *dir, *version); err != nil {
-			logg.Error(ctx, "goose version migrate failed", err)
+			fmt.Fprintf(os.Stderr, "goose version migrate failed: %v\n", err)
 			os.Exit(1)
 		}
 
 	default:
-		logg.Error(ctx, "unknown -cmd value: "+*cmd, nil)
+		fmt.Fprintln(os.Stderr, "unknown -cmd value:", *cmd)
 		os.Exit(1)
 	}
+}
 
-	logg.Info(ctx, "migrations completed")
+func requireResource(ctx context.Context, logg *logger.Logger, resource string, err error) {
+	if err == nil {
+		return
+	}
+	logg.Error(ctx, fmt.Sprintf("resource not working: %s", resource), err)
+	os.Exit(1)
 }

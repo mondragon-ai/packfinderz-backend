@@ -59,9 +59,9 @@ func New(ctx context.Context, cfg config.RedisConfig, logg *logger.Logger) (*Cli
 	if err := raw.Ping(ctx).Err(); err != nil {
 		return nil, fmt.Errorf("ping redis: %w", err)
 	}
-	if logg != nil {
-		logg.Info(ctx, "redis connection established")
-	}
+	// if logg != nil {
+	// 	logg.Info(ctx, "redis connection established")
+	// }
 	return &Client{store: raw, raw: raw}, nil
 }
 

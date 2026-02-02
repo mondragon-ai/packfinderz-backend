@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"os/signal"
 
@@ -18,17 +19,13 @@ import (
 )
 
 func main() {
+	ctx := context.Background()
 	logg := logger.New(logger.Options{ServiceName: "outbox-publisher"})
 
-	if err := godotenv.Load(); err != nil {
-		logg.Warn(context.Background(), ".env file not found, relying on environment")
-	}
+	_ = godotenv.Load()
 
 	cfg, err := config.Load()
-	if err != nil {
-		logg.Error(context.Background(), "failed to load config", err)
-		os.Exit(1)
-	}
+	requireResource(ctx, logg, "config", err)
 
 	cfg.Service.Kind = "outbox-publisher"
 
@@ -39,39 +36,19 @@ func main() {
 	})
 
 	dbClient, err := db.New(context.Background(), cfg.DB, logg)
-	if err != nil {
-		logg.Error(context.Background(), "failed to bootstrap database", err)
-		os.Exit(1)
-	}
-	defer func() {
-		if err := dbClient.Close(); err != nil {
-			logg.Error(context.Background(), "error closing database", err)
-		}
-	}()
+	requireResource(ctx, logg, "database", err)
+	defer dbClient.Close()
 
-	if err := migrate.MaybeRunDev(context.Background(), cfg, logg, dbClient); err != nil {
-		logg.Error(context.Background(), "failed to run dev migrations", err)
-		os.Exit(1)
-	}
+	requireResource(ctx, logg, "migrations", migrate.MaybeRunDev(context.Background(), cfg, logg, dbClient))
 
 	pubsubClient, err := pubsub.NewClient(context.Background(), cfg.GCP, cfg.PubSub, logg)
-	if err != nil {
-		logg.Error(context.Background(), "failed to bootstrap pubsub", err)
-		os.Exit(1)
-	}
-	defer func() {
-		if err := pubsubClient.Close(); err != nil {
-			logg.Error(context.Background(), "error closing pubsub client", err)
-		}
-	}()
+	requireResource(ctx, logg, "pubsub", err)
+	defer pubsubClient.Close()
 
 	repo := outbox.NewRepository(dbClient.DB())
 	dlqRepo := outbox.NewDLQRepository(dbClient.DB())
 	eventRegistry, err := registry.NewEventRegistry(cfg.PubSub)
-	if err != nil {
-		logg.Error(context.Background(), "failed to build event registry", err)
-		os.Exit(1)
-	}
+	requireResource(ctx, logg, "event registry", err)
 	service, err := NewService(ServiceParams{
 		Config:        cfg,
 		Logger:        logg,
@@ -81,23 +58,26 @@ func main() {
 		Registry:      eventRegistry,
 		DLQRepository: dlqRepo,
 	})
-	if err != nil {
-		logg.Error(context.Background(), "failed to create outbox publisher", err)
-		os.Exit(1)
-	}
+	requireResource(ctx, logg, "outbox publisher service", err)
 
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	runCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
-	ctx = logg.WithFields(ctx, map[string]any{
+	runCtx = logg.WithFields(runCtx, map[string]any{
 		"env":         cfg.App.Env,
 		"serviceKind": "outbox-publisher",
 	})
-	logg.Info(ctx, "starting outbox publisher")
+	logg.Info(runCtx, "outbox publisher ready")
 
-	if err := service.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
-		logg.Error(ctx, "outbox publisher stopped unexpectedly", err)
+	if err := service.Run(runCtx); err != nil && !errors.Is(err, context.Canceled) {
+		logg.Error(runCtx, "outbox publisher not working", err)
 		os.Exit(1)
 	}
+}
 
-	logg.Info(ctx, "outbox publisher shutting down gracefully")
+func requireResource(ctx context.Context, logg *logger.Logger, resource string, err error) {
+	if err == nil {
+		return
+	}
+	logg.Error(ctx, fmt.Sprintf("resource not working: %s", resource), err)
+	os.Exit(1)
 }
