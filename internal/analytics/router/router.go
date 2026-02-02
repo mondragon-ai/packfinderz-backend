@@ -48,7 +48,7 @@ func NewRouter(writer Writer, logg *logger.Logger, overrides map[enums.Analytics
 
 	entries := map[enums.AnalyticsEventType]handlerEntry{
 		enums.AnalyticsEventOrderCreated: {
-			factory: func() any { return &outboxpayloads.OrderCreatedEvent{} },
+			factory: func() any { return &analyticspayloads.OrderCreatedEvent{} },
 			handler: newOrderCreatedHandler(writer, logg),
 		},
 		enums.AnalyticsEventOrderPaid: {
