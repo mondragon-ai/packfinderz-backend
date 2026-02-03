@@ -14,8 +14,8 @@ import (
 func TestEnsureUniqueDiscounts(t *testing.T) {
 	t.Run("uniqueMinQty", func(t *testing.T) {
 		err := ensureUniqueDiscounts([]VolumeDiscountInput{
-			{MinQty: 1, UnitPriceCents: 100},
-			{MinQty: 2, UnitPriceCents: 90},
+			{MinQty: 1, DiscountPercent: 10},
+			{MinQty: 2, DiscountPercent: 5},
 		})
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
@@ -24,8 +24,8 @@ func TestEnsureUniqueDiscounts(t *testing.T) {
 
 	t.Run("duplicateMinQty", func(t *testing.T) {
 		err := ensureUniqueDiscounts([]VolumeDiscountInput{
-			{MinQty: 1, UnitPriceCents: 100},
-			{MinQty: 1, UnitPriceCents: 80},
+			{MinQty: 1, DiscountPercent: 10},
+			{MinQty: 1, DiscountPercent: 20},
 		})
 		if err == nil {
 			t.Fatal("expected validation error for duplicate min_qty")
@@ -177,6 +177,18 @@ func TestValidateLowStockThreshold(t *testing.T) {
 	}
 	if err := validateLowStockThreshold(0); err != nil {
 		t.Fatalf("expected no error for zero threshold, got %v", err)
+	}
+}
+
+func TestValidateDiscountPercent(t *testing.T) {
+	if err := validateDiscountPercent(-1); err == nil {
+		t.Fatal("expected validation error for negative discount_percent")
+	}
+	if err := validateDiscountPercent(101); err == nil {
+		t.Fatal("expected validation error for discount_percent > 100")
+	}
+	if err := validateDiscountPercent(25); err != nil {
+		t.Fatalf("expected no error for valid discount_percent, got %v", err)
 	}
 }
 

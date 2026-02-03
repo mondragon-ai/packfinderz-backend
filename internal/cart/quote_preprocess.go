@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"time"
 
 	"github.com/angelmondragon/packfinderz-backend/internal/stores"
@@ -210,18 +211,28 @@ func priceKey(productID, vendorID uuid.UUID) string {
 
 func resolvePricing(product *models.Product, qty int, tier *models.ProductVolumeDiscount) (int, *types.AppliedVolumeDiscount) {
 	unitPrice := product.PriceCents
-	if tier == nil {
+	if tier == nil || tier.DiscountPercent <= 0 {
 		return unitPrice, nil
 	}
-	diff := product.PriceCents - tier.UnitPriceCents
-	if diff < 0 {
-		diff = 0
+
+	discountAmount := int(math.Round(float64(product.PriceCents) * tier.DiscountPercent / 100))
+	if discountAmount < 0 {
+		discountAmount = 0
 	}
+	if discountAmount > product.PriceCents {
+		discountAmount = product.PriceCents
+	}
+
 	applied := &types.AppliedVolumeDiscount{
 		Label:       fmt.Sprintf("volume tier %d+", tier.MinQty),
-		AmountCents: diff * qty,
+		AmountCents: discountAmount * qty,
 	}
-	return tier.UnitPriceCents, applied
+
+	unitPrice = product.PriceCents - discountAmount
+	if unitPrice < 0 {
+		unitPrice = 0
+	}
+	return unitPrice, applied
 }
 
 func aggregateVendorGroups(pipeline *quotePipelineResult) []models.CartVendorGroup {

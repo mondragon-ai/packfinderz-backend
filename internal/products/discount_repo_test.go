@@ -25,27 +25,30 @@ func TestRepositoryVolumeDiscounts(t *testing.T) {
 	product := mustCreateTestProduct(t, tx, store.ID)
 
 	discount := &models.ProductVolumeDiscount{
-		ProductID:      product.ID,
-		MinQty:         5,
-		UnitPriceCents: 900,
+		StoreID:         store.ID,
+		ProductID:       product.ID,
+		MinQty:          5,
+		DiscountPercent: 10,
 	}
 	if _, err := repo.CreateVolumeDiscount(ctx, discount); err != nil {
 		t.Fatalf("create volume discount: %v", err)
 	}
 
 	duplicate := &models.ProductVolumeDiscount{
-		ProductID:      product.ID,
-		MinQty:         5,
-		UnitPriceCents: 800,
+		StoreID:         store.ID,
+		ProductID:       product.ID,
+		MinQty:          5,
+		DiscountPercent: 15,
 	}
 	if _, err := repo.CreateVolumeDiscount(ctx, duplicate); err == nil {
 		t.Fatal("expected duplicate discount to fail")
 	}
 
 	higher := &models.ProductVolumeDiscount{
-		ProductID:      product.ID,
-		MinQty:         10,
-		UnitPriceCents: 850,
+		StoreID:         store.ID,
+		ProductID:       product.ID,
+		MinQty:          10,
+		DiscountPercent: 20,
 	}
 	if _, err := repo.CreateVolumeDiscount(ctx, higher); err != nil {
 		t.Fatalf("create higher tier: %v", err)

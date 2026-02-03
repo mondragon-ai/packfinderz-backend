@@ -2907,7 +2907,7 @@ Fields
 * `id uuid pk`
 * `product_id uuid not null`
 * `min_qty int not null`
-* `unit_price_cents int not null` (**ASSUMPTION:** store discount as explicit unit price; alternative: percent_off)
+* `discount_percent numeric(7,4) not null default 0` (**ASSUMPTION:** percentage off the base `price_cents`; stored between 0 and 100)
 * `created_at timestamptz not null default now()`
 
 Indexes
@@ -2922,6 +2922,7 @@ FKs
 Constraints
 
 * `CHECK (min_qty > 0)`
+* `CHECK (discount_percent >= 0 AND discount_percent <= 100)`
 
 ---
 

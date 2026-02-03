@@ -73,10 +73,10 @@ type InventoryDTO struct {
 
 // VolumeDiscountDTO represents a tiered unit price.
 type VolumeDiscountDTO struct {
-	ID             uuid.UUID `json:"id"`
-	MinQty         int       `json:"min_qty"`
-	UnitPriceCents int       `json:"unit_price_cents"`
-	CreatedAt      time.Time `json:"created_at"`
+	ID              uuid.UUID `json:"id"`
+	MinQty          int       `json:"min_qty"`
+	DiscountPercent float64   `json:"discount_percent"`
+	CreatedAt       time.Time `json:"created_at"`
 }
 
 // ProductMediaDTO captures product media metadata.
@@ -139,10 +139,10 @@ func NewProductDTO(product *models.Product, summary *VendorSummary) *ProductDTO 
 		dto.VolumeDiscounts = make([]VolumeDiscountDTO, len(product.VolumeDiscounts))
 		for i, tier := range product.VolumeDiscounts {
 			dto.VolumeDiscounts[i] = VolumeDiscountDTO{
-				ID:             tier.ID,
-				MinQty:         tier.MinQty,
-				UnitPriceCents: tier.UnitPriceCents,
-				CreatedAt:      tier.CreatedAt,
+				ID:              tier.ID,
+				MinQty:          tier.MinQty,
+				DiscountPercent: tier.DiscountPercent,
+				CreatedAt:       tier.CreatedAt,
 			}
 		}
 	}

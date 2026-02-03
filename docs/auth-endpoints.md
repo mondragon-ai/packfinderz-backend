@@ -550,7 +550,7 @@ Creates a new product record plus its inventory, optional media links, and optio
 - `classification` (if provided) must be one of `sativa`, `hybrid`, `indica`, `cbd`, `hemp`, or `balanced`.
 - `inventory` is required and must contain `available_qty` (≥ 0) and `reserved_qty` (≥ 0) with `reserved_qty ≤ available_qty`; the service stores both counts in `inventory_items`.
 - `media_ids`, when present, must be UUIDs for `media_kind=product` rows that belong to the same vendor store (duplicates are rejected).
-- `volume_discounts` entries must include `min_qty` (≥ 1) and `unit_price_cents` (≥ 0), and `min_qty` values must be unique within the payload.
+- `volume_discounts` entries must include `min_qty` (≥ 1) and `discount_percent` (0-100), and `min_qty` values must be unique within the payload.
 
 `partial fields` are allowed for the optional attributes (`subtitle`, `body_html`, `strain`, `media_ids`, `volume_discounts`, `compare_at_price_cents`, `is_active`, `is_featured`, `thc_percent`, `cbd_percent`). `is_active` defaults to `true` when omitted; `is_featured` defaults to `false`.
 
@@ -585,9 +585,9 @@ Creates a new product record plus its inventory, optional media links, and optio
     "c1f0e7e4-0d7a-4d63-8d6f-0b2c2d1f9a77"
   ],
   "volume_discounts": [
-    { "min_qty": 25, "unit_price_cents": 1700 },
-    { "min_qty": 50, "unit_price_cents": 1550 },
-    { "min_qty": 100, "unit_price_cents": 1400 }
+    { "min_qty": 25, "discount_percent": 5 },
+    { "min_qty": 50, "discount_percent": 10 },
+    { "min_qty": 100, "discount_percent": 15 }
   ]
 }
 ```
@@ -628,11 +628,11 @@ Updates metadata, inventory, volume discounts, or media for an existing product.
   "volume_discounts": [
     {
       "min_qty": 5,
-      "unit_price_cents": 620
+      "discount_percent": 5
     },
     {
       "min_qty": 15,
-      "unit_price_cents": 590
+      "discount_percent": 10
     }
   ]
 }
@@ -647,7 +647,7 @@ curl -X PATCH "{{API_BASE_URL}}/api/v1/vendor/products/{{product_id}}" \
   -d '{ ... }'
 ```
 
-The response is the updated `product.ProductDTO`. Inventory changes appear under `inventory`, and `media` may be `null` if no attachments remain. Volume discounts mirror the new tier list with each entry returning `id`, `min_qty`, `unit_price_cents`, and `created_at`.
+The response is the updated `product.ProductDTO`. Inventory changes appear under `inventory`, and `media` may be `null` if no attachments remain. Volume discounts mirror the new tier list with each entry returning `id`, `min_qty`, `discount_percent`, and `created_at`.
 
 ### DELETE /api/v1/vendor/products/{productId}
 Removes the product, its inventory, volume discounts, and media cascading via FK constraints. The bearer must be a vendor member who owns (or is an allowed role on) the store; the controller checks `store_id` ownership before delegating to the service.

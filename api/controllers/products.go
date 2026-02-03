@@ -106,8 +106,8 @@ type createInventoryRequest struct {
 }
 
 type createVolumeDiscountRequest struct {
-	MinQty         int `json:"min_qty" validate:"required,min=1"`
-	UnitPriceCents int `json:"unit_price_cents" validate:"required,min=0"`
+	MinQty          int     `json:"min_qty" validate:"required,min=1"`
+	DiscountPercent float64 `json:"discount_percent" validate:"required,gte=0,lte=100"`
 }
 
 // VendorUpdateProduct handles patching existing products.
@@ -408,8 +408,8 @@ type updateInventoryRequest struct {
 }
 
 type updateVolumeDiscountRequest struct {
-	MinQty         int `json:"min_qty" validate:"required,min=1"`
-	UnitPriceCents int `json:"unit_price_cents" validate:"required,min=0"`
+	MinQty          int     `json:"min_qty" validate:"required,min=1"`
+	DiscountPercent float64 `json:"discount_percent" validate:"required,gte=0,lte=100"`
 }
 
 func (r createProductRequest) toCreateInput() (productsvc.CreateProductInput, error) {
@@ -453,8 +453,8 @@ func (r createProductRequest) toCreateInput() (productsvc.CreateProductInput, er
 	discounts := make([]productsvc.VolumeDiscountInput, 0, len(r.VolumeDiscounts))
 	for _, tier := range r.VolumeDiscounts {
 		discounts = append(discounts, productsvc.VolumeDiscountInput{
-			MinQty:         tier.MinQty,
-			UnitPriceCents: tier.UnitPriceCents,
+			MinQty:          tier.MinQty,
+			DiscountPercent: tier.DiscountPercent,
 		})
 	}
 
@@ -613,8 +613,8 @@ func (r updateProductRequest) toUpdateInput() (productsvc.UpdateProductInput, er
 		tiers := make([]productsvc.VolumeDiscountInput, len(*r.VolumeDiscounts))
 		for i, tier := range *r.VolumeDiscounts {
 			tiers[i] = productsvc.VolumeDiscountInput{
-				MinQty:         tier.MinQty,
-				UnitPriceCents: tier.UnitPriceCents,
+				MinQty:          tier.MinQty,
+				DiscountPercent: tier.DiscountPercent,
 			}
 		}
 		input.VolumeDiscounts = &tiers

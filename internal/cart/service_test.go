@@ -19,9 +19,9 @@ func TestSelectVolumeDiscount(t *testing.T) {
 	t.Parallel()
 
 	tiers := []models.ProductVolumeDiscount{
-		{MinQty: 10, UnitPriceCents: 800},
-		{MinQty: 5, UnitPriceCents: 900},
-		{MinQty: 20, UnitPriceCents: 700},
+		{MinQty: 10, DiscountPercent: 20},
+		{MinQty: 5, DiscountPercent: 10},
+		{MinQty: 20, DiscountPercent: 30},
 	}
 
 	if res := selectVolumeDiscount(12, tiers); res == nil || res.MinQty != 10 {
@@ -660,7 +660,7 @@ func TestQuoteCartPersistsVolumeDiscount(t *testing.T) {
 			AvailableQty: 20,
 		},
 		VolumeDiscounts: []models.ProductVolumeDiscount{
-			{MinQty: 5, UnitPriceCents: 800},
+			{MinQty: 5, DiscountPercent: 20},
 		},
 	}
 
@@ -702,7 +702,7 @@ func TestQuoteCartPersistsVolumeDiscount(t *testing.T) {
 	if item.AppliedVolumeDiscount.Label != expectedLabel {
 		t.Fatalf("unexpected label %s", item.AppliedVolumeDiscount.Label)
 	}
-	expectedAmount := (product.PriceCents - product.VolumeDiscounts[0].UnitPriceCents) * item.Quantity
+	expectedAmount := (product.PriceCents - item.UnitPriceCents) * item.Quantity
 	if item.AppliedVolumeDiscount.AmountCents != expectedAmount {
 		t.Fatalf("unexpected discount amount %d", item.AppliedVolumeDiscount.AmountCents)
 	}
@@ -742,7 +742,7 @@ func TestQuoteCartAddsPriceChangedWarning(t *testing.T) {
 			AvailableQty: 20,
 		},
 		VolumeDiscounts: []models.ProductVolumeDiscount{
-			{MinQty: 10, UnitPriceCents: 900},
+			{MinQty: 10, DiscountPercent: 10},
 		},
 	}
 
