@@ -4005,7 +4005,18 @@ WHERE published_at IS NOT NULL
 * Idempotency: `expireLicense` reloads the license inside the same transaction, skips updates if the status is already `expired`, and clears the `pf:evt:processed` guard by letting the outbox handle duplicates so rerunning the job on the same calendar day is safe (`internal/schedulers/licenses/service.go`:183-210).
 * HARD DELETE `UNKNOWN`: the service currently stops after `reconcileKYC`, so PF-137 must add the >30-day cleanup that detaches `entity_type='license'` attachments, removes `media` rows, and deletes the license only after the GCS object is gone; the cron worker must keep that job ordered after the warning/expiration steps so metrics/logs still cover the full lifecycle (`internal/schedulers/licenses/service.go`:174-210; `docs/media_attachments_lifecycle.md`).
 
-### 7.5 Order TTL scheduler (PF-138)
+### 7.5 Pending media cleanup (PF-204)
+
+* Daily:
+
+  * find `media` rows whose `status = 'pending'` and `created_at` is older than seven days.
+  * delete any `media_attachments` rows that reference the stale media, then remove the `media` row so pending uploads never linger even if the client abandoned the upload mid-flight.
+  * log the cutoff, retention window, `media_deleted`, and `attachments_deleted` counts for observability.
+  * register the job after the notification cleanup job so the cron metrics keep this cleanup before the outbox retention run.
+
+* Implementation: `internal/cron/pending_media_cleanup_job.go` calls `media.Repository.ListPendingBefore` within `db.WithTx`, deletes attachments via `mediaAttachmentRepository.DeleteByMediaID`, removes each media row with `media.Repository.DeleteWithTx`, and lets `cmd/cron-worker/main.go` wire the job into the registry so it runs every 24 hours without touching GCS.
+
+### 7.6 Order TTL scheduler (PF-138)
 
 * Daily:
 
@@ -4016,7 +4027,7 @@ WHERE published_at IS NOT NULL
 
 * Implementation: `cmd/cron-worker/main.go` registers both the license lifecycle and order TTL jobs; the latter uses `internal/cron/order_ttl_job.go` with `pendingNudgeDays=5`, `orderExpirationDays=10`, `orders.ReleaseLineItemInventory` for inventory release, and `order_pending_nudge`/`order_expired` enums defined in `pkg/enums/outbox.go` plus the `20260301000000_add_order_pending_nudge_event.sql` migration so the new events are durable.
 
-### 7.6 Notification retention cleanup (PF-139)
+### 7.7 Notification retention cleanup (PF-139)
 
 * Daily:
 
@@ -4024,7 +4035,7 @@ WHERE published_at IS NOT NULL
   * execute inside `internal/cron/notification_cleanup_job.go`: the job computes the cutoff, runs the delete via `notifications.Repository.DeleteOlderThan` inside `db.WithTx`, and logs the number of rows deleted along with the retention window, making the work idempotent.
   * register the job from `cmd/cron-worker/main.go` after the order TTL job so the cron worker keeps metrics/logs for the notification cleanup run even if other jobs fail.
 
-### 7.7 Outbox retention cleanup (PF-140)
+### 7.8 Outbox retention cleanup (PF-140)
 
 * Daily:
 
@@ -4032,7 +4043,7 @@ WHERE published_at IS NOT NULL
   * run through `internal/cron/outbox_retention_job.go`: the job computes the cutoff, calls `outbox.Repository.DeletePublishedBefore` inside `db.WithTx`, logs the number of rows deleted plus the retention/attempt thresholds, and keeps duplicates safe when jobs rerun.
   * register the job after notification cleanup so the cron metrics/logs reflect license lifecycle → order TTL → notification cleanup → outbox retention sequentially.
 
-### 7.8 Orphaned media GC
+### 7.9 Orphaned media GC
 
 **ASSUMPTION:** allow media deletion only when no attachments exist.
 

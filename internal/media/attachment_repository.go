@@ -43,3 +43,15 @@ func (r *mediaAttachmentRepository) ListByMediaID(ctx context.Context, mediaID u
 	}
 	return attachments, nil
 }
+
+// DeleteByMediaID removes all attachments linked to the media ID.
+func (r *mediaAttachmentRepository) DeleteByMediaID(ctx context.Context, tx *gorm.DB, mediaID uuid.UUID) (int64, error) {
+	executor := tx
+	if executor == nil {
+		executor = r.db
+	}
+	result := executor.WithContext(ctx).
+		Where("media_id = ?", mediaID).
+		Delete(&models.MediaAttachment{})
+	return result.RowsAffected, result.Error
+}

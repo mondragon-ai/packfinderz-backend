@@ -57,6 +57,17 @@ func escapeLike(value string) string {
 	return value
 }
 
+// ListPendingBefore returns pending media rows created before the cutoff.
+func (r *Repository) ListPendingBefore(ctx context.Context, cutoff time.Time) ([]models.Media, error) {
+	var results []models.Media
+	if err := r.db.WithContext(ctx).
+		Where("status = ? AND created_at < ?", enums.MediaStatusPending, cutoff).
+		Find(&results).Error; err != nil {
+		return nil, err
+	}
+	return results, nil
+}
+
 // List returns media rows matching the provided query.
 func (r *Repository) List(ctx context.Context, opts listQuery) ([]models.Media, error) {
 	query := r.db.WithContext(ctx).Model(&models.Media{}).Where("store_id = ?", opts.storeID)
