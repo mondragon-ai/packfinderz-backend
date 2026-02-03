@@ -86,7 +86,7 @@ func TestServiceGetActiveCartSuccess(t *testing.T) {
 func newTestService(repo CartRepository, store *stores.StoreDTO) Service {
 	svc, err := NewService(repo, stubTxRunner{}, storeLoaderFunc(func(ctx context.Context, id uuid.UUID) (*stores.StoreDTO, error) {
 		return store, nil
-	}), stubProductLoader{products: map[uuid.UUID]*models.Product{}}, NoopPromoLoader())
+	}), stubProductLoader{products: map[uuid.UUID]*models.Product{}}, NoopPromoLoader(), stubTokenValidator{})
 	if err != nil {
 		panic(err)
 	}
@@ -134,7 +134,7 @@ func TestQuoteCartIgnoresInventoryShortage(t *testing.T) {
 		default:
 			return nil, fmt.Errorf("store %s not found", id)
 		}
-	}), stubProductLoader{products: map[uuid.UUID]*models.Product{product.ID: product}}, NoopPromoLoader())
+	}), stubProductLoader{products: map[uuid.UUID]*models.Product{product.ID: product}}, NoopPromoLoader(), stubTokenValidator{})
 	if err != nil {
 		t.Fatalf("failed to build service: %v", err)
 	}
@@ -206,7 +206,7 @@ func TestQuoteCartVendorPreloadsOncePerVendor(t *testing.T) {
 	})
 
 	repo := &stubCartRepo{}
-	service, err := NewService(repo, stubTxRunner{}, loader, stubProductLoader{products: products}, NoopPromoLoader())
+	service, err := NewService(repo, stubTxRunner{}, loader, stubProductLoader{products: products}, NoopPromoLoader(), stubTokenValidator{})
 	if err != nil {
 		t.Fatalf("failed to build service: %v", err)
 	}
@@ -228,6 +228,67 @@ func TestQuoteCartVendorPreloadsOncePerVendor(t *testing.T) {
 	}
 	if loader.calls[vendor2.ID] != 1 {
 		t.Fatalf("expected vendor2 resolved once, got %d", loader.calls[vendor2.ID])
+	}
+}
+
+func TestQuoteCartFiltersInvalidAdTokens(t *testing.T) {
+	t.Parallel()
+
+	buyerStore := &stores.StoreDTO{
+		ID:        uuid.New(),
+		Type:      enums.StoreTypeBuyer,
+		KYCStatus: enums.KYCStatusVerified,
+		Address:   types.Address{Line1: "1", City: "City", State: "OK", PostalCode: "00000", Country: "US"},
+	}
+	vendorStore := &stores.StoreDTO{
+		ID:                 uuid.New(),
+		Type:               enums.StoreTypeVendor,
+		KYCStatus:          enums.KYCStatusVerified,
+		SubscriptionActive: true,
+		Address:            types.Address{Line1: "2", City: "City", State: "OK", PostalCode: "00000", Country: "US"},
+	}
+	productID := uuid.New()
+	product := &models.Product{
+		ID:         productID,
+		StoreID:    vendorStore.ID,
+		SKU:        "SKU",
+		Unit:       enums.ProductUnitUnit,
+		MOQ:        1,
+		PriceCents: 1000,
+		IsActive:   true,
+	}
+
+	loader := newCountingStoreLoader(map[uuid.UUID]*stores.StoreDTO{
+		buyerStore.ID:  buyerStore,
+		vendorStore.ID: vendorStore,
+	})
+
+	repo := &stubCartRepo{}
+	validator := stubTokenValidator{validTokens: map[string]struct{}{
+		"token-valid": {},
+	}}
+	service, err := NewService(repo, stubTxRunner{}, loader, stubProductLoader{products: map[uuid.UUID]*models.Product{product.ID: product}}, NoopPromoLoader(), validator)
+	if err != nil {
+		t.Fatalf("failed to build service: %v", err)
+	}
+
+	input := QuoteCartInput{
+		Items: []QuoteCartItem{{
+			ProductID:     product.ID,
+			VendorStoreID: vendorStore.ID,
+			Quantity:      1,
+		}},
+		AdTokens: []string{"token-valid", "token-invalid"},
+	}
+
+	record, err := service.QuoteCart(context.Background(), buyerStore.ID, input)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	gotTokens := []string(record.AdTokens)
+	if len(gotTokens) != 1 || gotTokens[0] != "token-valid" {
+		t.Fatalf("expected only valid tokens persisted, got %+v", gotTokens)
 	}
 }
 
@@ -264,7 +325,7 @@ func TestQuoteCartDetectsProductVendorMismatch(t *testing.T) {
 	})
 
 	repo := &stubCartRepo{}
-	service, err := NewService(repo, stubTxRunner{}, loader, stubProductLoader{products: map[uuid.UUID]*models.Product{otherProduct.ID: otherProduct}}, NoopPromoLoader())
+	service, err := NewService(repo, stubTxRunner{}, loader, stubProductLoader{products: map[uuid.UUID]*models.Product{otherProduct.ID: otherProduct}}, NoopPromoLoader(), stubTokenValidator{})
 	if err != nil {
 		t.Fatalf("failed to build service: %v", err)
 	}
@@ -338,7 +399,7 @@ func TestQuoteCartClampsQuantityToMOQ(t *testing.T) {
 	})
 
 	repo := &stubCartRepo{}
-	service, err := NewService(repo, stubTxRunner{}, loader, stubProductLoader{products: map[uuid.UUID]*models.Product{product.ID: product}}, NoopPromoLoader())
+	service, err := NewService(repo, stubTxRunner{}, loader, stubProductLoader{products: map[uuid.UUID]*models.Product{product.ID: product}}, NoopPromoLoader(), stubTokenValidator{})
 	if err != nil {
 		t.Fatalf("failed to build service: %v", err)
 	}
@@ -411,7 +472,7 @@ func TestQuoteCartMarksNotAvailableWhenInventoryInsufficient(t *testing.T) {
 	})
 
 	repo := &stubCartRepo{}
-	service, err := NewService(repo, stubTxRunner{}, loader, stubProductLoader{products: map[uuid.UUID]*models.Product{product.ID: product}}, NoopPromoLoader())
+	service, err := NewService(repo, stubTxRunner{}, loader, stubProductLoader{products: map[uuid.UUID]*models.Product{product.ID: product}}, NoopPromoLoader(), stubTokenValidator{})
 	if err != nil {
 		t.Fatalf("failed to build service: %v", err)
 	}
@@ -502,7 +563,7 @@ func TestQuoteCartPersistsVendorGroups(t *testing.T) {
 	service, err := NewService(repo, stubTxRunner{}, loader, stubProductLoader{products: map[uuid.UUID]*models.Product{
 		product1.ID: product1,
 		product2.ID: product2,
-	}}, NoopPromoLoader())
+	}}, NoopPromoLoader(), stubTokenValidator{})
 	if err != nil {
 		t.Fatalf("failed to build service: %v", err)
 	}
@@ -596,7 +657,7 @@ func TestQuoteCartWarnsOnInvalidVendorPromo(t *testing.T) {
 	})
 
 	repo := &stubCartRepo{}
-	service, err := NewService(repo, stubTxRunner{}, loader, stubProductLoader{products: map[uuid.UUID]*models.Product{product.ID: product}}, NoopPromoLoader())
+	service, err := NewService(repo, stubTxRunner{}, loader, stubProductLoader{products: map[uuid.UUID]*models.Product{product.ID: product}}, NoopPromoLoader(), stubTokenValidator{})
 	if err != nil {
 		t.Fatalf("failed to build service: %v", err)
 	}
@@ -670,7 +731,7 @@ func TestQuoteCartPersistsVolumeDiscount(t *testing.T) {
 	})
 
 	repo := &stubCartRepo{}
-	service, err := NewService(repo, stubTxRunner{}, loader, stubProductLoader{products: map[uuid.UUID]*models.Product{product.ID: product}}, NoopPromoLoader())
+	service, err := NewService(repo, stubTxRunner{}, loader, stubProductLoader{products: map[uuid.UUID]*models.Product{product.ID: product}}, NoopPromoLoader(), stubTokenValidator{})
 	if err != nil {
 		t.Fatalf("failed to build service: %v", err)
 	}
@@ -764,7 +825,7 @@ func TestQuoteCartAddsPriceChangedWarning(t *testing.T) {
 			},
 		},
 	}
-	service, err := NewService(repo, stubTxRunner{}, loader, stubProductLoader{products: map[uuid.UUID]*models.Product{product.ID: product}}, NoopPromoLoader())
+	service, err := NewService(repo, stubTxRunner{}, loader, stubProductLoader{products: map[uuid.UUID]*models.Product{product.ID: product}}, NoopPromoLoader(), stubTokenValidator{})
 	if err != nil {
 		t.Fatalf("failed to build service: %v", err)
 	}
@@ -870,6 +931,18 @@ func (l *countingStoreLoader) GetByID(ctx context.Context, id uuid.UUID) (*store
 		return store, nil
 	}
 	return nil, fmt.Errorf("store %s not found", id)
+}
+
+type stubTokenValidator struct {
+	validTokens map[string]struct{}
+}
+
+func (s stubTokenValidator) Validate(token string) bool {
+	if len(s.validTokens) == 0 {
+		return true
+	}
+	_, ok := s.validTokens[token]
+	return ok
 }
 
 type stubProductLoader struct {

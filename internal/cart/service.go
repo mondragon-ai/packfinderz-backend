@@ -38,15 +38,16 @@ type Service interface {
 }
 
 type service struct {
-	repo        CartRepository
-	tx          txRunner
-	store       storeLoader
-	productRepo productLoader
-	promo       promoLoader
+	repo           CartRepository
+	tx             txRunner
+	store          storeLoader
+	productRepo    productLoader
+	promo          promoLoader
+	tokenValidator attributionTokenValidator
 }
 
 // NewService builds a cart service backed by the provided stack.
-func NewService(repo CartRepository, tx txRunner, store storeLoader, productRepo productLoader, promo promoLoader) (Service, error) {
+func NewService(repo CartRepository, tx txRunner, store storeLoader, productRepo productLoader, promo promoLoader, tokenValidator attributionTokenValidator) (Service, error) {
 	if repo == nil {
 		return nil, fmt.Errorf("cart repository required")
 	}
@@ -62,12 +63,16 @@ func NewService(repo CartRepository, tx txRunner, store storeLoader, productRepo
 	if promo == nil {
 		return nil, fmt.Errorf("promo loader required")
 	}
+	if tokenValidator == nil {
+		return nil, fmt.Errorf("token validator required")
+	}
 	return &service{
-		repo:        repo,
-		tx:          tx,
-		store:       store,
-		productRepo: productRepo,
-		promo:       promo,
+		repo:           repo,
+		tx:             tx,
+		store:          store,
+		productRepo:    productRepo,
+		promo:          promo,
+		tokenValidator: tokenValidator,
 	}, nil
 }
 
@@ -114,6 +119,7 @@ func (s *service) QuoteCart(ctx context.Context, buyerStoreID uuid.UUID, input Q
 	validUntil := time.Now().Add(15 * time.Minute)
 	currency := enums.CurrencyUSD
 
+	adTokens := s.filterAdTokens(input.AdTokens)
 	payload := cartRecordPayload{
 		ShippingAddress: &shippingAddress,
 		Currency:        currency,
@@ -121,7 +127,7 @@ func (s *service) QuoteCart(ctx context.Context, buyerStoreID uuid.UUID, input Q
 		DiscountsCents:  discountsCents,
 		SubtotalCents:   subtotalCents,
 		TotalCents:      totalCents,
-		AdTokens:        input.AdTokens,
+		AdTokens:        adTokens,
 		Items:           items,
 		VendorGroups:    vendorGroups,
 	}
@@ -377,4 +383,24 @@ func selectVolumeDiscount(qty int, tiers []models.ProductVolumeDiscount) *models
 
 func normalizeState(value string) string {
 	return strings.ToUpper(strings.TrimSpace(value))
+}
+
+func (s *service) filterAdTokens(tokens []string) []string {
+	if len(tokens) == 0 {
+		return nil
+	}
+	var valid []string
+	for _, token := range tokens {
+		if token == "" {
+			continue
+		}
+		if !s.tokenValidator.Validate(token) {
+			continue
+		}
+		valid = append(valid, token)
+	}
+	if len(valid) == 0 {
+		return nil
+	}
+	return valid
 }
