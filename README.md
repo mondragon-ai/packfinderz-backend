@@ -243,6 +243,7 @@ Re-running the migration is safe because the statements use `CREATE EXTENSION IF
 * `internal/checkout/service.go` orchestrates the checkout transaction, converts the `CartRecord` into `VendorOrder`s while capturing the confirmed shipping/payment selections, and marks the cart `converted` so downstream flows can read the canonical totals that came straight out of the cart snapshot.
 * Buyer product listings/details only surface licensed, subscribed vendors whose state matches the buyer's `state` filter (see `pkg/visibility.EnsureVendorVisible` for the gating rules and 404/422 contract).
 * Cart quotes expire after 15 minutes (`valid_until`) and the checkout service rejects any expired quote so the client must re-quote before attempting checkout again.
+* Once a cart transitions to `converted`, its checkout response is replayed on future attempts instead of mutating the cart again, keeping conversion idempotent even when retries happen.
 
 ### Payments & Ledger
 

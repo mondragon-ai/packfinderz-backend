@@ -131,6 +131,10 @@ func (s *service) Execute(ctx context.Context, buyerStoreID, cartID uuid.UUID, i
 			}
 			return err
 		}
+		if record.Status == enums.CartStatusConverted {
+			result, err = s.buildConvertedCheckout(ctx, buyerStoreID, record, ordersRepo)
+			return err
+		}
 		if err := validateCartForCheckout(record); err != nil {
 			return err
 		}
@@ -409,6 +413,24 @@ func buildLineItem(orderID uuid.UUID, cartItem models.CartItem, product *models.
 		Status:                status,
 		Notes:                 notes,
 	}
+}
+
+func (s *service) buildConvertedCheckout(ctx context.Context, buyerStoreID uuid.UUID, record *models.CartRecord, ordersRepo orders.Repository) (*models.CheckoutGroup, error) {
+	if record.CheckoutGroupID == nil {
+		return nil, pkgerrors.New(pkgerrors.CodeInternal, "converted cart missing checkout group id")
+	}
+	vendorGroupSnapshots := append([]models.CartVendorGroup(nil), record.VendorGroups...)
+	orderRecords, err := ordersRepo.FindVendorOrdersByCheckoutGroup(ctx, *record.CheckoutGroupID)
+	if err != nil {
+		return nil, err
+	}
+	return &models.CheckoutGroup{
+		ID:               *record.CheckoutGroupID,
+		BuyerStoreID:     buyerStoreID,
+		CartID:           &record.ID,
+		VendorOrders:     orderRecords,
+		CartVendorGroups: vendorGroupSnapshots,
+	}, nil
 }
 
 type vendorOrderTotals struct {
