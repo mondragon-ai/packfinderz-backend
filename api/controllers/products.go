@@ -263,73 +263,11 @@ func BrowseProducts(svc productsvc.Service, storeSvc stores.Service, logg *logge
 		cursor := strings.TrimSpace(r.URL.Query().Get("cursor"))
 		requestedState := strings.ToUpper(strings.TrimSpace(r.URL.Query().Get("state")))
 
-		filters := productsvc.ProductListFilters{}
-
-		if raw := strings.TrimSpace(r.URL.Query().Get("category")); raw != "" {
-			parsed, err := enums.ParseProductCategory(raw)
-			if err != nil {
-				responses.WriteError(r.Context(), logg, w, pkgerrors.Wrap(pkgerrors.CodeValidation, err, "invalid category"))
-				return
-			}
-			filters.Category = &parsed
-		}
-		if raw := strings.TrimSpace(r.URL.Query().Get("classification")); raw != "" {
-			parsed, err := enums.ParseProductClassification(raw)
-			if err != nil {
-				responses.WriteError(r.Context(), logg, w, pkgerrors.Wrap(pkgerrors.CodeValidation, err, "invalid classification"))
-				return
-			}
-			filters.Classification = &parsed
-		}
-
-		if min, err := parseOptionalInt(r, "price_min_cents"); err != nil {
+		filters, err := decodeProductFilters(r)
+		if err != nil {
 			responses.WriteError(r.Context(), logg, w, err)
 			return
-		} else if min != nil {
-			filters.PriceMinCents = min
 		}
-		if max, err := parseOptionalInt(r, "price_max_cents"); err != nil {
-			responses.WriteError(r.Context(), logg, w, err)
-			return
-		} else if max != nil {
-			filters.PriceMaxCents = max
-		}
-
-		if v, err := parseOptionalFloat(r, "thc_min"); err != nil {
-			responses.WriteError(r.Context(), logg, w, err)
-			return
-		} else if v != nil {
-			filters.THCMin = v
-		}
-		if v, err := parseOptionalFloat(r, "thc_max"); err != nil {
-			responses.WriteError(r.Context(), logg, w, err)
-			return
-		} else if v != nil {
-			filters.THCMax = v
-		}
-
-		if v, err := parseOptionalFloat(r, "cbd_min"); err != nil {
-			responses.WriteError(r.Context(), logg, w, err)
-			return
-		} else if v != nil {
-			filters.CBDMin = v
-		}
-		if v, err := parseOptionalFloat(r, "cbd_max"); err != nil {
-			responses.WriteError(r.Context(), logg, w, err)
-			return
-		} else if v != nil {
-			filters.CBDMax = v
-		}
-
-		if hasPromo, err := parseOptionalBool(r, "has_promo"); err != nil {
-			responses.WriteError(r.Context(), logg, w, err)
-			return
-		} else if hasPromo != nil {
-			filters.HasPromo = hasPromo
-		}
-
-		filters.Query = strings.TrimSpace(r.URL.Query().Get("q"))
-
 		switch storeType {
 		case enums.StoreTypeBuyer:
 			if requestedState == "" {
@@ -377,6 +315,56 @@ func BrowseProducts(svc productsvc.Service, storeSvc stores.Service, logg *logge
 		}
 
 		list, err := svc.ListProducts(r.Context(), input)
+		if err != nil {
+			responses.WriteError(r.Context(), logg, w, pkgerrors.Wrap(pkgerrors.CodeDependency, err, "list products"))
+			return
+		}
+
+		responses.WriteSuccess(w, list)
+	}
+}
+
+func VendorProductList(svc productsvc.Service, logg *logger.Logger) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if svc == nil {
+			responses.WriteError(r.Context(), logg, w, pkgerrors.New(pkgerrors.CodeInternal, "product service unavailable"))
+			return
+		}
+
+		storeID, err := parseStoreID(r)
+		if err != nil {
+			responses.WriteError(r.Context(), logg, w, err)
+			return
+		}
+
+		storeType, ok := middleware.StoreTypeFromContext(r.Context())
+		if !ok || storeType != enums.StoreTypeVendor {
+			responses.WriteError(r.Context(), logg, w, pkgerrors.New(pkgerrors.CodeForbidden, "vendor store context required"))
+			return
+		}
+
+		limit, err := validators.ParseQueryInt(r, "limit", pagination.DefaultLimit, 1, pagination.MaxLimit)
+		if err != nil {
+			responses.WriteError(r.Context(), logg, w, err)
+			return
+		}
+		cursor := strings.TrimSpace(r.URL.Query().Get("cursor"))
+
+		filters, err := decodeProductFilters(r)
+		if err != nil {
+			responses.WriteError(r.Context(), logg, w, err)
+			return
+		}
+
+		list, err := svc.ListProducts(r.Context(), productsvc.ListProductsInput{
+			StoreID:   storeID,
+			StoreType: enums.StoreTypeVendor,
+			Filters:   filters,
+			Pagination: pagination.Params{
+				Limit:  limit,
+				Cursor: cursor,
+			},
+		})
 		if err != nil {
 			responses.WriteError(r.Context(), logg, w, pkgerrors.Wrap(pkgerrors.CodeDependency, err, "list products"))
 			return
@@ -653,6 +641,69 @@ func parseUUIDList(values []string) ([]uuid.UUID, error) {
 		result = append(result, parsed)
 	}
 	return result, nil
+}
+
+func decodeProductFilters(r *http.Request) (productsvc.ProductListFilters, error) {
+	var filters productsvc.ProductListFilters
+
+	if raw := strings.TrimSpace(r.URL.Query().Get("category")); raw != "" {
+		parsed, err := enums.ParseProductCategory(raw)
+		if err != nil {
+			return filters, pkgerrors.Wrap(pkgerrors.CodeValidation, err, "invalid category")
+		}
+		filters.Category = &parsed
+	}
+
+	if raw := strings.TrimSpace(r.URL.Query().Get("classification")); raw != "" {
+		parsed, err := enums.ParseProductClassification(raw)
+		if err != nil {
+			return filters, pkgerrors.Wrap(pkgerrors.CodeValidation, err, "invalid classification")
+		}
+		filters.Classification = &parsed
+	}
+
+	if min, err := parseOptionalInt(r, "price_min_cents"); err != nil {
+		return filters, err
+	} else if min != nil {
+		filters.PriceMinCents = min
+	}
+	if max, err := parseOptionalInt(r, "price_max_cents"); err != nil {
+		return filters, err
+	} else if max != nil {
+		filters.PriceMaxCents = max
+	}
+
+	if v, err := parseOptionalFloat(r, "thc_min"); err != nil {
+		return filters, err
+	} else if v != nil {
+		filters.THCMin = v
+	}
+	if v, err := parseOptionalFloat(r, "thc_max"); err != nil {
+		return filters, err
+	} else if v != nil {
+		filters.THCMax = v
+	}
+
+	if v, err := parseOptionalFloat(r, "cbd_min"); err != nil {
+		return filters, err
+	} else if v != nil {
+		filters.CBDMin = v
+	}
+	if v, err := parseOptionalFloat(r, "cbd_max"); err != nil {
+		return filters, err
+	} else if v != nil {
+		filters.CBDMax = v
+	}
+
+	if hasPromo, err := parseOptionalBool(r, "has_promo"); err != nil {
+		return filters, err
+	} else if hasPromo != nil {
+		filters.HasPromo = hasPromo
+	}
+
+	filters.Query = strings.TrimSpace(r.URL.Query().Get("q"))
+
+	return filters, nil
 }
 
 func parseOptionalInt(r *http.Request, key string) (*int, error) {

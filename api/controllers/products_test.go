@@ -218,6 +218,65 @@ func TestBrowseProducts(t *testing.T) {
 	})
 }
 
+func TestVendorProductList(t *testing.T) {
+	logg := logger.New(logger.Options{ServiceName: "test", Level: logger.ParseLevel("debug"), Output: io.Discard})
+	storeID := uuid.New()
+	userID := uuid.New()
+
+	t.Run("buyer forbidden", func(t *testing.T) {
+		ctx := middleware.WithStoreID(context.Background(), storeID.String())
+		ctx = middleware.WithUserID(ctx, userID.String())
+		ctx = middleware.WithStoreType(ctx, enums.StoreTypeBuyer)
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/vendor/products", nil)
+		req = req.WithContext(ctx)
+		rec := httptest.NewRecorder()
+
+		VendorProductList(&stubProductListService{}, logg).ServeHTTP(rec, req)
+		if rec.Code != http.StatusForbidden {
+			t.Fatalf("expected 403 for buyer store type, got %d", rec.Code)
+		}
+	})
+
+	t.Run("vendor success", func(t *testing.T) {
+		ctx := middleware.WithStoreID(context.Background(), storeID.String())
+		ctx = middleware.WithUserID(ctx, userID.String())
+		ctx = middleware.WithStoreType(ctx, enums.StoreTypeVendor)
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/vendor/products?limit=2&q=table&has_promo=false", nil)
+		req = req.WithContext(ctx)
+		rec := httptest.NewRecorder()
+
+		stubSvc := &stubProductListService{
+			result: &productsvc.ProductListResult{
+				Products: []productsvc.ProductSummary{{ID: uuid.New()}},
+			},
+		}
+		VendorProductList(stubSvc, logg).ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Fatalf("expected 200 on success, got %d", rec.Code)
+		}
+
+		var envelope struct {
+			Data productsvc.ProductListResult `json:"data"`
+		}
+		if err := json.NewDecoder(rec.Body).Decode(&envelope); err != nil {
+			t.Fatalf("decode response: %v", err)
+		}
+		if len(envelope.Data.Products) != 1 {
+			t.Fatalf("expected 1 product, got %d", len(envelope.Data.Products))
+		}
+		if stubSvc.lastInput.Filters.HasPromo == nil || *stubSvc.lastInput.Filters.HasPromo {
+			t.Fatalf("expected has_promo false filter")
+		}
+		if stubSvc.lastInput.Filters.Query != "table" {
+			t.Fatalf("expected query %q, got %q", "table", stubSvc.lastInput.Filters.Query)
+		}
+		if stubSvc.lastInput.StoreType != enums.StoreTypeVendor {
+			t.Fatalf("expected vendor store type input")
+		}
+	})
+}
+
 type stubProductListService struct {
 	lastInput productsvc.ListProductsInput
 	result    *productsvc.ProductListResult

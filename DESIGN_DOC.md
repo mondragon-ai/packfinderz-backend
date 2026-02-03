@@ -43,6 +43,7 @@
  9. payout recorded → payment `paid` → order `closed`
 
 * `GET /api/v1/products` drives the browse step: it returns cursor-paginated `ProductSummary` rows (`id`, `sku`, `title`, `category`, `classification`, `price_cents`, `compare_at_price_cents`, `thc_percent`, `cbd_percent`, `has_promo`, `vendor_store_id`, `created_at`, `updated_at`). The endpoint supports filters for `category`, `classification`, `price_min_cents`, `price_max_cents`, `thc_min`, `thc_max`, `cbd_min`, `cbd_max`, `has_promo`, and `q` (title/sku search), plus `state` forcing buyer stores to match the same state. Buyers only see `is_active=true` products belonging to verified, subscribed vendors whose `address.state` equals the requested state, while vendors always see their own listings so the UI can manage the catalog even when the state filter differs.
+* `GET /api/v1/vendor/products` surfaces the internal vendor table: it reuses the same filters + pagination but forces the scope to the active vendor store, returns the same `ProductSummary` projection, and intentionally ignores buyer visibility gating (state filter optional). This endpoint is accessible only to vendor stores and lets operations teams page/filter their catalog even when products are inactive or cross-state.
 
 Future (ACH):
 
