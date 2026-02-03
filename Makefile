@@ -8,6 +8,7 @@ API_PKG := ./cmd/api
 WORKER_PKG := ./cmd/worker
 OUTBOX_PKG := ./cmd/outbox-publisher
 CRON_PKG := ./cmd/cron-worker
+DELETE_MEDIA_PKG := ./cmd/media_deleted_worker
 INTEGRATION_SCRIPT := ./scripts/integration/run.sh
 
 # Migrations
@@ -33,6 +34,7 @@ dev:
 	$(GO) run $(WORKER_PKG) & \
 	PACKFINDERZ_SERVICE_KIND=outbox-publisher $(GO) run $(OUTBOX_PKG) & \
 	PACKFINDERZ_SERVICE_KIND=cron-worker $(GO) run $(CRON_PKG) & \
+	PACKFINDERZ_SERVICE_KIND=media_deleted_worker $(GO) run $(DELETE_MEDIA_PKG) & \
 	wait
 
 # =========================

@@ -1878,7 +1878,7 @@ Headers:
 * `POST /api/v1/media/presign`
 
   * Validates that the caller belongs to the active store with owner/admin/manager/staff/ops role, requires `Idempotency-Key`, and enforces `media_kind`, `mime_type`, `file_name`, plus `size_bytes ≤ 20MB`.
-  * Creates the `media` row in `pending`, assigns a deterministic `gcs_key` that embeds `media_id`, and stores the provided metadata before exposing any upload token.
+  * Creates the `media` row in `pending`, assigns a deterministic `gcs_key` that follows `{store_id}/{media_kind}/{media_id}.{extension}` so bucket paths stay canonical, and stores the provided metadata before exposing any upload token.
   * Returns `{media_id, gcs_key, signed_put_url, content_type, expires_at}` so the client can PUT directly; the signed URL enforces the supplied `Content-Type` and honors `PACKFINDERZ_GCS_UPLOAD_URL_EXPIRY`.
   * **Idempotent:** YES (required)
   * Success: `200`

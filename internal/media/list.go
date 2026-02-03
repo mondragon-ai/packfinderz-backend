@@ -42,7 +42,7 @@ type ListItem struct {
 	SizeBytes  int64             `json:"size_bytes"`
 	CreatedAt  time.Time         `json:"created_at"`
 	UploadedAt *time.Time        `json:"uploaded_at"`
-	SignedURL  string            `json:"signed_url,omitempty"`
+	SignedURL  *string           `json:"signed_url,omitempty"`
 }
 
 type listQuery struct {
@@ -103,7 +103,7 @@ func (s *service) ListMedia(ctx context.Context, params ListParams) (*ListResult
 		}
 
 		items[i] = toListItem(m)
-		items[i].SignedURL = signedURL
+		items[i].SignedURL = stringPtr(signedURL)
 	}
 
 	return &ListResult{
@@ -136,4 +136,12 @@ func (s *service) buildReadURL(media models.Media) (string, error) {
 		return "", pkgerrors.Wrap(pkgerrors.CodeDependency, err, "generate signed read url")
 	}
 	return url, nil
+}
+
+func stringPtr(value string) *string {
+	if value == "" {
+		return nil
+	}
+	copy := value
+	return &copy
 }

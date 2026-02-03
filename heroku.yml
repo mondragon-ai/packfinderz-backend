@@ -4,9 +4,11 @@ build:
     worker: Dockerfile
     outbox-publisher: Dockerfile
     cron-worker: Dockerfile
+    media_deleted_worker: Dockerfile
 
 run:
   web: sh -lc 'PACKFINDERZ_SERVICE_KIND=api /bin/api'
   worker: sh -lc 'PACKFINDERZ_SERVICE_KIND=worker /bin/worker'
   outbox-publisher: sh -lc 'PACKFINDERZ_SERVICE_KIND=outbox-publisher /bin/outbox-publisher'
   cron-worker: sh -lc 'PACKFINDERZ_SERVICE_KIND=cron-worker /bin/cron-worker'
+  media_deleted_worker: sh -lc 'PACKFINDERZ_SERVICE_KIND=media_deleted_worker /bin/media_deleted_worker'

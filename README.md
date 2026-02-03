@@ -509,7 +509,7 @@ These endpoints rely on `activeStoreId` and enforce owner/manager access for mut
 
 ### Media Uploads
 
-* `POST /api/v1/media/presign` – creates a `media` row in `pending` state, computes a deterministic `gcs_key` containing the newly minted `media_id`, and returns `{media_id, gcs_key, signed_put_url, content_type, expires_at}` for clients to PUT directly to GCS.
+* `POST /api/v1/media/presign` – creates a `media` row in `pending` state, assigns a deterministic `gcs_key` following the `{store_id}/{media_kind}/{media_id}.{extension}` pattern (extension included when the upload filename provides one), and returns `{media_id, gcs_key, signed_put_url, content_type, expires_at}` for clients to PUT directly to GCS.
   * Requires `activeStoreId` + store role (owner/admin/manager/staff/ops), `Idempotency-Key`, and a sanitized `file_name`.
   * Validates `media_kind`, `mime_type`, and `size_bytes ≤ 20MB`; the signed URL enforces the supplied `Content-Type`.
   * TTL honors `PACKFINDERZ_GCS_UPLOAD_URL_EXPIRY`, and clients must not proxy uploads through the API (use the signed PUT directly).
