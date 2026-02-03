@@ -8,6 +8,7 @@ import (
 
 	"github.com/angelmondragon/packfinderz-backend/api/controllers"
 	analysiscontrollers "github.com/angelmondragon/packfinderz-backend/api/controllers/analytics"
+	authcontrollers "github.com/angelmondragon/packfinderz-backend/api/controllers/auth"
 	billingcontrollers "github.com/angelmondragon/packfinderz-backend/api/controllers/billing"
 	cartcontrollers "github.com/angelmondragon/packfinderz-backend/api/controllers/cart"
 	ordercontrollers "github.com/angelmondragon/packfinderz-backend/api/controllers/orders"
@@ -109,18 +110,18 @@ func NewRouter(
 	})
 
 	r.Route("/api/v1/auth", func(r chi.Router) {
-		r.With(middleware.AuthRateLimit(loginPolicy, redisClient, logg)).Post("/login", controllers.AuthLogin(authService, logg))
-		r.With(middleware.AuthRateLimit(registerPolicy, redisClient, logg)).Post("/register", controllers.AuthRegister(registerService, authService, logg))
-		r.Post("/logout", controllers.AuthLogout(sessionManager, cfg.JWT, logg))
-		r.Post("/refresh", controllers.AuthRefresh(sessionManager, cfg.JWT, logg))
-		r.Post("/switch-store", controllers.AuthSwitchStore(switchService, cfg.JWT, logg))
+		r.With(middleware.AuthRateLimit(loginPolicy, redisClient, logg)).Post("/login", authcontrollers.AuthLogin(authService, logg))
+		r.With(middleware.AuthRateLimit(registerPolicy, redisClient, logg)).Post("/register", authcontrollers.AuthRegister(registerService, authService, logg))
+		r.Post("/logout", authcontrollers.AuthLogout(sessionManager, cfg.JWT, logg))
+		r.Post("/refresh", authcontrollers.AuthRefresh(sessionManager, cfg.JWT, logg))
+		r.Post("/switch-store", authcontrollers.AuthSwitchStore(switchService, cfg.JWT, logg))
 	})
 
 	r.Route("/api/admin/v1/auth", func(r chi.Router) {
 		if !cfg.App.IsProd() {
-			r.Post("/register", controllers.AdminAuthRegister(adminRegisterService, authService, cfg, logg))
+			r.Post("/register", authcontrollers.AdminAuthRegister(adminRegisterService, authService, cfg, logg))
 		}
-		r.With(middleware.AuthRateLimit(loginPolicy, redisClient, logg)).Post("/login", controllers.AdminAuthLogin(authService, logg))
+		r.With(middleware.AuthRateLimit(loginPolicy, redisClient, logg)).Post("/login", authcontrollers.AdminAuthLogin(authService, logg))
 	})
 
 	r.Route("/api", func(r chi.Router) {
