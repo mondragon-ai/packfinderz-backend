@@ -36,6 +36,31 @@ type ProductDTO struct {
 	UpdatedAt           time.Time           `json:"updated_at"`
 }
 
+// ProductSummary captures the lightweight product payload returned by listing endpoints.
+type ProductSummary struct {
+	ID                  uuid.UUID `json:"id"`
+	SKU                 string    `json:"sku"`
+	Title               string    `json:"title"`
+	Subtitle            *string   `json:"subtitle,omitempty"`
+	Category            string    `json:"category"`
+	Classification      *string   `json:"classification,omitempty"`
+	Unit                string    `json:"unit"`
+	PriceCents          int       `json:"price_cents"`
+	CompareAtPriceCents *int      `json:"compare_at_price_cents,omitempty"`
+	THCPercent          *float64  `json:"thc_percent,omitempty"`
+	CBDPercent          *float64  `json:"cbd_percent,omitempty"`
+	HasPromo            bool      `json:"has_promo"`
+	VendorStoreID       uuid.UUID `json:"vendor_store_id"`
+	CreatedAt           time.Time `json:"created_at"`
+	UpdatedAt           time.Time `json:"updated_at"`
+}
+
+// ProductListResult wraps a page of product summaries plus the cursor for the next page.
+type ProductListResult struct {
+	Products   []ProductSummary `json:"products"`
+	NextCursor string           `json:"next_cursor,omitempty"`
+}
+
 // InventoryDTO exposes inventory counts.
 type InventoryDTO struct {
 	AvailableQty int       `json:"available_qty"`

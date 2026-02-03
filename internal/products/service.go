@@ -19,6 +19,7 @@ type Service interface {
 	CreateProduct(ctx context.Context, userID, storeID uuid.UUID, input CreateProductInput) (*ProductDTO, error)
 	UpdateProduct(ctx context.Context, userID, storeID, productID uuid.UUID, input UpdateProductInput) (*ProductDTO, error)
 	DeleteProduct(ctx context.Context, userID, storeID, productID uuid.UUID) error
+	ListProducts(ctx context.Context, input ListProductsInput) (*ProductListResult, error)
 }
 
 // CreateProductInput holds the validated payload to create a product.
@@ -352,6 +353,31 @@ func (s *service) DeleteProduct(ctx context.Context, userID, storeID, productID 
 		return pkgerrors.Wrap(pkgerrors.CodeDependency, err, "delete product")
 	}
 	return nil
+}
+
+func (s *service) ListProducts(ctx context.Context, input ListProductsInput) (*ProductListResult, error) {
+	switch input.StoreType {
+	case enums.StoreTypeBuyer:
+		requested := strings.TrimSpace(input.RequestedState)
+		if requested == "" {
+			return nil, pkgerrors.New(pkgerrors.CodeValidation, "state is required")
+		}
+		requested = strings.ToUpper(requested)
+		return s.repo.ListProductSummaries(ctx, productListQuery{
+			Pagination:     input.Pagination,
+			Filters:        input.Filters,
+			RequestedState: requested,
+		})
+	case enums.StoreTypeVendor:
+		vendorID := input.StoreID
+		return s.repo.ListProductSummaries(ctx, productListQuery{
+			Pagination:    input.Pagination,
+			Filters:       input.Filters,
+			VendorStoreID: &vendorID,
+		})
+	default:
+		return nil, pkgerrors.New(pkgerrors.CodeForbidden, "unsupported store type")
+	}
 }
 
 func (s *service) ensureVendorStore(ctx context.Context, storeID uuid.UUID) error {

@@ -32,15 +32,17 @@
   * Buyer verification gates purchasing actions.
 * Commerce flow (MVP = cash at delivery):
 
-  1. browse/search
-  2. cart (client-side; shows pricing + discounts)
-  3. checkout (server creates `CartRecord` + `CheckoutGroup`)
-  4. split into N vendor orders (`VendorOrder`)
-  5. vendor accepts/rejects line items
-  6. packed/ready (`fulfilled`)
-  7. agent dispatch → `in_transit` → `delivered`
-  8. **cash collected at delivery** → payment `settled`
-  9. payout recorded → payment `paid` → order `closed`
+ 1. browse/search
+ 2. cart (client-side; shows pricing + discounts)
+ 3. checkout (server creates `CartRecord` + `CheckoutGroup`)
+ 4. split into N vendor orders (`VendorOrder`)
+ 5. vendor accepts/rejects line items
+ 6. packed/ready (`fulfilled`)
+ 7. agent dispatch → `in_transit` → `delivered`
+ 8. **cash collected at delivery** → payment `settled`
+ 9. payout recorded → payment `paid` → order `closed`
+
+* `GET /api/v1/products` drives the browse step: it returns cursor-paginated `ProductSummary` rows (`id`, `sku`, `title`, `category`, `classification`, `price_cents`, `compare_at_price_cents`, `thc_percent`, `cbd_percent`, `has_promo`, `vendor_store_id`, `created_at`, `updated_at`). The endpoint supports filters for `category`, `classification`, `price_min_cents`, `price_max_cents`, `thc_min`, `thc_max`, `cbd_min`, `cbd_max`, `has_promo`, and `q` (title/sku search), plus `state` forcing buyer stores to match the same state. Buyers only see `is_active=true` products belonging to verified, subscribed vendors whose `address.state` equals the requested state, while vendors always see their own listings so the UI can manage the catalog even when the state filter differs.
 
 Future (ACH):
 
