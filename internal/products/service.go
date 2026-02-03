@@ -569,6 +569,7 @@ func (s *service) buildProductMediaRows(ctx context.Context, storeID, productID 
 		rows = append(rows, models.ProductMedia{
 			ProductID: productID,
 			GCSKey:    mediaRow.GCSKey,
+			MediaID:   &mediaRow.ID,
 			Position:  idx,
 		})
 	}

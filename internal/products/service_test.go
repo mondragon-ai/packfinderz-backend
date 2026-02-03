@@ -125,6 +125,9 @@ func TestBuildProductMediaRows(t *testing.T) {
 		if rows[0].GCSKey != "gcs-key-product" {
 			t.Fatalf("expected gcs key, got %s", rows[0].GCSKey)
 		}
+		if rows[0].MediaID == nil || *rows[0].MediaID != mediaProductID {
+			t.Fatalf("expected media id %s, got %v", mediaProductID, rows[0].MediaID)
+		}
 	})
 
 	t.Run("duplicate ids", func(t *testing.T) {
