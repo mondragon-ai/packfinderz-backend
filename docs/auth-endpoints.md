@@ -647,7 +647,7 @@ curl -X PATCH "{{API_BASE_URL}}/api/v1/vendor/products/{{product_id}}" \
   -d '{ ... }'
 ```
 
-The response is the updated `product.ProductDTO`. Inventory changes appear under `inventory`, and `media` may be `null` if no attachments remain. Volume discounts mirror the new tier list with each entry returning `id`, `min_qty`, `discount_percent`, and `created_at`.
+The response is the updated `product.ProductDTO`. Inventory changes appear under `inventory`, and `media` may be `null` if no attachments remain. Each media object exposes `id`, `media_id`, `url`, `gcs_key`, `position`, and `created_at` so clients can trace the attachment back to the originating `media` row. Volume discounts mirror the new tier list with each entry returning `id`, `min_qty`, `discount_percent`, and `created_at`.
 
 ### DELETE /api/v1/vendor/products/{productId}
 Removes the product, its inventory, volume discounts, and media cascading via FK constraints. The bearer must be a vendor member who owns (or is an allowed role on) the store; the controller checks `store_id` ownership before delegating to the service.

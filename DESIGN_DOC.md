@@ -2958,6 +2958,7 @@ Fields
 
 * `id uuid pk`
 * `product_id uuid not null`
+* `media_id uuid null`
 * `url text nullable`
 * `gcs_key text not null`
 * `position int not null default 0`
@@ -2971,6 +2972,7 @@ Indexes
 FKs
 
 * `product_id -> products(id) on delete cascade`
+* `media_id -> media(id) on delete set null`
 
 
 ---

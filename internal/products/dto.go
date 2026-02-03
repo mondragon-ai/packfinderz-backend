@@ -81,11 +81,12 @@ type VolumeDiscountDTO struct {
 
 // ProductMediaDTO captures product media metadata.
 type ProductMediaDTO struct {
-	ID        uuid.UUID `json:"id"`
-	URL       *string   `json:"url,omitempty"`
-	GCSKey    string    `json:"gcs_key"`
-	Position  int       `json:"position"`
-	CreatedAt time.Time `json:"created_at"`
+	ID        uuid.UUID  `json:"id"`
+	URL       *string    `json:"url,omitempty"`
+	GCSKey    string     `json:"gcs_key"`
+	MediaID   *uuid.UUID `json:"media_id,omitempty"`
+	Position  int        `json:"position"`
+	CreatedAt time.Time  `json:"created_at"`
 }
 
 // VendorSummaryDTO surfaces limited store data for product responses.
@@ -154,6 +155,7 @@ func NewProductDTO(product *models.Product, summary *VendorSummary) *ProductDTO 
 				ID:        pm.ID,
 				URL:       pm.URL,
 				GCSKey:    pm.GCSKey,
+				MediaID:   pm.MediaID,
 				Position:  pm.Position,
 				CreatedAt: pm.CreatedAt,
 			}
