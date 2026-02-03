@@ -20,6 +20,7 @@ const (
 
 type deletionRepository interface {
 	FindByGCSKey(ctx context.Context, gcsKey string) (*models.Media, error)
+	Delete(ctx context.Context, id uuid.UUID) error
 }
 
 type attachmentRepository interface {
@@ -153,8 +154,17 @@ func (c *DeletionConsumer) process(ctx context.Context, msg *pubsub.Message) pro
 		}
 	}
 
-	logCtx = c.logg.WithFields(logCtx, map[string]any{"attachments_processed": len(attachments)})
-	c.logg.Info(logCtx, "processed media deletion event")
+	logCtx = c.logg.WithFields(logCtx, map[string]any{
+		"attachments_processed": len(attachments),
+	})
+	c.logg.Info(logCtx, "attachments removed, deleting media record")
+
+	if err := c.repo.Delete(ctx, mediaRow.ID); err != nil {
+		return c.handleDBError(logCtx, err)
+	}
+
+	logCtx = c.logg.WithField(logCtx, "media_deleted", mediaRow.ID)
+	c.logg.Info(logCtx, "media deletion complete")
 	return processResult{ack: true}
 }
 
