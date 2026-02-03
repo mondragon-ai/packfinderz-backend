@@ -223,21 +223,21 @@
   * [x] Ticket [PF-196]: Add auth middleware tests (missing/expired token, revoked session, missing activeStoreId)
   * [x] Ticket [PF-197]: Add RBAC guard tests for `/api/admin/*` and `/api/v1/agent/*`
   * [x] Ticket [PF-198]: Remove store IDs from User model/object (Goose migration + models + helpers)
-  * [ ] Ticket [PF-199]: Remove access + refresh token from login/register response bodies; return only via headers
-  * [ ] Ticket [PF-205]: Modify register flow to allow creating a store when user already exists (user can own 0..N stores)
+  * [x] Ticket [PF-199]: Remove access + refresh token from login/register response bodies; return only via headers
+  * [x] Ticket [PF-200]: Modify register flow to allow creating a store when user already exists (user can own 0..N stores)
 
 * **Phase 2 — Media System Correctness + Lifecycle Jobs**
   **Goal:** Fix media edge cases and make deletion/upload lifecycle operationally safe.
 
-  * [ ] Ticket [PF-206]: Prevent generating READ URLs for `media.status=pending` responses
-  * [ ] Ticket [PF-207]: Enforce per-store uploaded object uniqueness to prevent same-name overwrites (dedupe or enforce canonical keying)
-  * [ ] Ticket [PF-208]: Change GCS object key to `{storeId}/{media_kind}/{mediaId}.{ext}` (stop using filename)
-  * [ ] Ticket [PF-209]: Implement stale pending media GC scheduler (delete pending uploads after 7 days)
-  * [ ] Ticket [PF-210]: Add delete media worker to Docker/Heroku/Make targets for deploy parity
-  * [ ] Ticket [PF-211]: Fix media delete returning 200 but not deleting (end-to-end verification + logs + worker outcomes)
-  * [ ] Ticket [PF-211a]: Validate store and fetch only activeStoreId media. Currently returnign all media.
-  * [ ] Ticket [PF-212]: Detach all attachment references by entity type prior to media deletion (delete-worker preflight)
-  * [ ] Ticket [PF-213]: Delete GCS originals + derived artifacts (not-found treated as success) and persist deletion outcomes/status updates
+  * [ ] Ticket [PF-201]: Prevent generating READ URLs for `media.status=pending` responses
+  * [ ] Ticket [PF-202]: Change GCS object key to `{storeId}/{media_kind}/{mediaId}.{ext}` (stop using filename)
+  * [ ] Ticket [PF-203]: Enforce per-store uploaded object uniqueness to prevent same-name overwrites (dedupe or enforce canonical keying)
+  * [ ] Ticket [PF-204]: Validate store and fetch only activeStoreId media. Currently returnign all media.
+
+  * [ ] Ticket [PF-205]: Add delete media worker to Docker/Heroku/Make targets for deploy parity
+  * [ ] Ticket [PF-206]: Extend (`cmd/cron-worker/main.go`)  to Implement stale pending media deletion pending uploads after 7 days
+  * [ ] Ticket [PF-207]: Fix media delete returning 200 but not deleting media or gcs object (end-to-end verification + logs + worker outcomes)
+  * [ ] Ticket [PF-208]: Detach all attachment references by entity type (`cmd/media_deleted_worker/main.go`) & if necessary Delete GCS originals + derived artifacts if no longer attatched. 
 
 * **Phase 3 — Compliance + Admin Ops Gaps**
   **Goal:** Finish compliance retention, admin queues, and auditability needed for real ops.

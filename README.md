@@ -434,7 +434,7 @@ GET /health/ready
 POST /api/v1/auth/register
 ```
 
-Creates the initial user + store + owner membership in one transaction. Provide `first_name`, `last_name`, `email`, `password`, `company_name`, `store_type`, an `address` object (including `lat`/`lng`), and `accept_tos: true`. Returns `201`, issues access + refresh tokens, and mirrors the newest access token in `X-PF-Token`.
+Creates the initial user + store + owner membership bundle in one transaction. If the email already exists and the provided password matches that account, the endpoint creates a new store + membership for the existing user instead of inserting another user row. Provide `first_name`, `last_name`, `email`, `password`, `company_name`, `store_type`, an `address` object (including `lat`/`lng`), and `accept_tos: true`. Returns `201`, issues access + refresh tokens, and mirrors the newest access token in `X-PF-Token`.
 
 #### Login
 

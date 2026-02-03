@@ -25,7 +25,7 @@
     "password": "Secur3P@ssw0rd!"
   }
   ```
-- `POST /api/v1/auth/register` – public, body `RegisterRequest` (first/last name, email, password, company, store_type, address, accept_tos), reuses `auth.Service` to auto-login, returns 201 with tokens and `X-PF-Token` (api/controllers/register.go:13-41; internal/auth/register.go:21-133).
+- `POST /api/v1/auth/register` – public, body `RegisterRequest` (first/last name, email, password, company, store_type, address, accept_tos), reuses `auth.Service` to auto-login, returns 201 with tokens and `X-PF-Token`. If the provided email already exists, the password must match that user and the call creates a new store + owner membership for the existing account instead of inserting another user row (api/controllers/register.go:13-41; internal/auth/register.go:21-133).
 - `POST /api/v1/auth/logout` – requires Authorization Bearer token, revokes the access session via `session.Manager.Revoke`, returns `{"status":"logged_out"}` (api/controllers/session.go:47-79).
 - `POST /api/v1/auth/refresh` – requires Authorization, body `{"refresh_token"}`, rotates session, issues new `AccessToken`/`RefreshToken` plus `X-PF-Token` header (api/controllers/session.go:81-143).
 - `POST /api/v1/auth/switch-store` – Authorization plus body `{"store_id","refresh_token"}`, ensures membership, rotates session, returns new tokens and `StoreSummary` (api/controllers/switch_store.go:18-68).
