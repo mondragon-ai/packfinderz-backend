@@ -34,7 +34,7 @@ curl -X POST "{{API_BASE_URL}}/api/v1/auth/login" \
 On success you will see the JSON payload and the `X-PF-Token` header containing the access token that expires according to `pkg/config.JWTConfig`.
 
 ## POST /api/v1/auth/register
-Creates the initial user/store/membership bundle for a new company. `accept_tos` **must** be `true`. Choose `store_type` from `buyer` or `vendor`.
+Creates the initial user/store/membership bundle for a new company, or, when the same email already exists and the provided password matches, it adds a new store + owner membership for that existing user. `accept_tos` **must** be `true`. Choose `store_type` from `buyer` or `vendor`.
 
 ### Request body (required + optional fields)
 ```json
@@ -117,7 +117,7 @@ curl -X POST "{{API_BASE_URL}}/api/v1/auth/refresh" \
   }'
 ```
 
-Success response includes the new `access_token`, `refresh_token`, and updates the `X-PF-Token` header with the freshly minted access token.
+Success response includes the new `access_token`, `refresh_token`, and updates the `X-PF-Token` header with the freshly minted access token. If the email already belongs to an existing user, the provided password must match that account; the endpoint then creates a new store + owner membership for the existing user instead of inserting another user row.
 
 ## POST /api/v1/auth/logout
 Revokes the refresh token tied to the bearer access token. No body payload is required.
