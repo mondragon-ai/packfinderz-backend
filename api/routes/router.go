@@ -174,6 +174,8 @@ func NewRouter(
 				r.Post("/read-all", controllers.MarkAllNotificationsRead(notificationsService, logg))
 			})
 
+			r.Get("/v1/products", controllers.BrowseProducts(productService, storeService, logg))
+
 			r.Route("/v1/cart", func(r chi.Router) {
 				r.Get("/", cartcontrollers.CartFetch(cartService, logg))
 				r.Post("/", cartcontrollers.CartQuote(cartService, logg))

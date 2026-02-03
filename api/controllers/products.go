@@ -3,6 +3,7 @@ package controllers
 import (
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/go-chi/chi/v5"
@@ -12,9 +13,11 @@ import (
 	"github.com/angelmondragon/packfinderz-backend/api/responses"
 	"github.com/angelmondragon/packfinderz-backend/api/validators"
 	productsvc "github.com/angelmondragon/packfinderz-backend/internal/products"
+	"github.com/angelmondragon/packfinderz-backend/internal/stores"
 	"github.com/angelmondragon/packfinderz-backend/pkg/enums"
 	pkgerrors "github.com/angelmondragon/packfinderz-backend/pkg/errors"
 	"github.com/angelmondragon/packfinderz-backend/pkg/logger"
+	"github.com/angelmondragon/packfinderz-backend/pkg/pagination"
 )
 
 // VendorCreateProduct handles product creation for vendor stores.
@@ -214,6 +217,172 @@ func VendorDeleteProduct(svc productsvc.Service, logg *logger.Logger) http.Handl
 		}
 
 		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
+func parseStoreID(r *http.Request) (uuid.UUID, error) {
+	storeID := middleware.StoreIDFromContext(r.Context())
+	if storeID == "" {
+		return uuid.Nil, pkgerrors.New(pkgerrors.CodeForbidden, "store context missing")
+	}
+	parsed, err := uuid.Parse(storeID)
+	if err != nil {
+		return uuid.Nil, pkgerrors.Wrap(pkgerrors.CodeValidation, err, "invalid store id")
+	}
+	return parsed, nil
+}
+
+func BrowseProducts(svc productsvc.Service, storeSvc stores.Service, logg *logger.Logger) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if svc == nil {
+			responses.WriteError(r.Context(), logg, w, pkgerrors.New(pkgerrors.CodeInternal, "product service unavailable"))
+			return
+		}
+		if storeSvc == nil {
+			responses.WriteError(r.Context(), logg, w, pkgerrors.New(pkgerrors.CodeInternal, "store service unavailable"))
+			return
+		}
+
+		storeID, err := parseStoreID(r)
+		if err != nil {
+			responses.WriteError(r.Context(), logg, w, err)
+			return
+		}
+
+		storeType, ok := middleware.StoreTypeFromContext(r.Context())
+		if !ok {
+			responses.WriteError(r.Context(), logg, w, pkgerrors.New(pkgerrors.CodeForbidden, "store type missing"))
+			return
+		}
+
+		limit, err := validators.ParseQueryInt(r, "limit", pagination.DefaultLimit, 1, pagination.MaxLimit)
+		if err != nil {
+			responses.WriteError(r.Context(), logg, w, err)
+			return
+		}
+		cursor := strings.TrimSpace(r.URL.Query().Get("cursor"))
+		requestedState := strings.ToUpper(strings.TrimSpace(r.URL.Query().Get("state")))
+
+		filters := productsvc.ProductListFilters{}
+
+		if raw := strings.TrimSpace(r.URL.Query().Get("category")); raw != "" {
+			parsed, err := enums.ParseProductCategory(raw)
+			if err != nil {
+				responses.WriteError(r.Context(), logg, w, pkgerrors.Wrap(pkgerrors.CodeValidation, err, "invalid category"))
+				return
+			}
+			filters.Category = &parsed
+		}
+		if raw := strings.TrimSpace(r.URL.Query().Get("classification")); raw != "" {
+			parsed, err := enums.ParseProductClassification(raw)
+			if err != nil {
+				responses.WriteError(r.Context(), logg, w, pkgerrors.Wrap(pkgerrors.CodeValidation, err, "invalid classification"))
+				return
+			}
+			filters.Classification = &parsed
+		}
+
+		if min, err := parseOptionalInt(r, "price_min_cents"); err != nil {
+			responses.WriteError(r.Context(), logg, w, err)
+			return
+		} else if min != nil {
+			filters.PriceMinCents = min
+		}
+		if max, err := parseOptionalInt(r, "price_max_cents"); err != nil {
+			responses.WriteError(r.Context(), logg, w, err)
+			return
+		} else if max != nil {
+			filters.PriceMaxCents = max
+		}
+
+		if v, err := parseOptionalFloat(r, "thc_min"); err != nil {
+			responses.WriteError(r.Context(), logg, w, err)
+			return
+		} else if v != nil {
+			filters.THCMin = v
+		}
+		if v, err := parseOptionalFloat(r, "thc_max"); err != nil {
+			responses.WriteError(r.Context(), logg, w, err)
+			return
+		} else if v != nil {
+			filters.THCMax = v
+		}
+
+		if v, err := parseOptionalFloat(r, "cbd_min"); err != nil {
+			responses.WriteError(r.Context(), logg, w, err)
+			return
+		} else if v != nil {
+			filters.CBDMin = v
+		}
+		if v, err := parseOptionalFloat(r, "cbd_max"); err != nil {
+			responses.WriteError(r.Context(), logg, w, err)
+			return
+		} else if v != nil {
+			filters.CBDMax = v
+		}
+
+		if hasPromo, err := parseOptionalBool(r, "has_promo"); err != nil {
+			responses.WriteError(r.Context(), logg, w, err)
+			return
+		} else if hasPromo != nil {
+			filters.HasPromo = hasPromo
+		}
+
+		filters.Query = strings.TrimSpace(r.URL.Query().Get("q"))
+
+		switch storeType {
+		case enums.StoreTypeBuyer:
+			if requestedState == "" {
+				responses.WriteError(r.Context(), logg, w, pkgerrors.New(pkgerrors.CodeValidation, "state is required"))
+				return
+			}
+			buyerStore, err := storeSvc.GetByID(r.Context(), storeID)
+			if err != nil {
+				responses.WriteError(r.Context(), logg, w, pkgerrors.Wrap(pkgerrors.CodeDependency, err, "load store"))
+				return
+			}
+			if buyerStore == nil {
+				responses.WriteError(r.Context(), logg, w, pkgerrors.New(pkgerrors.CodeNotFound, "store not found"))
+				return
+			}
+			buyerState := strings.ToUpper(strings.TrimSpace(buyerStore.Address.State))
+			if buyerState == "" {
+				responses.WriteError(r.Context(), logg, w, pkgerrors.New(pkgerrors.CodeValidation, "buyer store state missing"))
+				return
+			}
+			if buyerState != requestedState {
+				responses.WriteError(r.Context(), logg, w, pkgerrors.New(pkgerrors.CodeValidation,
+					fmt.Sprintf("buyer store is in %s and cannot browse %s", buyerState, requestedState)))
+				return
+			}
+		case enums.StoreTypeVendor:
+			// vendor users may skip the state filter; their view is scoped to their store below.
+		default:
+			responses.WriteError(r.Context(), logg, w, pkgerrors.New(pkgerrors.CodeForbidden, "unsupported store type"))
+			return
+		}
+
+		input := productsvc.ListProductsInput{
+			StoreID:        storeID,
+			StoreType:      storeType,
+			RequestedState: requestedState,
+			Filters:        filters,
+			Pagination: pagination.Params{
+				Limit:  limit,
+				Cursor: cursor,
+			},
+		}
+		if storeType != enums.StoreTypeBuyer {
+			input.RequestedState = ""
+		}
+
+		list, err := svc.ListProducts(r.Context(), input)
+		if err != nil {
+			responses.WriteError(r.Context(), logg, w, pkgerrors.Wrap(pkgerrors.CodeDependency, err, "list products"))
+			return
+		}
+
+		responses.WriteSuccess(w, list)
 	}
 }
 
@@ -484,4 +653,46 @@ func parseUUIDList(values []string) ([]uuid.UUID, error) {
 		result = append(result, parsed)
 	}
 	return result, nil
+}
+
+func parseOptionalInt(r *http.Request, key string) (*int, error) {
+	raw := strings.TrimSpace(r.URL.Query().Get(key))
+	if raw == "" {
+		return nil, nil
+	}
+	value, err := strconv.Atoi(raw)
+	if err != nil {
+		return nil, pkgerrors.New(pkgerrors.CodeValidation, fmt.Sprintf("query parameter %s must be an integer", key))
+	}
+	if value < 0 {
+		return nil, pkgerrors.New(pkgerrors.CodeValidation, fmt.Sprintf("query parameter %s must be non-negative", key))
+	}
+	return &value, nil
+}
+
+func parseOptionalFloat(r *http.Request, key string) (*float64, error) {
+	raw := strings.TrimSpace(r.URL.Query().Get(key))
+	if raw == "" {
+		return nil, nil
+	}
+	value, err := strconv.ParseFloat(raw, 64)
+	if err != nil {
+		return nil, pkgerrors.New(pkgerrors.CodeValidation, fmt.Sprintf("query parameter %s must be numeric", key))
+	}
+	if value < 0 || value > 100 {
+		return nil, pkgerrors.New(pkgerrors.CodeValidation, fmt.Sprintf("query parameter %s must be between 0 and 100", key))
+	}
+	return &value, nil
+}
+
+func parseOptionalBool(r *http.Request, key string) (*bool, error) {
+	raw := strings.TrimSpace(r.URL.Query().Get(key))
+	if raw == "" {
+		return nil, nil
+	}
+	value, err := strconv.ParseBool(raw)
+	if err != nil {
+		return nil, pkgerrors.New(pkgerrors.CodeValidation, fmt.Sprintf("query parameter %s must be true or false", key))
+	}
+	return &value, nil
 }

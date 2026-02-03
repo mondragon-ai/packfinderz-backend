@@ -247,13 +247,13 @@
 * **Phase 4 — Products & Inventory Completion**
   **Goal:** Finish vendor inventory management endpoints and missing product constraints.
 
-  * [ ] Ticket [PF-209]: Implement product list endpoint (buyer/vendor) with pagination + product summary (this is the product grid UI view) (`GET /v1/vendor/products`). It will be qith additional queries to filter by category, thc / cbs range, price range, classification, has promo (volume discount), search (q=..)
-  * [ ] Ticket [PF-210]: Implement product list endpoint (vendor-only) with pagination + product summary (this is the table view of the UI) (`GET /v1/products`). It will be qith additional queries to filter by category, thc / cbs range, price range, classification, has promo (volume discount), search (q=..)
+  * [x] Ticket [PF-209]: Implement product list endpoint (buyer/vendor) with pagination + product summary (this is the product grid UI view) (`GET /v1/vendor/products`). It will be qith additional queries to filter by category, thc / cbs range, price range, classification, has promo (volume discount), search (q=..)
+  * [x] Ticket [PF-210]: Implement product list endpoint (vendor-only) with pagination + product summary (this is the table view of the UI) (`GET /v1/products`). It will be qith additional queries to filter by category, thc / cbs range, price range, classification, has promo (volume discount), search (q=..)
   * [ ] Ticket [PF-211]: Add VendorSummary to product browse/detail (join stores + optional logo attachment)
 
-  * [ ] Ticket [PF-212]: Add `low_stock_threshold` to inventory model (migration + model + DTOs) & Add `max_qty` to product model (migration + model + DTOs + validations)
-  * [ ] Ticket [PF-213]: Volume discount from `unit_price_cents` to percentage & all areas here used (cart/checkout etc). Its to be a percentage value discounted from the line item (product) not a dollar amount (fixed). 
-  * [ ] Ticket [PF-214]: Add `media_id` to product media model (migration + model + DTOs + validations)
+  * [x] Ticket [PF-212]: Add `low_stock_threshold` to inventory model (migration + model + DTOs) & Add `max_qty` to product model (migration + model + DTOs + validations)
+  * [x] Ticket [PF-213]: Volume discount from `unit_price_cents` to percentage & all areas here used (cart/checkout etc). Its to be a percentage value discounted from the line item (product) not a dollar amount (fixed). 
+  * [x] Ticket [PF-214]: Add `media_id` to product media model (migration + model + DTOs + validations)
 
   * [ ] Ticket [PF-215]: Implement audit action schema/helper for product/inventory actions
   * [ ] Ticket [PF-216]: Emit audit rows on product create/update/delete + inventory set

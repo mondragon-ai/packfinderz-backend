@@ -4,9 +4,13 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
+	"time"
 
 	"github.com/angelmondragon/packfinderz-backend/pkg/db/models"
+	"github.com/angelmondragon/packfinderz-backend/pkg/enums"
 	pkgerrors "github.com/angelmondragon/packfinderz-backend/pkg/errors"
+	"github.com/angelmondragon/packfinderz-backend/pkg/pagination"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
@@ -213,6 +217,189 @@ func (r *Repository) DeleteVolumeDiscount(ctx context.Context, id uuid.UUID) err
 		Where("id = ?", id).
 		Delete(&models.ProductVolumeDiscount{}).
 		Error
+}
+
+type productListQuery struct {
+	Pagination     pagination.Params
+	Filters        ProductListFilters
+	RequestedState string
+	VendorStoreID  *uuid.UUID
+}
+
+func (r *Repository) ListProductSummaries(ctx context.Context, query productListQuery) (*ProductListResult, error) {
+	pageSize := pagination.NormalizeLimit(query.Pagination.Limit)
+	limitWithBuffer := pagination.LimitWithBuffer(query.Pagination.Limit)
+	if limitWithBuffer <= pageSize {
+		limitWithBuffer = pageSize + 1
+	}
+
+	cursor, err := pagination.ParseCursor(query.Pagination.Cursor)
+	if err != nil {
+		return nil, err
+	}
+
+	promoExistsClause := "EXISTS (SELECT 1 FROM product_volume_discounts d WHERE d.product_id = p.id)"
+
+	qb := r.db.WithContext(ctx).
+		Table("products p").
+		Select(strings.Join([]string{
+			"p.id",
+			"p.sku",
+			"p.title",
+			"p.subtitle",
+			"p.category",
+			"p.classification",
+			"p.unit",
+			"p.price_cents",
+			"p.compare_at_price_cents",
+			"p.thc_percent",
+			"p.cbd_percent",
+			"p.created_at",
+			"p.updated_at",
+			"p.store_id",
+			promoExistsClause + " AS has_promo",
+		}, ", ")).
+		Joins("JOIN stores s ON s.id = p.store_id")
+
+	filter := query.Filters
+	if filter.Category != nil {
+		qb = qb.Where("p.category = ?", *filter.Category)
+	}
+	if filter.Classification != nil {
+		qb = qb.Where("p.classification = ?", *filter.Classification)
+	}
+	if filter.PriceMinCents != nil {
+		qb = qb.Where("p.price_cents >= ?", *filter.PriceMinCents)
+	}
+	if filter.PriceMaxCents != nil {
+		qb = qb.Where("p.price_cents <= ?", *filter.PriceMaxCents)
+	}
+	if filter.THCMin != nil {
+		qb = qb.Where("p.thc_percent >= ?", *filter.THCMin)
+	}
+	if filter.THCMax != nil {
+		qb = qb.Where("p.thc_percent <= ?", *filter.THCMax)
+	}
+	if filter.CBDMin != nil {
+		qb = qb.Where("p.cbd_percent >= ?", *filter.CBDMin)
+	}
+	if filter.CBDMax != nil {
+		qb = qb.Where("p.cbd_percent <= ?", *filter.CBDMax)
+	}
+	if filter.HasPromo != nil {
+		if *filter.HasPromo {
+			qb = qb.Where(promoExistsClause)
+		} else {
+			qb = qb.Where("NOT " + promoExistsClause)
+		}
+	}
+	if search := strings.TrimSpace(filter.Query); search != "" {
+		pattern := "%" + strings.ToLower(search) + "%"
+		qb = qb.Where("(LOWER(p.title) LIKE ? OR LOWER(p.sku) LIKE ?)", pattern, pattern)
+	}
+
+	if query.VendorStoreID != nil {
+		qb = qb.Where("p.store_id = ?", *query.VendorStoreID)
+	} else {
+		qb = qb.Where("s.type = ?", enums.StoreTypeVendor)
+		qb = qb.Where("s.kyc_status = ?", enums.KYCStatusVerified)
+		qb = qb.Where("s.subscription_active = ?", true)
+		qb = qb.Where("p.is_active = ?", true)
+		if query.RequestedState != "" {
+			qb = qb.Where("(s.address).state = ?", query.RequestedState)
+		}
+	}
+
+	if cursor != nil {
+		qb = qb.Where("(p.created_at < ?) OR (p.created_at = ? AND p.id < ?)", cursor.CreatedAt, cursor.CreatedAt, cursor.ID)
+	}
+
+	qb = qb.Order("p.created_at DESC").Order("p.id DESC").Limit(limitWithBuffer)
+
+	var records []productSummaryRecord
+	if err := qb.Scan(&records).Error; err != nil {
+		return nil, err
+	}
+
+	resultRows := records
+	nextCursor := ""
+	if len(records) > pageSize {
+		resultRows = records[:pageSize]
+		last := resultRows[len(resultRows)-1]
+		nextCursor = pagination.EncodeCursor(pagination.Cursor{CreatedAt: last.CreatedAt, ID: last.ID})
+	}
+
+	summaries := make([]ProductSummary, 0, len(resultRows))
+	for _, record := range resultRows {
+		summaries = append(summaries, record.toSummary())
+	}
+
+	return &ProductListResult{
+		Products:   summaries,
+		NextCursor: nextCursor,
+	}, nil
+}
+
+type productSummaryRecord struct {
+	ID                  uuid.UUID
+	SKU                 string
+	Title               string
+	Subtitle            sql.NullString
+	Category            string
+	Classification      sql.NullString
+	Unit                string
+	PriceCents          int
+	CompareAtPriceCents sql.NullInt64
+	THCPercent          sql.NullFloat64
+	CBDPercent          sql.NullFloat64
+	HasPromo            bool
+	StoreID             uuid.UUID
+	CreatedAt           time.Time
+	UpdatedAt           time.Time
+}
+
+func (r productSummaryRecord) toSummary() ProductSummary {
+	return ProductSummary{
+		ID:                  r.ID,
+		SKU:                 r.SKU,
+		Title:               r.Title,
+		Subtitle:            nullStringPtr(r.Subtitle),
+		Category:            r.Category,
+		Classification:      nullStringPtr(r.Classification),
+		Unit:                r.Unit,
+		PriceCents:          r.PriceCents,
+		CompareAtPriceCents: nullIntPtr(r.CompareAtPriceCents),
+		THCPercent:          nullFloatPtr(r.THCPercent),
+		CBDPercent:          nullFloatPtr(r.CBDPercent),
+		HasPromo:            r.HasPromo,
+		VendorStoreID:       r.StoreID,
+		CreatedAt:           r.CreatedAt,
+		UpdatedAt:           r.UpdatedAt,
+	}
+}
+
+func nullStringPtr(value sql.NullString) *string {
+	if !value.Valid {
+		return nil
+	}
+	v := value.String
+	return &v
+}
+
+func nullIntPtr(value sql.NullInt64) *int {
+	if !value.Valid {
+		return nil
+	}
+	v := int(value.Int64)
+	return &v
+}
+
+func nullFloatPtr(value sql.NullFloat64) *float64 {
+	if !value.Valid {
+		return nil
+	}
+	v := value.Float64
+	return &v
 }
 
 func (r *Repository) fetchVendorSummary(ctx context.Context, storeID uuid.UUID) (*VendorSummary, error) {

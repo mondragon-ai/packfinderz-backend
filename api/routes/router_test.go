@@ -216,6 +216,11 @@ func (stubSubscriptionsService) GetActive(ctx context.Context, storeID uuid.UUID
 
 type stubProductService struct{}
 
+// ListProducts implements [product.Service].
+func (s stubProductService) ListProducts(ctx context.Context, input product.ListProductsInput) (*product.ProductListResult, error) {
+	panic("unimplemented")
+}
+
 // CreateProduct implements [product.Service].
 func (s stubProductService) CreateProduct(ctx context.Context, userID uuid.UUID, storeID uuid.UUID, input product.CreateProductInput) (*product.ProductDTO, error) {
 	panic("unimplemented")
