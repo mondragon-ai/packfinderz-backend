@@ -474,6 +474,9 @@ func validateCartForCheckout(record *models.CartRecord) error {
 	if record.Status != enums.CartStatusActive {
 		return pkgerrors.New(pkgerrors.CodeConflict, "cart must be active")
 	}
+	if record.ValidUntil.IsZero() || time.Now().After(record.ValidUntil) {
+		return pkgerrors.New(pkgerrors.CodeConflict, "cart quote expired")
+	}
 	hasOrderableItem := false
 	for _, item := range record.Items {
 		if item.Status == enums.CartItemStatusOK {

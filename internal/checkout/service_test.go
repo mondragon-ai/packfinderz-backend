@@ -13,6 +13,7 @@ import (
 	"github.com/angelmondragon/packfinderz-backend/internal/stores"
 	"github.com/angelmondragon/packfinderz-backend/pkg/db/models"
 	"github.com/angelmondragon/packfinderz-backend/pkg/enums"
+	pkgerrors "github.com/angelmondragon/packfinderz-backend/pkg/errors"
 	"github.com/angelmondragon/packfinderz-backend/pkg/outbox"
 	"github.com/angelmondragon/packfinderz-backend/pkg/pagination"
 	"github.com/angelmondragon/packfinderz-backend/pkg/types"
@@ -222,6 +223,110 @@ func TestServiceUsesVendorGroupTotals(t *testing.T) {
 	}
 	if len(result.CartVendorGroups) != len(cartRecord.VendorGroups) {
 		t.Fatalf("expected %d vendor groups in response, got %d", len(cartRecord.VendorGroups), len(result.CartVendorGroups))
+	}
+}
+
+func TestServiceRejectsExpiredCartQuote(t *testing.T) {
+	t.Parallel()
+
+	buyerID := uuid.New()
+	vendorID := uuid.New()
+	productID := uuid.New()
+
+	cartRecord := &models.CartRecord{
+		ID:           uuid.New(),
+		BuyerStoreID: buyerID,
+		Status:       enums.CartStatusActive,
+		Currency:     enums.CurrencyUSD,
+		ValidUntil:   time.Now().Add(-1 * time.Minute),
+		Items: []models.CartItem{
+			{
+				ID:                uuid.New(),
+				ProductID:         productID,
+				VendorStoreID:     vendorID,
+				Quantity:          1,
+				UnitPriceCents:    1000,
+				LineSubtotalCents: 1000,
+				Status:            enums.CartItemStatusOK,
+			},
+		},
+		VendorGroups: []models.CartVendorGroup{
+			{
+				VendorStoreID: vendorID,
+				Status:        enums.VendorGroupStatusOK,
+				SubtotalCents: 1000,
+				TotalCents:    1000,
+			},
+		},
+	}
+
+	cartRepo := &stubCartRepo{record: cartRecord}
+	storeSvc := &stubStoreService{
+		records: map[uuid.UUID]*stores.StoreDTO{
+			buyerID: {
+				ID:        buyerID,
+				Type:      enums.StoreTypeBuyer,
+				KYCStatus: enums.KYCStatusVerified,
+				Address:   types.Address{State: "OK"},
+			},
+			vendorID: {
+				ID:                 vendorID,
+				Type:               enums.StoreTypeVendor,
+				KYCStatus:          enums.KYCStatusVerified,
+				SubscriptionActive: true,
+				Address:            types.Address{State: "OK"},
+			},
+		},
+	}
+
+	productLoader := stubProductLoader{
+		products: map[uuid.UUID]*models.Product{
+			productID: {
+				ID:       productID,
+				StoreID:  vendorID,
+				SKU:      "SKU123",
+				Unit:     enums.ProductUnitUnit,
+				Category: enums.ProductCategoryFlower,
+			},
+		},
+	}
+
+	reserver := stubReservationRunner{
+		results: map[uuid.UUID]reservation.InventoryReservationResult{},
+	}
+	reserver.results[cartRecord.Items[0].ID] = reservation.InventoryReservationResult{
+		CartItemID: cartRecord.Items[0].ID,
+		ProductID:  cartRecord.Items[0].ProductID,
+		Qty:        cartRecord.Items[0].Quantity,
+		Reserved:   true,
+	}
+
+	orderRepo := newStubOrdersRepository()
+	publisher := &stubOutboxPublisher{}
+
+	service, err := NewService(
+		stubTxRunner{},
+		cartRepo,
+		orderRepo,
+		storeSvc,
+		productLoader,
+		reserver,
+		publisher,
+	)
+	if err != nil {
+		t.Fatalf("build service: %v", err)
+	}
+
+	if _, err := service.Execute(context.Background(), buyerID, cartRecord.ID, CheckoutInput{
+		IdempotencyKey: "key",
+	}); err == nil {
+		t.Fatalf("expected error for expired cart")
+	} else if typed := pkgerrors.As(err); typed == nil {
+		t.Fatalf("unexpected error type: %v", err)
+	} else if typed.Code() != pkgerrors.CodeConflict {
+		t.Fatalf("expected conflict code, got %s", typed.Code())
+	} else if typed.Message() != "cart quote expired" {
+		t.Fatalf("unexpected error message: %s", typed.Message())
 	}
 }
 

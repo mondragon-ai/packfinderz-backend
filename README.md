@@ -242,6 +242,7 @@ Re-running the migration is safe because the statements use `CREATE EXTENSION IF
 * `internal/checkout/reservation` runs the `inventory_items` conditional update (`available_qty >= qty`), increments `reserved_qty`, and returns per-line reservation results so checkout can report partial success; if a line item cannot be reserved it is marked `rejected` and a vendor with no successful reservations has its vendor order status flipped to `rejected` so the response clearly shows the failed vendor even though no order will proceed to fulfillment.
 * `internal/checkout/service.go` orchestrates the checkout transaction, converts the `CartRecord` into `VendorOrder`s while capturing the confirmed shipping/payment selections, and marks the cart `converted` so downstream flows can read the canonical totals that came straight out of the cart snapshot.
 * Buyer product listings/details only surface licensed, subscribed vendors whose state matches the buyer's `state` filter (see `pkg/visibility.EnsureVendorVisible` for the gating rules and 404/422 contract).
+* Cart quotes expire after 15 minutes (`valid_until`) and the checkout service rejects any expired quote so the client must re-quote before attempting checkout again.
 
 ### Payments & Ledger
 

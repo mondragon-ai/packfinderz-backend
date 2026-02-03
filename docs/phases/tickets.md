@@ -261,17 +261,17 @@
 * **Phase 5 — Cart Quote Guardrails + Idempotency + Attribution Pass-through**
   **Goal:** Make cart quoting robust (idempotency, mapping helpers, expiry behavior, attribution token plumbing).
 
-  * [x] Ticket [PF-225]: Implement header-based idempotency middleware for `POST /cart` (`Idempotency-Key`, scoped to buyer_store_id + endpoint)
-  * [x] Ticket [PF-226]: Add regression tests for quote invariants (MOQ clamp, vendor mismatch, invalid promo, no inventory mutation)
+  * [x] Ticket [PF-217]: Implement header-based idempotency middleware for `POST /cart` (`Idempotency-Key`, scoped to buyer_store_id + endpoint)
+  * [x] Ticket [PF-218]: Add regression tests for quote invariants (MOQ clamp, vendor mismatch, invalid promo, no inventory mutation)
 
-  * [ ] Ticket [PF-227]: Implement cart attribution token pass-through (validate signature/expiry only, persist on cart_records, echo in CartQuote)
-  * [ ] Ticket [PF-228]: Enforce `valid_until` guardrail: if expired, require re-quote before checkout (15m from quote/fetch response)
-  * [ ] Ticket [PF-229]: Implement cart conversion readiness (active→converted transition + generate/persist checkout_group_id at conversion)
-  * [ ] Ticket [PF-130]: Add rate limiting for `POST /cart`
-  * [ ] Ticket [PF-231]: Implement “converted cart” behavior guardrails (reject future quote-upserts if desired)
+  * [x] Ticket [PF-219]: Implement cart attribution token pass-through (validate signature/expiry only, persist on cart_records, echo in CartQuote)
+  * [x] Ticket [PF-220]: Enforce `valid_until` guardrail: if expired, require re-quote before checkout (15m from quote/fetch response)
+  * [ ] Ticket [PF-221]: Implement cart conversion readiness (active→converted transition + generate/persist checkout_group_id at conversion)
+  * [ ] Ticket [PF-122]: Add rate limiting for `POST /cart`
+  * [ ] Ticket [PF-223]: Implement “converted cart” behavior guardrails (reject future quote-upserts if desired)
 
-  * [ ] Ticket [PF-232]: Implement cart quote mapping helpers (DB ↔ domain ↔ DTO) with unit tests
-  * [ ] Ticket [PF-233]: Add structured logs + metrics in quote service (counts, warnings, duration)
+  * [ ] Ticket [PF-224]: Implement cart quote mapping helpers (DB ↔ domain ↔ DTO) with unit tests
+  * [ ] Ticket [PF-225]: Add structured logs + metrics in quote service (counts, warnings, duration)
 
 * **Phase 6 — Checkout Completion: Payment Intents + Retry Safety + Outbox Exactly-Once-ish**
   **Goal:** Close the remaining checkout core so retries are safe and downstream systems receive canonical events.
