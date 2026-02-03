@@ -236,7 +236,7 @@
   * [x] Ticket [PF-204]: Extend (`cmd/cron-worker/main.go`)  to Implement stale pending media deletion pending uploads after 7 days
   * [ ] Ticket [PF-205]: Detach all attachment references by entity type (`cmd/media_deleted_worker/main.go`) & if necessary Delete GCS originals + derived artifacts if no longer attatched. 
 
-  * [ ] Ticket [PF-206]: Fix media delete returning 200 but not deleting media or gcs object (end-to-end verification + logs + worker outcomes)
+  * [x] Ticket [PF-206]: Fix media delete returning 200 but not deleting media or gcs object (end-to-end verification + logs + worker outcomes)
 
 * **Phase 3 — Compliance + Admin Ops Gaps**
   **Goal:** Finish compliance retention, admin queues, and auditability needed for real ops.
@@ -250,7 +250,7 @@
   * [ ] Ticket [PF-209]: Implement product list endpoint (buyer/vendor) with pagination + product summary (this is the product grid UI view) (`GET /v1/vendor/products`). It will be qith additional queries to filter by category, thc / cbs range, price range, classification, has promo (volume discount), search (q=..)
   * [ ] Ticket [PF-210]: Implement product list endpoint (vendor-only) with pagination + product summary (this is the table view of the UI) (`GET /v1/products`). It will be qith additional queries to filter by category, thc / cbs range, price range, classification, has promo (volume discount), search (q=..)
   * [ ] Ticket [PF-211]: Add VendorSummary to product browse/detail (join stores + optional logo attachment)
-  
+
   * [ ] Ticket [PF-212]: Add `low_stock_threshold` to inventory model (migration + model + DTOs) & Add `max_qty` to product model (migration + model + DTOs + validations)
   * [ ] Ticket [PF-213]: Volume discount from `unit_price_cents` to percentage & all areas here used (cart/checkout etc). Its to be a percentage value discounted from the line item (product) not a dollar amount (fixed). 
   * [ ] Ticket [PF-214]: Add `media_id` to product media model (migration + model + DTOs + validations)

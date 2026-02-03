@@ -15,13 +15,22 @@ import (
 )
 
 type stubDeletionRepo struct {
-	media       *models.Media
-	attachments []models.MediaAttachment
-	findErr     error
+	media        *models.Media
+	attachments  []models.MediaAttachment
+	findErr      error
+	deleteErr    error
+	deletedID    uuid.UUID
+	deleteCalled bool
 }
 
 func (s *stubDeletionRepo) FindByGCSKey(ctx context.Context, gcsKey string) (*models.Media, error) {
 	return s.media, s.findErr
+}
+
+func (s *stubDeletionRepo) Delete(ctx context.Context, id uuid.UUID) error {
+	s.deleteCalled = true
+	s.deletedID = id
+	return s.deleteErr
 }
 
 func (s *stubDeletionRepo) ListByMediaID(ctx context.Context, mediaID uuid.UUID) ([]models.MediaAttachment, error) {
@@ -109,6 +118,12 @@ func TestDeletionConsumerProcessesAttachments(t *testing.T) {
 	if len(attachmentRepo.deleted) != len(attachments) {
 		t.Fatalf("expected attachments deleted, got %d", len(attachmentRepo.deleted))
 	}
+	if !repo.deleteCalled {
+		t.Fatal("expected media delete called")
+	}
+	if repo.deletedID != repo.media.ID {
+		t.Fatalf("expected media %s deleted, got %s", repo.media.ID, repo.deletedID)
+	}
 }
 
 func TestDeletionConsumerNacksOnDetacherError(t *testing.T) {
@@ -139,5 +154,8 @@ func TestDeletionConsumerNacksOnDetacherError(t *testing.T) {
 	}
 	if len(attachmentRepo.deleted) != 0 {
 		t.Fatalf("expected no deletes, got %d", len(attachmentRepo.deleted))
+	}
+	if repo.deleteCalled {
+		t.Fatal("expected delete not called on detacher failure")
 	}
 }

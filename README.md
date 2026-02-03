@@ -299,8 +299,8 @@ Re-running the migration is safe because the statements use `CREATE EXTENSION IF
 * Media metadata (`media` + `media_attachments`, which tie `entity_type`/`entity_id` to `store_id` and cache `gcs_key` so usage lookups stay tenant-scoped)
   * Attachment reconciliation happens through `internal/media.NewAttachmentReconciler`, which diffs usages inside a transaction and follows the lifecycle rules described in `docs/media_attachments_lifecycle.md`.
   * Lifecycle rules (protected attachments, deletion preconditions, and cleanup ordering) are detailed in `docs/media_attachments_lifecycle.md`.
-  * `DELETE /api/v1/media/{mediaId}` loads `media_attachments`, rejects the request whenever a `license` or `ad` attachment exists, deletes the GCS object once the guard passes, and marks the media row as `deleted` so repeat calls short-circuit while downstream workers clean up non-protected references.
-  * The `cmd/media_deleted_worker` binary subscribes to `pubsub.MediaDeletionSubscription()` and executes `internal/media/consumer.DeletionConsumer` so every GCS `OBJECT_DELETE` event detaches attachments and removes their rows after the API already enforced protection.
+  * `DELETE /api/v1/media/{mediaId}` loads `media_attachments`, rejects the request whenever a `license` or `ad` attachment exists, and deletes the GCS object once the guard passes so the delete-media worker sees the corresponding `OBJECT_DELETE` event.
+  * The `cmd/media_deleted_worker` binary subscribes to `pubsub.MediaDeletionSubscription()` and executes `internal/media/consumer.DeletionConsumer` so every GCS `OBJECT_DELETE` event detaches attachments, deletes the media row, and logs each step after the API already enforced protection.
 
 ### Redis (Ephemeral)
 
