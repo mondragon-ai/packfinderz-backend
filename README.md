@@ -273,6 +273,7 @@ Re-running the migration is safe because the statements use `CREATE EXTENSION IF
   * license verified
   * subscription active
 * Last-click attribution (30d)
+* Cart quote attribution tokens are treated as JWTs; only tokens that pass signature and expiry validation are persisted or echoed and invalid tokens are silently ignored.
 * BigQuery used for analytics only
 * Canonical analytics DTOs (envelope, marketplace/ad rows, query requests/responses) live under `internal/analytics/types` while event enums live in `pkg/enums/analytics_event_type.go`/`pkg/enums/ad_event_fact_type.go`.
 * Vendors and buyers can query KPIs/time-series via `GET /api/v1/vendor/analytics` (vendor-only route) or the new `GET /api/v1/analytics/marketplace` endpoint, both of which run parameterized BigQuery queries (presets 7d/30d/90d or custom `from`/`to`) against `marketplace_events` and return the canonical success envelope scoped to `activeStoreId`.

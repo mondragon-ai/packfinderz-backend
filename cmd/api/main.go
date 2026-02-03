@@ -171,12 +171,15 @@ func main() {
 	requireResource(ctx, logg, "product service", err)
 
 	cartRepo := cart.NewRepository(dbClient.DB())
+	cartTokenValidator, err := cart.NewJWTAttributionTokenValidator(cfg.JWT)
+	requireResource(ctx, logg, "cart token validator", err)
 	cartService, err := cart.NewService(
 		cartRepo,
 		dbClient,
 		storeService,
 		productRepo,
 		cart.NoopPromoLoader(),
+		cartTokenValidator,
 	)
 	requireResource(ctx, logg, "cart service", err)
 
