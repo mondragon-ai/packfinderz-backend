@@ -64,6 +64,7 @@ type service struct {
 	productRepo productLoader
 	reservation reservationRunner
 	outbox      outboxPublisher
+	allowACH    bool
 }
 
 // NewService builds the checkout service.
@@ -75,6 +76,7 @@ func NewService(
 	productRepo productLoader,
 	reservation reservationRunner,
 	publisher outboxPublisher,
+	allowACH bool,
 ) (Service, error) {
 	if tx == nil {
 		return nil, fmt.Errorf("tx runner required")
@@ -105,6 +107,7 @@ func NewService(
 		productRepo: productRepo,
 		reservation: reservation,
 		outbox:      publisher,
+		allowACH:    allowACH,
 	}, nil
 }
 
@@ -193,6 +196,13 @@ func (s *service) Execute(ctx context.Context, buyerStoreID, cartID uuid.UUID, i
 		if appliedPaymentMethod == "" {
 			appliedPaymentMethod = enums.PaymentMethodCash
 		}
+		if appliedPaymentMethod == enums.PaymentMethodACH && !s.allowACH {
+			return pkgerrors.New(pkgerrors.CodeValidation, "ach payments are disabled")
+		}
+		intentStatus := enums.PaymentStatusUnpaid
+		if appliedPaymentMethod == enums.PaymentMethodACH {
+			intentStatus = enums.PaymentStatusPending
+		}
 		appliedShippingLine := input.ShippingLine
 
 		checkoutGroupID := record.CheckoutGroupID
@@ -265,7 +275,7 @@ func (s *service) Execute(ctx context.Context, buyerStoreID, cartID uuid.UUID, i
 			intent := &models.PaymentIntent{
 				OrderID:     createdOrder.ID,
 				Method:      appliedPaymentMethod,
-				Status:      enums.PaymentStatusUnpaid,
+				Status:      intentStatus,
 				AmountCents: orderTotals.TotalCents,
 			}
 			if _, err := ordersRepo.CreatePaymentIntent(ctx, intent); err != nil {

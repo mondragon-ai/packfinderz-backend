@@ -2057,6 +2057,7 @@ Headers:
   * Inside the same transaction the cart record is finalized by overwriting `shipping_address`, persisting `payment_method`/`shipping_line`, recording `converted_at`, and keeping the generated `checkout_group_id` so the cart stays the canonical anchor before its status flips to `converted`.
   * Response payload includes `vendor_orders` grouped by `vendor_store_id` (each order lists `subtotal`, `discount`, `total`, and every line item with its `status`/`notes`) plus `rejected_vendors`, which explicitly lists vendor store IDs and the rejected line items so clients can surface failed vendors/items, and surfaces vendor-level warnings when the cart snapshot had no eligible items so the UI can show the rejection reason even though no vendor order was created. The response now also mirrors the confirmed `shipping_address`, `payment_method`, and `shipping_line` so the UI can show the exact checkout decision.
   * PF-080 implements the internal checkout service (`internal/checkout/service.go`): single-transaction conversion of a `CartRecord` into `vendor_orders`, `order_line_items`, and `payment_intents`, invoking reservations and partial success logic while capturing the cart's `checkout_group_id` as the grouping anchor (no separate `checkout_groups` row).
+  * Payment intents are seeded with `amount_cents = vendor_orders.total_cents`, `payment_method` matching the confirmed checkout method, and `status=unpaid|pending|settled|paid|failed|rejected` so future ACH work can surface interim (`pending`) and terminal (`failed`, `rejected`) states; ACH checkout is toggled via `PACKFINDERZ_FEATURE_ALLOW_ACH` (default `false`), which gates `payment_method=ach` requests and keeps the pending intent creation atomic with the vendor orders.
   * Idempotency is enforced by `middleware.Idempotency` (scope = user/store/method/path) so the first success (checkout group + vendor orders) is cached for 7 days; repeating the same key/body replays that checkout summary while any body change returns `409 IDEMPOTENCY_KEY_REUSED`, preventing double reservations.
 * Domain helpers in `internal/checkout/helpers` group cart items by vendor and validate buyer/vendor eligibility (store type, state, subscription, MOQ) without hitting the database before the orchestration layer materializes checkout entities; the checkout service now reads the authoritative vendor totals from the persisted `cart_vendor_groups` snapshot instead of recomputing them so per-vendor orders match the canonical cart quote.
   * `internal/checkout/reservation` uses the `inventory_items` conditional update pattern to atomically reserve stock per line item, marks insufficient rows with `insufficient_inventory`, and keeps per-line results for the partial success semantics mandated by PF-079.
@@ -3223,12 +3224,14 @@ Fields
 * `id uuid pk`
 * `order_id uuid not null`
 * `method payment_method not null default 'cash'`
-* `status payment_status not null default 'unpaid'`
+* `status payment_status not null default 'unpaid'` (enum now includes `failed`, `rejected` for future ACH outcomes)
 * `amount_cents int not null`
 * `cash_collected_at timestamptz null`
 * `vendor_paid_at timestamptz null`
 * `created_at timestamptz not null default now()`
 * `updated_at timestamptz not null default now()`
+
+> ACH checkout is gated by `PACKFINDERZ_FEATURE_ALLOW_ACH` (default `false`); when enabled each intent may be created with `method=ach` and `status=pending` before the pending transaction is realized, otherwise ACH requests are rejected at validation time.
 
 Indexes
 

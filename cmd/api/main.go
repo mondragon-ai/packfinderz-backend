@@ -205,6 +205,7 @@ func main() {
 		productRepo,
 		nil,
 		outboxPublisher,
+		cfg.FeatureFlags.AllowACH,
 	)
 	requireResource(ctx, logg, "checkout service", err)
 

@@ -127,6 +127,7 @@ type FeatureFlagsConfig struct {
 	AutoMigrate   bool   `envconfig:"PACKFINDERZ_AUTO_MIGRATE" default:"false"`
 	AVScan        string `envconfig:"PACKFINDERZ_AV_SCAN" default:"off"`
 	GCSAccessMode string `envconfig:"PACKFINDERZ_GCS_ACCESS_MODE" default:"public"`
+	AllowACH      bool   `envconfig:"PACKFINDERZ_FEATURE_ALLOW_ACH" default:"false"`
 }
 
 type EventingConfig struct {

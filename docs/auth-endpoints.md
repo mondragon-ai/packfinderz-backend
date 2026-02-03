@@ -539,6 +539,56 @@ curl -X POST "{{API_BASE_URL}}/api/v1/agent/orders/{{order_id}}/deliver" \
 
 Vendor product management lives under the authenticated store context, so every request requires `Authorization: Bearer {{access_token}}` and the store in the JWT must be a **vendor** store. Only vendor members with roles `owner`, `admin`, `manager`, `staff`, `agent`, or `ops` can use these routes. `POST /api/v1/vendor/products` additionally requires an `Idempotency-Key` header (24‑hour TTL) because it creates inventory, media, and volume discount rows in a single transaction.
 
+### GET /api/v1/products
+Serves the catalog grid for buyers and vendors by returning cursor-paginated `ProductSummary` rows (`id`, `sku`, `title`, `category`, `classification`, `price_cents`, `compare_at_price_cents`, `thc_percent`, `cbd_percent`, `has_promo`, `vendor_store_id`, `created_at`, `updated_at`). Buyer stores must include `state` and will only see `is_active=true` products from verified, subscribed vendors whose `address.state` equals the requested state; providing a different state than the buyer’s own or targeting a hidden vendor returns `422`/`404` thanks to `pkg/visibility.EnsureVendorVisible`. Vendor stores may omit `state` (or send their own) and always see their own listings regardless of the `state` filter so they can manage the catalog.
+
+#### Query parameters
+- `state` – required for buyer stores, optional for vendors; must match the buyer store’s state when provided.
+- `limit` – optional positive integer (cursor pagination default applies when absent).
+- `cursor` – optional opaque cursor from the previous page.
+- `category` / `classification` – filter by enum values.
+- `price_min_cents` / `price_max_cents` – unit price range (cents).
+- `thc_min` / `thc_max` – THC percentage range.
+- `cbd_min` / `cbd_max` – CBD percentage range.
+- `has_promo` – optional boolean that surfaces rows with volume discounts.
+- `q` – optional title/sku search term.
+
+#### cURL (copy into Postman > Raw)
+```bash
+curl -G "{{API_BASE_URL}}/api/v1/products" \
+  -H "Accept: application/json" \
+  -H "Authorization: Bearer {{access_token}}" \
+  --data-urlencode "limit=24" \
+  --data-urlencode "state=WA" \
+  --data-urlencode "cursor={{optional_cursor}}" \
+  --data-urlencode "category=flower" \
+  --data-urlencode "price_min_cents=1200" \
+  --data-urlencode "price_max_cents=5000" \
+  --data-urlencode "thc_min=18" \
+  --data-urlencode "cbd_min=0" \
+  --data-urlencode "has_promo=true" \
+  --data-urlencode "q=glaze"
+```
+
+### GET /api/v1/vendor/products
+Vendor users hit this endpoint to list only their store’s catalog. It reuses the same `ProductSummary` DTO/Pagination result and filter syntax as `GET /api/v1/products` but constrains the query to `store_id = activeStoreId`, so every response includes listings the vendor actually owns even if the `state` query parameter differs. The handler enforces the vendor store context and the same role guard as the other vendor routes.
+
+#### Query parameters
+- All filters listed above are supported (`limit`, `cursor`, `category`, `classification`, `price_*`, `thc_*`, `cbd_*`, `has_promo`, `q`) plus `state` (ignored for result scoping but still accepted for parity).
+
+#### cURL (copy into Postman > Raw)
+```bash
+curl -G "{{API_BASE_URL}}/api/v1/vendor/products" \
+  -H "Accept: application/json" \
+  -H "Authorization: Bearer {{access_token}}" \
+  --data-urlencode "limit=10" \
+  --data-urlencode "cursor={{optional_cursor}}" \
+  --data-urlencode "state=WA" \
+  --data-urlencode "classification=hybrid" \
+  --data-urlencode "has_promo=false" \
+  --data-urlencode "q=spinach"
+```
+
 ### POST /api/v1/vendor/products
 Creates a new product record plus its inventory, optional media links, and optional tiered pricing. The controller decodes the `createProductRequest` DTO and validates every required field (`sku`, `title`, `category`, `feelings`, `flavors`, `usage`, `unit`, `moq`, `price_cents`, `inventory`). The request also enforces:
 

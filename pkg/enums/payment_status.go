@@ -6,10 +6,12 @@ import "fmt"
 type PaymentStatus string
 
 const (
-	PaymentStatusUnpaid  PaymentStatus = "unpaid"
-	PaymentStatusPending PaymentStatus = "pending"
-	PaymentStatusSettled PaymentStatus = "settled"
-	PaymentStatusPaid    PaymentStatus = "paid"
+	PaymentStatusUnpaid   PaymentStatus = "unpaid"
+	PaymentStatusPending  PaymentStatus = "pending"
+	PaymentStatusSettled  PaymentStatus = "settled"
+	PaymentStatusPaid     PaymentStatus = "paid"
+	PaymentStatusFailed   PaymentStatus = "failed"
+	PaymentStatusRejected PaymentStatus = "rejected"
 )
 
 var validPaymentStatuses = []PaymentStatus{
@@ -17,6 +19,8 @@ var validPaymentStatuses = []PaymentStatus{
 	PaymentStatusPending,
 	PaymentStatusSettled,
 	PaymentStatusPaid,
+	PaymentStatusFailed,
+	PaymentStatusRejected,
 }
 
 // String implements fmt.Stringer.
