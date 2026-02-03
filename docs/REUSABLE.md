@@ -27,6 +27,10 @@ Central config via `envconfig`.
 * GCP, GCS, Media
 * Pub/Sub, Stripe, Sendgrid, Outbox
 
+**FeatureFlags**
+
+* `PACKFINDERZ_FEATURE_ALLOW_ACH` (default `false`) gates ACH checkout so the service can keep each vendor `payment_intents` scoped to the confirmed method (`cash|ach`) and emit `pending` status rows when ACH is enabled.
+
 **Helpers**
 
 * `DBConfig.ensureDSN`
@@ -152,7 +156,7 @@ Cursor-based limit/cursor helpers reused across list endpoints.
 
 ### `orders`
 
-* `internal/orders.Repository` persists `vendor_orders`, `order_line_items`, and `payment_intents` so checkout execution can materialize the per-vendor snapshot; the canonical `checkout_group_id` now lives on `cart_records` and `vendor_orders` directly (the standalone `checkout_groups` table was dropped), but it still ties every vendor order/line item to the same cart. Each payment intent is built with the checkout-selected payment method and that vendor order’s total so payment tracking stays vendor-scoped.
+* `internal/orders.Repository` persists `vendor_orders`, `order_line_items`, and `payment_intents` so checkout execution can materialize the per-vendor snapshot; the canonical `checkout_group_id` now lives on `cart_records` and `vendor_orders` directly (the standalone `checkout_groups` table was dropped), but it still ties every vendor order/line item to the same cart. Each payment intent is built with the checkout-selected payment method and that vendor order’s total so payment tracking stays vendor-scoped. Payment statuses now cover the full result set (`unpaid`, `pending`, `settled`, `paid`, plus the new `failed`/`rejected` values reserved for future ACH declines).
 * Methods preload `VendorOrders.Items` + `PaymentIntent` to keep the in-memory checkout snapshot consistent while fetching by checkout group or order.
 * `ListBuyerOrders` exposes cursor pagination via `pkg/pagination`, returning `BuyerOrderList` with `order_number`, totals, `total_items`, payment/fulfillment/shipping statuses, vendor summary, and `next_cursor`.
 * `BuyerOrderFilters` govern the list: `order_status`, `fulfillment_status`, `shipping_status`, `payment_status`, `date_from/date_to`, and a normalized `q` search across buyer/vendor names. `vendor_orders` now store `fulfillment_status`, `shipping_status`, and a sequential `order_number` backed by matching enums/indexes.

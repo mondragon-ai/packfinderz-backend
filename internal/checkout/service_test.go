@@ -139,6 +139,7 @@ func TestServiceUsesVendorGroupTotals(t *testing.T) {
 		productLoader,
 		reserver,
 		publisher,
+		false,
 	)
 	if err != nil {
 		t.Fatalf("build service: %v", err)
@@ -223,6 +224,234 @@ func TestServiceUsesVendorGroupTotals(t *testing.T) {
 	}
 	if len(result.CartVendorGroups) != len(cartRecord.VendorGroups) {
 		t.Fatalf("expected %d vendor groups in response, got %d", len(cartRecord.VendorGroups), len(result.CartVendorGroups))
+	}
+}
+
+func TestServiceAllowsACHWhenFlagEnabled(t *testing.T) {
+	t.Parallel()
+
+	buyerID := uuid.New()
+	vendorID := uuid.New()
+	productID := uuid.New()
+
+	cartRecord := &models.CartRecord{
+		ID:           uuid.New(),
+		BuyerStoreID: buyerID,
+		Status:       enums.CartStatusActive,
+		Currency:     enums.CurrencyUSD,
+		ValidUntil:   time.Now().Add(10 * time.Minute),
+		Items: []models.CartItem{
+			{
+				ID:                uuid.New(),
+				ProductID:         productID,
+				VendorStoreID:     vendorID,
+				Quantity:          1,
+				UnitPriceCents:    2000,
+				LineSubtotalCents: 2000,
+				Status:            enums.CartItemStatusOK,
+			},
+		},
+		VendorGroups: []models.CartVendorGroup{
+			{
+				VendorStoreID: vendorID,
+				Status:        enums.VendorGroupStatusOK,
+				SubtotalCents: 2000,
+				TotalCents:    2000,
+			},
+		},
+	}
+
+	cartRepo := &stubCartRepo{record: cartRecord}
+	storeSvc := &stubStoreService{
+		records: map[uuid.UUID]*stores.StoreDTO{
+			buyerID: {
+				ID:        buyerID,
+				Type:      enums.StoreTypeBuyer,
+				KYCStatus: enums.KYCStatusVerified,
+				Address:   types.Address{State: "OK"},
+			},
+			vendorID: {
+				ID:                 vendorID,
+				Type:               enums.StoreTypeVendor,
+				KYCStatus:          enums.KYCStatusVerified,
+				SubscriptionActive: true,
+				Address:            types.Address{State: "OK"},
+			},
+		},
+	}
+
+	productLoader := stubProductLoader{
+		products: map[uuid.UUID]*models.Product{
+			productID: {
+				ID:       productID,
+				StoreID:  vendorID,
+				SKU:      "SKU-ACH",
+				Unit:     enums.ProductUnitUnit,
+				Category: enums.ProductCategoryFlower,
+			},
+		},
+	}
+
+	reserver := stubReservationRunner{
+		results: map[uuid.UUID]reservation.InventoryReservationResult{},
+	}
+	reserver.results[cartRecord.Items[0].ID] = reservation.InventoryReservationResult{
+		CartItemID: cartRecord.Items[0].ID,
+		ProductID:  cartRecord.Items[0].ProductID,
+		Qty:        cartRecord.Items[0].Quantity,
+		Reserved:   true,
+	}
+
+	orderRepo := newStubOrdersRepository()
+	publisher := &stubOutboxPublisher{}
+
+	service, err := NewService(
+		stubTxRunner{},
+		cartRepo,
+		orderRepo,
+		storeSvc,
+		productLoader,
+		reserver,
+		publisher,
+		true,
+	)
+	if err != nil {
+		t.Fatalf("build service: %v", err)
+	}
+
+	result, err := service.Execute(context.Background(), buyerID, cartRecord.ID, CheckoutInput{
+		IdempotencyKey:  "ach-key",
+		ShippingAddress: &types.Address{Line1: "123 Market", City: "Tulsa", State: "OK", PostalCode: "74104", Country: "US"},
+		PaymentMethod:   enums.PaymentMethodACH,
+	})
+	if err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+
+	if len(result.VendorOrders) != 1 {
+		t.Fatalf("expected 1 vendor order, got %d", len(result.VendorOrders))
+	}
+
+	order := result.VendorOrders[0]
+	intent, ok := orderRepo.paymentIntents[order.ID]
+	if !ok {
+		t.Fatalf("payment intent missing for order %s", order.ID)
+	}
+	if intent.Method != enums.PaymentMethodACH {
+		t.Fatalf("payment intent method mismatch: %s", intent.Method)
+	}
+	if intent.Status != enums.PaymentStatusPending {
+		t.Fatalf("expected pending status for ACH intent, got %s", intent.Status)
+	}
+	if intent.AmountCents != order.TotalCents {
+		t.Fatalf("payment intent amount mismatch (%d vs %d)", intent.AmountCents, order.TotalCents)
+	}
+}
+
+func TestServiceRejectsACHWhenFlagDisabled(t *testing.T) {
+	t.Parallel()
+
+	buyerID := uuid.New()
+	vendorID := uuid.New()
+	productID := uuid.New()
+
+	cartRecord := &models.CartRecord{
+		ID:           uuid.New(),
+		BuyerStoreID: buyerID,
+		Status:       enums.CartStatusActive,
+		Currency:     enums.CurrencyUSD,
+		ValidUntil:   time.Now().Add(10 * time.Minute),
+		Items: []models.CartItem{
+			{
+				ID:                uuid.New(),
+				ProductID:         productID,
+				VendorStoreID:     vendorID,
+				Quantity:          1,
+				UnitPriceCents:    1200,
+				LineSubtotalCents: 1200,
+				Status:            enums.CartItemStatusOK,
+			},
+		},
+		VendorGroups: []models.CartVendorGroup{
+			{
+				VendorStoreID: vendorID,
+				Status:        enums.VendorGroupStatusOK,
+				SubtotalCents: 1200,
+				TotalCents:    1200,
+			},
+		},
+	}
+
+	cartRepo := &stubCartRepo{record: cartRecord}
+	storeSvc := &stubStoreService{
+		records: map[uuid.UUID]*stores.StoreDTO{
+			buyerID: {
+				ID:        buyerID,
+				Type:      enums.StoreTypeBuyer,
+				KYCStatus: enums.KYCStatusVerified,
+				Address:   types.Address{State: "OK"},
+			},
+			vendorID: {
+				ID:                 vendorID,
+				Type:               enums.StoreTypeVendor,
+				KYCStatus:          enums.KYCStatusVerified,
+				SubscriptionActive: true,
+				Address:            types.Address{State: "OK"},
+			},
+		},
+	}
+
+	productLoader := stubProductLoader{
+		products: map[uuid.UUID]*models.Product{
+			productID: {
+				ID:       productID,
+				StoreID:  vendorID,
+				SKU:      "SKU-ACH",
+				Unit:     enums.ProductUnitUnit,
+				Category: enums.ProductCategoryFlower,
+			},
+		},
+	}
+
+	reserver := stubReservationRunner{
+		results: map[uuid.UUID]reservation.InventoryReservationResult{},
+	}
+	reserver.results[cartRecord.Items[0].ID] = reservation.InventoryReservationResult{
+		CartItemID: cartRecord.Items[0].ID,
+		ProductID:  cartRecord.Items[0].ProductID,
+		Qty:        cartRecord.Items[0].Quantity,
+		Reserved:   true,
+	}
+
+	orderRepo := newStubOrdersRepository()
+	publisher := &stubOutboxPublisher{}
+
+	service, err := NewService(
+		stubTxRunner{},
+		cartRepo,
+		orderRepo,
+		storeSvc,
+		productLoader,
+		reserver,
+		publisher,
+		false,
+	)
+	if err != nil {
+		t.Fatalf("build service: %v", err)
+	}
+
+	if _, err := service.Execute(context.Background(), buyerID, cartRecord.ID, CheckoutInput{
+		IdempotencyKey:  "ach-key",
+		ShippingAddress: &types.Address{Line1: "123 Market", City: "Tulsa", State: "OK", PostalCode: "74104", Country: "US"},
+		PaymentMethod:   enums.PaymentMethodACH,
+	}); err == nil {
+		t.Fatalf("expected error when ACH disabled")
+	} else if typed := pkgerrors.As(err); typed == nil {
+		t.Fatalf("unexpected error type: %v", err)
+	} else if typed.Code() != pkgerrors.CodeValidation {
+		t.Fatalf("expected validation error, got %s", typed.Code())
+	} else if typed.Message() != "ach payments are disabled" {
+		t.Fatalf("unexpected error message: %s", typed.Message())
 	}
 }
 
@@ -312,6 +541,7 @@ func TestServiceRejectsExpiredCartQuote(t *testing.T) {
 		productLoader,
 		reserver,
 		publisher,
+		false,
 	)
 	if err != nil {
 		t.Fatalf("build service: %v", err)
@@ -414,6 +644,7 @@ func TestServiceReplaysConvertedCart(t *testing.T) {
 		stubProductLoader{products: map[uuid.UUID]*models.Product{}},
 		stubReservationRunner{},
 		publisher,
+		false,
 	)
 	if err != nil {
 		t.Fatalf("build service: %v", err)
@@ -530,6 +761,7 @@ func TestServiceRejectsVendorWhenAllReservationsFail(t *testing.T) {
 		productLoader,
 		reserver,
 		publisher,
+		false,
 	)
 	if err != nil {
 		t.Fatalf("build service: %v", err)
@@ -688,6 +920,7 @@ func TestServiceAdjustsTotalsWhenSomeReservationsFail(t *testing.T) {
 		productLoader,
 		reserver,
 		publisher,
+		false,
 	)
 	if err != nil {
 		t.Fatalf("build service: %v", err)

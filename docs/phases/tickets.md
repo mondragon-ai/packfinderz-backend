@@ -272,18 +272,18 @@
 * **Phase 6 — Checkout Completion: Payment Intents + Retry Safety + Outbox Exactly-Once-ish**
   **Goal:** Close the remaining checkout core so retries are safe and downstream systems receive canonical events.
 
-  * [ ] Ticket [PF-223]: Create one payment_intent per vendor order inside checkout transaction
-  * [ ] Ticket [PF-224]: Set payment intent amount from `vendor_orders.total_cents` & Set payment intent `payment_method` from checkout-confirmed `payment_method`
-  * [ ] Ticket [PF-225]: Add repo helper to fetch full checkout result by checkout_group_id
+  * [ ] Ticket [PF-234]: Create one payment_intent per vendor order inside checkout transaction
+  * [ ] Ticket [PF-235]: Set payment intent amount from `vendor_orders.total_cents` & Set payment intent `payment_method` from checkout-confirmed `payment_method`
+  * [ ] Ticket [PF-236]: Add repo helper to fetch full checkout result by checkout_group_id
 
-  * [ ] Ticket [PF-226]: Define/extend outbox payload for Notifications checkout-converted event & Emit Notifications outbox event in same transaction as vendor order creation
-  * [ ] Ticket [PF-227]: Define/extend outbox payload for Analytics checkout-converted event (cart totals + attribution `ad_tokens`) & Emit Analytics outbox event in same transaction as cart conversion
+  * [ ] Ticket [PF-237]: Define/extend outbox payload for Notifications checkout-converted event & Emit Notifications outbox event in same transaction as vendor order creation
+  * [ ] Ticket [PF-238]: Define/extend outbox payload for Analytics checkout-converted event (cart totals + attribution `ad_tokens`) & Emit Analytics outbox event in same transaction as cart conversion
 
-  * [ ] Ticket [PF-228]: Prevent duplicate vendor orders on retry (uniqueness anchored on checkout_group_id+vendor_store_id and/or cart_id)
-  * [ ] Ticket [PF-229]: Prevent duplicate outbox rows on retry for same conversion anchor
+  * [ ] Ticket [PF-239]: Prevent duplicate vendor orders on retry (uniqueness anchored on checkout_group_id+vendor_store_id and/or cart_id)
+  * [ ] Ticket [PF-240]: Prevent duplicate outbox rows on retry for same conversion anchor
 
-  * [ ] Ticket [PF-230]: Add outbox payload versioning rules for these events
-  * [ ] Ticket [PF-231]: Add checkout regression tests (idempotent retry, expired/already converted behavior, exactly two outbox events)
+  * [ ] Ticket [PF-241]: Add outbox payload versioning rules for these events
+  * [ ] Ticket [PF-242]: Add checkout regression tests (idempotent retry, expired/already converted behavior, exactly two outbox events)
 
 * **Phase 7 — Orders + Fulfillment + Cash Collection Completion**
   **Goal:** Finish the operational lifecycle for vendors/agents and cash settlement.
@@ -319,9 +319,8 @@
 * **Phase 11 — Integration Test Harness (End-to-End Happy Path)**
   **Goal:** Deterministic scripts that validate the full MVP pipeline on real deployments.
 
-  * [ ] Ticket [PF-263]: Create `/scripts/integration/` scaffold and `make integration-test`
-  * [ ] Ticket [PF-264]: Implement shared HTTP client helper (base URL, retries, timeouts, JSON, assertions)
-  * [ ] Ticket [PF-265]: Implement scripted register/login flows (buyer + vendor) and token store/header injection helpers
+  * [x] Ticket [PF-232]: Implement scripted register/login flows (buyer + vendor) and token store/header injection helpers (happy/failure paths)
+  * [x] Ticket [PF-233]: Implement scripted to build and create new products (happy/failure paths)
   * [ ] Ticket [PF-266]: Add static media fixtures (`fixtures/media/*`) including image/video/PDF
   * [ ] Ticket [PF-267]: Script media create/upload/poll until `uploaded`
   * [ ] Ticket [PF-268]: Script create license + admin approve/reject

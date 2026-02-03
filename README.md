@@ -568,6 +568,10 @@ PACKFINDERZ_EVENTING_IDEMPOTENCY_TTL=720h
 
 `PACKFINDERZ_EVENTING_IDEMPOTENCY_TTL` (default `720h`) controls how long the Redis key `pf:evt:processed:<consumer>:<event_id>` stays locked after a consumer first handles an Outbox event. Workers should wire `pkg/eventing/idempotency.Manager` with this TTL so retries do not re-run side effects.
 
+### ACH Payment Gate
+
+* `PACKFINDERZ_FEATURE_ALLOW_ACH` (default `false`) controls whether checkout accepts `payment_method=ach`. When enabled, each vendor order seeds its `payment_intents` row with `method=ach` and `status=pending` so downstream ACH pipelines see the intended transaction; when disabled, ACH requests return a validation error and buyers must use `cash`. Payment intents still honor `amount_cents = vendor_orders.total_cents`, and future ACH work can move `payment_status` into the new `failed`/`rejected` values when transactions are declined.
+
 ### Stripe
 
 * `PACKFINDERZ_STRIPE_API_KEY` (required) – the Stripe secret key (`sk_*`/`rk_*`) for the current environment.
