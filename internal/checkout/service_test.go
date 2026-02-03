@@ -356,14 +356,14 @@ func TestServiceReplaysConvertedCart(t *testing.T) {
 	}
 
 	order := &models.VendorOrder{
-		ID:             uuid.New(),
+		ID:              uuid.New(),
 		CheckoutGroupID: checkoutGroupID,
-		BuyerStoreID:   buyerID,
-		VendorStoreID:  vendorID,
-		SubtotalCents:  1000,
-		TotalCents:     1000,
+		BuyerStoreID:    buyerID,
+		VendorStoreID:   vendorID,
+		SubtotalCents:   1000,
+		TotalCents:      1000,
 		BalanceDueCents: 1000,
-		Status:         enums.VendorOrderStatusCreatedPending,
+		Status:          enums.VendorOrderStatusCreatedPending,
 	}
 
 	cartRepo := &stubCartRepo{record: cartRecord}
@@ -382,19 +382,19 @@ func TestServiceReplaysConvertedCart(t *testing.T) {
 	orderRepo.vendorOrders[order.ID] = order
 	orderRepo.lineItems[order.ID] = []models.OrderLineItem{
 		{
-			ID:                 uuid.New(),
-			OrderID:            order.ID,
-			ProductID:          &productID,
-			Name:               "Sample",
-			Category:           "Flower",
-			Unit:               enums.ProductUnitUnit,
-			MOQ:                1,
-			UnitPriceCents:     1000,
-			Qty:                1,
-			LineSubtotalCents:  1000,
-			TotalCents:         1000,
-			Status:             enums.LineItemStatusPending,
-			Warnings:           types.CartItemWarnings{},
+			ID:                uuid.New(),
+			OrderID:           order.ID,
+			ProductID:         &productID,
+			Name:              "Sample",
+			Category:          "Flower",
+			Unit:              enums.ProductUnitUnit,
+			MOQ:               1,
+			UnitPriceCents:    1000,
+			Qty:               1,
+			LineSubtotalCents: 1000,
+			TotalCents:        1000,
+			Status:            enums.LineItemStatusPending,
+			Warnings:          types.CartItemWarnings{},
 		},
 	}
 	orderRepo.paymentIntents[order.ID] = &models.PaymentIntent{

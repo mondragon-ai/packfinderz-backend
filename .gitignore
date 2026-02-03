@@ -1,6 +1,7 @@
 # Go
 .gocache/
 .modcache/
+scripts/integration/out
 
 # Docs / agent config (DO NOT COMMIT)
 AGENTS.md

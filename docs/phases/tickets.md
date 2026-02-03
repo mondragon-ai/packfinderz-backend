@@ -261,33 +261,29 @@
 * **Phase 5 — Cart Quote Guardrails + Idempotency + Attribution Pass-through**
   **Goal:** Make cart quoting robust (idempotency, mapping helpers, expiry behavior, attribution token plumbing).
 
-  * [x] Ticket [PF-217]: Implement header-based idempotency middleware for `POST /cart` (`Idempotency-Key`, scoped to buyer_store_id + endpoint)
-  * [x] Ticket [PF-218]: Add regression tests for quote invariants (MOQ clamp, vendor mismatch, invalid promo, no inventory mutation)
+  * [x] Ticket [PF-217]: Implement cart attribution token pass-through (validate signature/expiry only, persist on cart_records, echo in CartQuote)
+  * [x] Ticket [PF-218]: Enforce `valid_until` guardrail: if expired, require re-quote before checkout (15m from quote/fetch response)
+  * [ ] Ticket [PF-219]: Implement cart conversion readiness (active→converted transition + generate/persist checkout_group_id at conversion) & Implement “converted cart” behavior guardrails (reject future quote-upserts if desired)
+  * [ ] Ticket [PF-220]: Add rate limiting for `POST /cart`
 
-  * [x] Ticket [PF-219]: Implement cart attribution token pass-through (validate signature/expiry only, persist on cart_records, echo in CartQuote)
-  * [x] Ticket [PF-220]: Enforce `valid_until` guardrail: if expired, require re-quote before checkout (15m from quote/fetch response)
-  * [ ] Ticket [PF-221]: Implement cart conversion readiness (active→converted transition + generate/persist checkout_group_id at conversion)
-  * [ ] Ticket [PF-122]: Add rate limiting for `POST /cart`
-  * [ ] Ticket [PF-223]: Implement “converted cart” behavior guardrails (reject future quote-upserts if desired)
-
-  * [ ] Ticket [PF-224]: Implement cart quote mapping helpers (DB ↔ domain ↔ DTO) with unit tests
-  * [ ] Ticket [PF-225]: Add structured logs + metrics in quote service (counts, warnings, duration)
+  * [ ] Ticket [PF-221]: Implement cart quote mapping helpers (DB ↔ domain ↔ DTO) with unit tests
+  * [ ] Ticket [PF-222]: Add structured logs + metrics in quote service (counts, warnings, duration)
 
 * **Phase 6 — Checkout Completion: Payment Intents + Retry Safety + Outbox Exactly-Once-ish**
   **Goal:** Close the remaining checkout core so retries are safe and downstream systems receive canonical events.
 
-  * [ ] Ticket [PF-233]: Create one payment_intent per vendor order inside checkout transaction
-  * [ ] Ticket [PF-234]: Set payment intent amount from `vendor_orders.total_cents` & Set payment intent `payment_method` from checkout-confirmed `payment_method`
-  * [ ] Ticket [PF-235]: Implement “already converted” early return path (lookup by checkout_group_id + load existing orders/lines/intents)
-  * [ ] Ticket [PF-236]: Prevent duplicate vendor orders on retry (uniqueness anchored on checkout_group_id+vendor_store_id and/or cart_id)
-  * [ ] Ticket [PF-238]: Prevent duplicate outbox rows on retry for same conversion anchor
-  * [ ] Ticket [PF-239]: Add repo helper to fetch full checkout result by checkout_group_id
-  * [ ] Ticket [PF-240]: Define/extend outbox payload for Notifications checkout-converted event
-  * [ ] Ticket [PF-241]: Define/extend outbox payload for Analytics checkout-converted event (cart totals + attribution refs/tokens)
-  * [ ] Ticket [PF-242]: Emit Notifications outbox event in same transaction as vendor order creation
-  * [ ] Ticket [PF-243]: Emit Analytics outbox event in same transaction as cart conversion
-  * [ ] Ticket [PF-244]: Add outbox payload versioning rules for these events
-  * [ ] Ticket [PF-245]: Add checkout regression tests (idempotent retry, expired/already converted behavior, exactly two outbox events)
+  * [ ] Ticket [PF-223]: Create one payment_intent per vendor order inside checkout transaction
+  * [ ] Ticket [PF-224]: Set payment intent amount from `vendor_orders.total_cents` & Set payment intent `payment_method` from checkout-confirmed `payment_method`
+  * [ ] Ticket [PF-225]: Add repo helper to fetch full checkout result by checkout_group_id
+
+  * [ ] Ticket [PF-226]: Define/extend outbox payload for Notifications checkout-converted event & Emit Notifications outbox event in same transaction as vendor order creation
+  * [ ] Ticket [PF-227]: Define/extend outbox payload for Analytics checkout-converted event (cart totals + attribution `ad_tokens`) & Emit Analytics outbox event in same transaction as cart conversion
+
+  * [ ] Ticket [PF-228]: Prevent duplicate vendor orders on retry (uniqueness anchored on checkout_group_id+vendor_store_id and/or cart_id)
+  * [ ] Ticket [PF-229]: Prevent duplicate outbox rows on retry for same conversion anchor
+
+  * [ ] Ticket [PF-230]: Add outbox payload versioning rules for these events
+  * [ ] Ticket [PF-231]: Add checkout regression tests (idempotent retry, expired/already converted behavior, exactly two outbox events)
 
 * **Phase 7 — Orders + Fulfillment + Cash Collection Completion**
   **Goal:** Finish the operational lifecycle for vendors/agents and cash settlement.
@@ -295,10 +291,8 @@
   * [ ] Ticket [PF-246]: Implement vendor fulfill endpoint (`POST /api/v1/vendor/orders/{orderId}/fulfill`) idempotently
   * [ ] Ticket [PF-247]: Transition fulfilled orders into hold/ready-for-dispatch semantics when all items in the order are no longer pending & then Emit outbox event `order_ready_for_dispatch` on fulfillment
 
-  * [ ] Ticket [PF-249]: Implement agent cash-collected endpoint (`POST /api/v1/agent/orders/{orderId}/cash-collected`)
-  * [ ] Ticket [PF-250]: Append `ledger_events(cash_collected)` during cash-collected flow
-  * [ ] Ticket [PF-251]: Set `payment_intents.status=settled` + `cash_collected_at`
-  * [ ] Ticket [PF-252]: Emit outbox event `cash_collected`
+  * [ ] Ticket [PF-249]: Implement agent cash-collected endpoint (`POST /api/v1/agent/orders/{orderId}/cash-collected`) & Append `ledger_events(cash_collected)` during cash-collected flow
+  * [ ] Ticket [PF-251]: Set `payment_intents.status=settled` + `cash_collected_at` & Emit outbox event `cash_collected` & update the order states too.
 
 * **Phase 8 — Attachment Wiring for Core Domains**
   **Goal:** Make attachments usable across MVP surfaces and keep delete semantics correct.
