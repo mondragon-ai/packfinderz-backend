@@ -330,6 +330,115 @@ func TestServiceRejectsExpiredCartQuote(t *testing.T) {
 	}
 }
 
+func TestServiceReplaysConvertedCart(t *testing.T) {
+	t.Parallel()
+
+	buyerID := uuid.New()
+	vendorID := uuid.New()
+	productID := uuid.New()
+	checkoutGroupID := uuid.New()
+
+	cartRecord := &models.CartRecord{
+		ID:              uuid.New(),
+		BuyerStoreID:    buyerID,
+		Status:          enums.CartStatusConverted,
+		Currency:        enums.CurrencyUSD,
+		CheckoutGroupID: &checkoutGroupID,
+		ValidUntil:      time.Now().Add(15 * time.Minute),
+		VendorGroups: []models.CartVendorGroup{
+			{
+				VendorStoreID: vendorID,
+				Status:        enums.VendorGroupStatusOK,
+				SubtotalCents: 1000,
+				TotalCents:    1000,
+			},
+		},
+	}
+
+	order := &models.VendorOrder{
+		ID:             uuid.New(),
+		CheckoutGroupID: checkoutGroupID,
+		BuyerStoreID:   buyerID,
+		VendorStoreID:  vendorID,
+		SubtotalCents:  1000,
+		TotalCents:     1000,
+		BalanceDueCents: 1000,
+		Status:         enums.VendorOrderStatusCreatedPending,
+	}
+
+	cartRepo := &stubCartRepo{record: cartRecord}
+	storeSvc := &stubStoreService{
+		records: map[uuid.UUID]*stores.StoreDTO{
+			buyerID: {
+				ID:        buyerID,
+				Type:      enums.StoreTypeBuyer,
+				KYCStatus: enums.KYCStatusVerified,
+				Address:   types.Address{State: "OK"},
+			},
+		},
+	}
+
+	orderRepo := newStubOrdersRepository()
+	orderRepo.vendorOrders[order.ID] = order
+	orderRepo.lineItems[order.ID] = []models.OrderLineItem{
+		{
+			ID:                 uuid.New(),
+			OrderID:            order.ID,
+			ProductID:          &productID,
+			Name:               "Sample",
+			Category:           "Flower",
+			Unit:               enums.ProductUnitUnit,
+			MOQ:                1,
+			UnitPriceCents:     1000,
+			Qty:                1,
+			LineSubtotalCents:  1000,
+			TotalCents:         1000,
+			Status:             enums.LineItemStatusPending,
+			Warnings:           types.CartItemWarnings{},
+		},
+	}
+	orderRepo.paymentIntents[order.ID] = &models.PaymentIntent{
+		OrderID:     order.ID,
+		Method:      enums.PaymentMethodCash,
+		Status:      enums.PaymentStatusUnpaid,
+		AmountCents: 1000,
+	}
+
+	publisher := &stubOutboxPublisher{}
+
+	service, err := NewService(
+		stubTxRunner{},
+		cartRepo,
+		orderRepo,
+		storeSvc,
+		stubProductLoader{products: map[uuid.UUID]*models.Product{}},
+		stubReservationRunner{},
+		publisher,
+	)
+	if err != nil {
+		t.Fatalf("build service: %v", err)
+	}
+
+	result, err := service.Execute(context.Background(), buyerID, cartRecord.ID, CheckoutInput{
+		IdempotencyKey: "key",
+	})
+	if err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	if result == nil {
+		t.Fatal("expected checkout group")
+	}
+	if result.ID != checkoutGroupID {
+		t.Fatalf("expected checkout group %s, got %s", checkoutGroupID, result.ID)
+	}
+	if len(result.VendorOrders) != 1 {
+		t.Fatalf("expected 1 vendor order, got %d", len(result.VendorOrders))
+	}
+	if cartRepo.updated != nil {
+		t.Fatalf("expected no cart update on replay")
+	}
+}
+
 func TestServiceRejectsVendorWhenAllReservationsFail(t *testing.T) {
 	t.Parallel()
 
