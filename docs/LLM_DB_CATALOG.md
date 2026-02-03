@@ -51,7 +51,7 @@
 - The order TTL cron job releases inventory via `orders.ReleaseLineItemInventory` so `reserved_qty` decrements while `available_qty` increments before `vendor_orders.status` flips to `expired`, keeping the row’s invariants (`internal/cron/order_ttl_job.go`:170-208; `internal/orders/service.go`:853-975; pkg/db/models/inventory_item.go:9-24).
 
 ### product_volume_discounts
-- `id uuid`, `product_id uuid REFERENCES products(id)`, `min_qty`, `unit_price_cents`, `created_at` plus `unique(product_id,min_qty)` and `order by (product_id,min_qty desc)` for tiered pricing lookups (DESIGN_DOC.md:2780-2804; pkg/db/models/product_volume_discount.go:9-24).
+- `id uuid`, `product_id uuid REFERENCES products(id)`, `min_qty`, `discount_percent numeric(7,4)`, `created_at` plus `unique(product_id,min_qty)` and `order by (product_id,min_qty desc)` for tiered pricing lookups (DESIGN_DOC.md:2780-2804; pkg/db/models/product_volume_discount.go:9-24).
 - The discount repo keeps the `(product_id,min_qty)` uniqueness and orders results descending by `min_qty` for efficient greatest-eligible-tier retrieval.
 
 ### cart_records

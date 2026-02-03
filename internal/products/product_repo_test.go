@@ -98,10 +98,10 @@ func TestRepositoryListProductSummaries(t *testing.T) {
 	inactive := mustInsertProduct(t, tx, storeA.ID, "INACTIVE", enums.ProductCategoryFlower, enums.ProductClassificationIndica, 900, false, floatPtr(15), floatPtr(0.5))
 	promo := mustInsertProduct(t, tx, storeA.ID, "PROMO", enums.ProductCategoryVape, enums.ProductClassificationHybrid, 2000, true, floatPtr(18), floatPtr(0.2))
 	if err := tx.Create(&models.ProductVolumeDiscount{
-		StoreID:        storeA.ID,
-		ProductID:      promo.ID,
-		MinQty:         5,
-		UnitPriceCents: 1800,
+		StoreID:         storeA.ID,
+		ProductID:       promo.ID,
+		MinQty:          5,
+		DiscountPercent: 10,
 	}).Error; err != nil {
 		t.Fatalf("create discount: %v", err)
 	}

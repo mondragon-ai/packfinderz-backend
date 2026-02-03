@@ -55,10 +55,10 @@ type InventoryInput struct {
 	LowStockThreshold int
 }
 
-// VolumeDiscountInput defines a tiered price for a given min quantity.
+// VolumeDiscountInput defines a tiered discount percentage for a given min quantity.
 type VolumeDiscountInput struct {
-	MinQty         int
-	UnitPriceCents int
+	MinQty          int
+	DiscountPercent float64
 }
 
 // UpdateProductInput holds optional mutation values for a product.
@@ -150,6 +150,11 @@ func (s *service) CreateProduct(ctx context.Context, userID, storeID uuid.UUID, 
 	if err := ensureUniqueDiscounts(input.VolumeDiscounts); err != nil {
 		return nil, err
 	}
+	for _, discount := range input.VolumeDiscounts {
+		if err := validateDiscountPercent(discount.DiscountPercent); err != nil {
+			return nil, err
+		}
+	}
 
 	if err := validateMaxQty(input.MaxQty); err != nil {
 		return nil, err
@@ -203,10 +208,10 @@ func (s *service) CreateProduct(ctx context.Context, userID, storeID uuid.UUID, 
 
 		for _, discount := range input.VolumeDiscounts {
 			tier := &models.ProductVolumeDiscount{
-				StoreID:        storeID,
-				ProductID:      created.ID,
-				MinQty:         discount.MinQty,
-				UnitPriceCents: discount.UnitPriceCents,
+				StoreID:         storeID,
+				ProductID:       created.ID,
+				MinQty:          discount.MinQty,
+				DiscountPercent: discount.DiscountPercent,
 			}
 			if _, err := txRepo.CreateVolumeDiscount(ctx, tier); err != nil {
 				return pkgerrors.Wrap(pkgerrors.CodeDependency, err, "db: insert volume discount")
@@ -279,6 +284,11 @@ func (s *service) UpdateProduct(ctx context.Context, userID, storeID, productID 
 		if err := ensureUniqueDiscounts(*input.VolumeDiscounts); err != nil {
 			return nil, err
 		}
+		for _, tier := range *input.VolumeDiscounts {
+			if err := validateDiscountPercent(tier.DiscountPercent); err != nil {
+				return nil, err
+			}
+		}
 	}
 
 	product, err := s.repo.FindByID(ctx, productID)
@@ -317,10 +327,10 @@ func (s *service) UpdateProduct(ctx context.Context, userID, storeID, productID 
 			tiers := make([]models.ProductVolumeDiscount, len(*input.VolumeDiscounts))
 			for i, tier := range *input.VolumeDiscounts {
 				tiers[i] = models.ProductVolumeDiscount{
-					StoreID:        storeID,
-					ProductID:      product.ID,
-					MinQty:         tier.MinQty,
-					UnitPriceCents: tier.UnitPriceCents,
+					StoreID:         storeID,
+					ProductID:       product.ID,
+					MinQty:          tier.MinQty,
+					DiscountPercent: tier.DiscountPercent,
 				}
 			}
 			if err := txRepo.ReplaceVolumeDiscounts(ctx, product.ID, tiers); err != nil {
@@ -459,6 +469,13 @@ func validateMaxQty(value int) error {
 func validateLowStockThreshold(value int) error {
 	if value < 0 {
 		return pkgerrors.New(pkgerrors.CodeValidation, "low_stock_threshold must be non-negative")
+	}
+	return nil
+}
+
+func validateDiscountPercent(value float64) error {
+	if value < 0 || value > 100 {
+		return pkgerrors.New(pkgerrors.CodeValidation, "discount_percent must be between 0 and 100")
 	}
 	return nil
 }
