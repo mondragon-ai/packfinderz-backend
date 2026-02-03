@@ -6,6 +6,7 @@ import (
 	"github.com/angelmondragon/packfinderz-backend/api/responses"
 	"github.com/angelmondragon/packfinderz-backend/api/validators"
 	"github.com/angelmondragon/packfinderz-backend/internal/auth"
+	"github.com/angelmondragon/packfinderz-backend/internal/users"
 	"github.com/angelmondragon/packfinderz-backend/pkg/config"
 	pkgerrors "github.com/angelmondragon/packfinderz-backend/pkg/errors"
 	"github.com/angelmondragon/packfinderz-backend/pkg/logger"
@@ -33,10 +34,11 @@ func AuthLogin(svc auth.Service, logg *logger.Logger) http.HandlerFunc {
 		}
 
 		w.Header().Set("X-PF-Token", result.AccessToken)
-		responses.WriteSuccess(w, result)
+		responses.WriteSuccess(w, map[string]*users.UserDTO{
+			"user": result.User,
+		})
 	}
 }
-
 func AdminAuthLogin(svc auth.Service, logg *logger.Logger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if svc == nil {
@@ -58,7 +60,9 @@ func AdminAuthLogin(svc auth.Service, logg *logger.Logger) http.HandlerFunc {
 		}
 
 		w.Header().Set("X-PF-Token", result.AccessToken)
-		responses.WriteSuccess(w, result)
+		responses.WriteSuccess(w, map[string]*users.UserDTO{
+			"user": result.User,
+		})
 	}
 }
 func AdminAuthRegister(adminRegister auth.AdminRegisterService, svc auth.Service, cfg *config.Config, logg *logger.Logger) http.HandlerFunc {
@@ -93,6 +97,8 @@ func AdminAuthRegister(adminRegister auth.AdminRegisterService, svc auth.Service
 		}
 
 		w.Header().Set("X-PF-Token", result.AccessToken)
-		responses.WriteSuccessStatus(w, http.StatusCreated, result)
+		responses.WriteSuccessStatus(w, http.StatusCreated, map[string]*users.UserDTO{
+			"user": result.User,
+		})
 	}
 }

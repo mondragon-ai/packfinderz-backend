@@ -6,6 +6,7 @@ import (
 	"github.com/angelmondragon/packfinderz-backend/api/responses"
 	"github.com/angelmondragon/packfinderz-backend/api/validators"
 	"github.com/angelmondragon/packfinderz-backend/internal/auth"
+	"github.com/angelmondragon/packfinderz-backend/internal/users"
 	pkgerrors "github.com/angelmondragon/packfinderz-backend/pkg/errors"
 	"github.com/angelmondragon/packfinderz-backend/pkg/logger"
 )
@@ -40,6 +41,8 @@ func AuthRegister(reg auth.RegisterService, svc auth.Service, logg *logger.Logge
 		}
 
 		w.Header().Set("X-PF-Token", result.AccessToken)
-		responses.WriteSuccessStatus(w, http.StatusCreated, result)
+		responses.WriteSuccess(w, map[string]*users.UserDTO{
+			"user": result.User,
+		})
 	}
 }
