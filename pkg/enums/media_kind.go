@@ -13,6 +13,7 @@ const (
 	MediaKindCOA        MediaKind = "coa"
 	MediaKindManifest   MediaKind = "manifest"
 	MediaKindUser       MediaKind = "user"
+	MediaKindStore      MediaKind = "store"
 	MediaKindOther      MediaKind = "other"
 )
 
@@ -24,6 +25,7 @@ var validMediaKinds = []MediaKind{
 	MediaKindCOA,
 	MediaKindManifest,
 	MediaKindUser,
+	MediaKindStore,
 	MediaKindOther,
 }
 

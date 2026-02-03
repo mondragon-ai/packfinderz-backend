@@ -229,20 +229,18 @@
 * **Phase 2 — Media System Correctness + Lifecycle Jobs**
   **Goal:** Fix media edge cases and make deletion/upload lifecycle operationally safe.
 
-  * [ ] Ticket [PF-201]: Prevent generating READ URLs for `media.status=pending` responses
-  * [ ] Ticket [PF-202]: Change GCS object key to `{storeId}/{media_kind}/{mediaId}.{ext}` (stop using filename)
-  * [ ] Ticket [PF-203]: Enforce per-store uploaded object uniqueness to prevent same-name overwrites (dedupe or enforce canonical keying)
-  * [ ] Ticket [PF-204]: Validate store and fetch only activeStoreId media. Currently returnign all media.
+  * [x] Ticket [PF-201]: Prevent generating READ URLs for `media.status=pending` responses
+  * [x] Ticket [PF-202]: Change GCS object key to `{storeId}/{media_kind}/{mediaId}.{ext}` (stop using filename)
 
-  * [ ] Ticket [PF-205]: Add delete media worker to Docker/Heroku/Make targets for deploy parity
-  * [ ] Ticket [PF-206]: Extend (`cmd/cron-worker/main.go`)  to Implement stale pending media deletion pending uploads after 7 days
-  * [ ] Ticket [PF-207]: Fix media delete returning 200 but not deleting media or gcs object (end-to-end verification + logs + worker outcomes)
-  * [ ] Ticket [PF-208]: Detach all attachment references by entity type (`cmd/media_deleted_worker/main.go`) & if necessary Delete GCS originals + derived artifacts if no longer attatched. 
+  * [x] Ticket [PF-203]: Add delete media worker to Docker/Heroku/Make targets for deploy parity
+  * [x] Ticket [PF-204]: Extend (`cmd/cron-worker/main.go`)  to Implement stale pending media deletion pending uploads after 7 days
+  * [ ] Ticket [PF-205]: Detach all attachment references by entity type (`cmd/media_deleted_worker/main.go`) & if necessary Delete GCS originals + derived artifacts if no longer attatched. 
+
+  * [ ] Ticket [PF-206]: Fix media delete returning 200 but not deleting media or gcs object (end-to-end verification + logs + worker outcomes)
 
 * **Phase 3 — Compliance + Admin Ops Gaps**
   **Goal:** Finish compliance retention, admin queues, and auditability needed for real ops.
 
-  * [ ] Ticket [PF-214]: Implement license retention scheduler (hard-delete expired after 30d + detach media if unreferenced)
   * [ ] Ticket [PF-215]: Implement admin license queue list endpoint (pending verification, paginated)
   * [ ] Ticket [PF-216]: Add audit log rows for admin verify/reject + scheduler expiry flip
 

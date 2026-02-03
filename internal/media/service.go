@@ -17,7 +17,10 @@ import (
 	"gorm.io/gorm"
 )
 
-const maxUploadBytes = 20 * 1024 * 1024
+const (
+	maxUploadBytes       = 20 * 1024 * 1024
+	readURLPendingErrMsg = "media upload pending"
+)
 
 type membershipsRepository interface {
 	UserHasRole(ctx context.Context, userID, storeID uuid.UUID, roles ...enums.MemberRole) (bool, error)
@@ -170,7 +173,7 @@ func (s *service) PresignUpload(ctx context.Context, userID, storeID uuid.UUID, 
 	}
 
 	mediaID := uuid.New()
-	gcsKey := buildGCSKey(input.Kind, mediaID, fileName)
+	gcsKey := buildGCSKey(storeID, input.Kind, mediaID, fileName)
 
 	mediaRow := &models.Media{
 		ID:        mediaID,
@@ -234,6 +237,9 @@ func (s *service) GenerateReadURL(ctx context.Context, params ReadURLParams) (*R
 		return nil, pkgerrors.New(pkgerrors.CodeForbidden, "media does not belong to active store")
 	}
 
+	if mediaRow.Status == enums.MediaStatusPending {
+		return nil, pkgerrors.New(pkgerrors.CodeConflict, readURLPendingErrMsg)
+	}
 	if !isReadableStatus(mediaRow.Status) {
 		return nil, pkgerrors.New(pkgerrors.CodeConflict, "media not available for download")
 	}
@@ -335,12 +341,14 @@ func isAllowedMime(kind enums.MediaKind, mimeType string) bool {
 	return true
 }
 
-func buildGCSKey(kind enums.MediaKind, id uuid.UUID, fileName string) string {
+func buildGCSKey(storeID uuid.UUID, kind enums.MediaKind, id uuid.UUID, fileName string) string {
 	cleanName := sanitizeFileName(fileName)
-	if cleanName == "" {
-		cleanName = id.String()
+	extension := fileExtension(cleanName)
+	base := fmt.Sprintf("%s/%s/%s", storeID.String(), kind.String(), id.String())
+	if extension == "" {
+		return base
 	}
-	return fmt.Sprintf("media/%s/%s/%s", kind, id.String(), cleanName)
+	return fmt.Sprintf("%s.%s", base, extension)
 }
 
 func sanitizeFileName(name string) string {
@@ -365,4 +373,9 @@ func sanitizeFileName(name string) string {
 	}
 	result := strings.Trim(b.String(), "-_.")
 	return result
+}
+
+func fileExtension(name string) string {
+	ext := strings.TrimPrefix(path.Ext(name), ".")
+	return strings.ToLower(ext)
 }

@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 	"testing"
 	"time"
 
@@ -171,8 +170,9 @@ func TestMediaServicePresignSuccess(t *testing.T) {
 	if res.MediaID != repo.created.ID {
 		t.Fatalf("expected media id %s got %s", repo.created.ID, res.MediaID)
 	}
-	if !contains(res.GCSKey, res.MediaID.String()) {
-		t.Fatalf("gcs key %s missing media id", res.GCSKey)
+	expectedKey := fmt.Sprintf("%s/%s/%s.png", storeID, enums.MediaKindProduct, res.MediaID)
+	if res.GCSKey != expectedKey {
+		t.Fatalf("expected gcs key %s got %s", expectedKey, res.GCSKey)
 	}
 	if gcs.lastBucket != "bucket" || gcs.lastObject != res.GCSKey || gcs.lastMimeType != "image/png" {
 		t.Fatalf("unexpected gcs call %v", gcs)
@@ -257,40 +257,55 @@ func TestMediaServicePresignForbidden(t *testing.T) {
 func TestMediaServiceGenerateReadURLSuccess(t *testing.T) {
 	t.Parallel()
 
-	storeID := uuid.New()
-	mediaID := uuid.New()
-	repo := &stubMediaRepo{
-		findMedia: &models.Media{
-			ID:      mediaID,
-			StoreID: storeID,
-			Status:  enums.MediaStatusUploaded,
-			GCSKey:  "media/key",
-		},
-	}
-	members := stubMemberships{ok: true}
-	gcs := &stubGCS{readURL: "https://download.example"}
-	attachments := &stubAttachmentLookup{}
-
-	svc, err := NewService(repo, members, attachments, gcs, "bucket", time.Minute, 15*time.Minute)
-	if err != nil {
-		t.Fatalf("NewService: %v", err)
+	cases := []struct {
+		name   string
+		status enums.MediaStatus
+	}{
+		{name: "uploaded", status: enums.MediaStatusUploaded},
+		{name: "ready", status: enums.MediaStatusReady},
 	}
 
-	resp, err := svc.GenerateReadURL(context.Background(), ReadURLParams{
-		StoreID: storeID,
-		MediaID: mediaID,
-	})
-	if err != nil {
-		t.Fatalf("GenerateReadURL returned error: %v", err)
-	}
-	if resp.URL != "https://download.example" {
-		t.Fatalf("unexpected url %s", resp.URL)
-	}
-	if resp.ExpiresAt.Before(time.Now().Add(15*time.Minute - time.Second)) {
-		t.Fatalf("expires at too soon: %s", resp.ExpiresAt)
-	}
-	if gcs.lastBucket != "bucket" || gcs.lastObject != "media/key" {
-		t.Fatalf("unexpected gcs call %v", gcs)
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			storeID := uuid.New()
+			mediaID := uuid.New()
+			repo := &stubMediaRepo{
+				findMedia: &models.Media{
+					ID:      mediaID,
+					StoreID: storeID,
+					Status:  tc.status,
+					GCSKey:  "media/key",
+				},
+			}
+			members := stubMemberships{ok: true}
+			gcs := &stubGCS{readURL: "https://download.example"}
+			attachments := &stubAttachmentLookup{}
+
+			svc, err := NewService(repo, members, attachments, gcs, "bucket", time.Minute, 15*time.Minute)
+			if err != nil {
+				t.Fatalf("NewService: %v", err)
+			}
+
+			resp, err := svc.GenerateReadURL(context.Background(), ReadURLParams{
+				StoreID: storeID,
+				MediaID: mediaID,
+			})
+			if err != nil {
+				t.Fatalf("GenerateReadURL returned error: %v", err)
+			}
+			if resp.URL != "https://download.example" {
+				t.Fatalf("unexpected url %s", resp.URL)
+			}
+			if resp.ExpiresAt.Before(time.Now().Add(15*time.Minute - time.Second)) {
+				t.Fatalf("expires at too soon: %s", resp.ExpiresAt)
+			}
+			if gcs.lastBucket != "bucket" || gcs.lastObject != "media/key" {
+				t.Fatalf("unexpected gcs call %v", gcs)
+			}
+		})
 	}
 }
 
@@ -349,6 +364,8 @@ func TestMediaServiceGenerateReadURLInvalidStatus(t *testing.T) {
 		t.Fatal("expected conflict error")
 	} else if typed := pkgerrors.As(err); typed == nil || typed.Code() != pkgerrors.CodeConflict {
 		t.Fatalf("expected conflict code, got %v", err)
+	} else if typed.Message() != readURLPendingErrMsg {
+		t.Fatalf("expected pending message, got %s", typed.Message())
 	}
 }
 
@@ -572,8 +589,23 @@ func TestMediaServicePresignGcsErrorCleansUp(t *testing.T) {
 	}
 }
 
-var errTest = fmt.Errorf("boom")
+func TestBuildGCSKeyCanonical(t *testing.T) {
+	t.Parallel()
 
-func contains(value, substring string) bool {
-	return strings.Contains(value, substring)
+	storeID := uuid.New()
+	mediaID := uuid.New()
+
+	key := buildGCSKey(storeID, enums.MediaKindAds, mediaID, "My File.PNG")
+	expected := fmt.Sprintf("%s/%s/%s.png", storeID, enums.MediaKindAds, mediaID)
+	if key != expected {
+		t.Fatalf("expected canonical key %s got %s", expected, key)
+	}
+
+	keyNoExt := buildGCSKey(storeID, enums.MediaKindProduct, mediaID, "file")
+	expectedBase := fmt.Sprintf("%s/%s/%s", storeID, enums.MediaKindProduct, mediaID)
+	if keyNoExt != expectedBase {
+		t.Fatalf("expected canonical key %s got %s", expectedBase, keyNoExt)
+	}
 }
+
+var errTest = fmt.Errorf("boom")

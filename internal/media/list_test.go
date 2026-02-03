@@ -75,8 +75,8 @@ func TestListMediaCursorPagination(t *testing.T) {
 	if len(res.Items) != 1 {
 		t.Fatalf("expected 1 item, got %d", len(res.Items))
 	}
-	if res.Items[0].SignedURL != gcs.readURL {
-		t.Fatalf("expected signed url %s got %s", gcs.readURL, res.Items[0].SignedURL)
+	if res.Items[0].SignedURL == nil || *res.Items[0].SignedURL != gcs.readURL {
+		t.Fatalf("expected signed url %s got %v", gcs.readURL, res.Items[0].SignedURL)
 	}
 	if gcs.readCalls != 1 {
 		t.Fatalf("expected one signed url request, got %d", gcs.readCalls)
@@ -125,27 +125,43 @@ func TestListMediaInvalidCursor(t *testing.T) {
 }
 
 func TestListMediaSignedURLForReadableStatus(t *testing.T) {
-	repo := &stubListRepo{
-		listRows: []models.Media{
-			{
-				ID:     uuid.New(),
-				Status: enums.MediaStatusUploaded,
-				GCSKey: "media/ready",
-			},
-		},
-	}
-	svc, gcs := newServiceWithRepo(repo)
-	storeID := uuid.New()
+	t.Parallel()
 
-	resp, err := svc.ListMedia(context.Background(), ListParams{StoreID: storeID})
-	if err != nil {
-		t.Fatalf("ListMedia returned error: %v", err)
+	cases := []struct {
+		name   string
+		status enums.MediaStatus
+	}{
+		{name: "uploaded", status: enums.MediaStatusUploaded},
+		{name: "ready", status: enums.MediaStatusReady},
 	}
-	if resp.Items[0].SignedURL != gcs.readURL {
-		t.Fatalf("expected signed url %s got %s", gcs.readURL, resp.Items[0].SignedURL)
-	}
-	if gcs.readCalls != 1 {
-		t.Fatalf("expected one signed url request, got %d", gcs.readCalls)
+
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			repo := &stubListRepo{
+				listRows: []models.Media{
+					{
+						ID:     uuid.New(),
+						Status: tc.status,
+						GCSKey: "media/readable",
+					},
+				},
+			}
+			svc, gcs := newServiceWithRepo(repo)
+			storeID := uuid.New()
+
+			resp, err := svc.ListMedia(context.Background(), ListParams{StoreID: storeID})
+			if err != nil {
+				t.Fatalf("ListMedia returned error: %v", err)
+			}
+			if resp.Items[0].SignedURL == nil || *resp.Items[0].SignedURL != gcs.readURL {
+				t.Fatalf("expected signed url %s got %v", gcs.readURL, resp.Items[0].SignedURL)
+			}
+			if gcs.readCalls != 1 {
+				t.Fatalf("expected one signed url request, got %d", gcs.readCalls)
+			}
+		})
 	}
 }
 
@@ -166,8 +182,8 @@ func TestListMediaSkipsSignedURLForUnreadableStatus(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListMedia returned error: %v", err)
 	}
-	if resp.Items[0].SignedURL != "" {
-		t.Fatalf("expected empty signed url for unreadable media, got %s", resp.Items[0].SignedURL)
+	if resp.Items[0].SignedURL != nil {
+		t.Fatalf("expected no signed url for unreadable media, got %v", resp.Items[0].SignedURL)
 	}
 	if gcs.readCalls != 0 {
 		t.Fatalf("expected no signed url requests, got %d", gcs.readCalls)
