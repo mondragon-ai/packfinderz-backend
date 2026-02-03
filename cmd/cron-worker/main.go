@@ -117,6 +117,15 @@ func main() {
 	requireResource(ctx, logg, "notification cleanup job", err)
 	registry.Register(notificationCleanupJob)
 
+	pendingMediaCleanupJob, err := cron.NewPendingMediaCleanupJob(cron.PendingMediaCleanupJobParams{
+		Logger:         logg,
+		DB:             dbClient,
+		MediaRepo:      mediaRepo,
+		AttachmentRepo: attachmentRepo,
+	})
+	requireResource(ctx, logg, "pending media cleanup job", err)
+	registry.Register(pendingMediaCleanupJob)
+
 	outboxRetentionJob, err := cron.NewOutboxRetentionJob(cron.OutboxRetentionJobParams{
 		Logger:     logg,
 		DB:         dbClient,

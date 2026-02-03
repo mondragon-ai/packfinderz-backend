@@ -241,21 +241,22 @@
 * **Phase 3 — Compliance + Admin Ops Gaps**
   **Goal:** Finish compliance retention, admin queues, and auditability needed for real ops.
 
-  * [ ] Ticket [PF-215]: Implement admin license queue list endpoint (pending verification, paginated)
-  * [ ] Ticket [PF-216]: Add audit log rows for admin verify/reject + scheduler expiry flip
+  * [ ] Ticket [PF-207]: Implement admin license queue list endpoint (pending verification, paginated)
+  * [ ] Ticket [PF-208]: Add audit log rows for admin verify/reject + scheduler expiry flip
 
 * **Phase 4 — Products & Inventory Completion**
   **Goal:** Finish vendor inventory management endpoints and missing product constraints.
 
-  * [ ] Ticket [PF-217]: Implement product list endpoint (buyer/vendor) with pagination + product summary (this is the product grid UI view) (`GET /v1/vendor/products`). It will be qith additional queries to filter by category, thc / cbs range, price range, classification, has promo (volume discount), search (q=..)
-  * [ ] Ticket [PF-218]: Implement product list endpoint (vendor-only) with pagination + product summary (this is the table view of the UI) (`GET /v1/products`). It will be qith additional queries to filter by category, thc / cbs range, price range, classification, has promo (volume discount), search (q=..)
-  * [ ] Ticket [PF-219]: Add `low_stock_threshold` to inventory model (migration + model + DTOs) & Add `max_qty` to product model (migration + model + DTOs + validations)
-  * [ ] Ticket [PF-220]: Volume discount from `unit_price_cents` to percentage & all areas here used (cart/checkout etc). Its to be a percentage value discounted from the line item (product) not a dollar amount (fixed). 
-  * [ ] Ticket [PF-220]: Add `media_id` to product media model (migration + model + DTOs + validations)
-  * [ ] Ticket [PF-221]: Add VendorSummary to product browse/detail (join stores + optional logo attachment)
+  * [ ] Ticket [PF-209]: Implement product list endpoint (buyer/vendor) with pagination + product summary (this is the product grid UI view) (`GET /v1/vendor/products`). It will be qith additional queries to filter by category, thc / cbs range, price range, classification, has promo (volume discount), search (q=..)
+  * [ ] Ticket [PF-210]: Implement product list endpoint (vendor-only) with pagination + product summary (this is the table view of the UI) (`GET /v1/products`). It will be qith additional queries to filter by category, thc / cbs range, price range, classification, has promo (volume discount), search (q=..)
+  * [ ] Ticket [PF-211]: Add VendorSummary to product browse/detail (join stores + optional logo attachment)
+  
+  * [ ] Ticket [PF-212]: Add `low_stock_threshold` to inventory model (migration + model + DTOs) & Add `max_qty` to product model (migration + model + DTOs + validations)
+  * [ ] Ticket [PF-213]: Volume discount from `unit_price_cents` to percentage & all areas here used (cart/checkout etc). Its to be a percentage value discounted from the line item (product) not a dollar amount (fixed). 
+  * [ ] Ticket [PF-214]: Add `media_id` to product media model (migration + model + DTOs + validations)
 
-  * [ ] Ticket [PF-222]: Implement audit action schema/helper for product/inventory actions
-  * [ ] Ticket [PF-223]: Emit audit rows on product create/update/delete + inventory set
+  * [ ] Ticket [PF-215]: Implement audit action schema/helper for product/inventory actions
+  * [ ] Ticket [PF-216]: Emit audit rows on product create/update/delete + inventory set
 
 * **Phase 5 — Cart Quote Guardrails + Idempotency + Attribution Pass-through**
   **Goal:** Make cart quoting robust (idempotency, mapping helpers, expiry behavior, attribution token plumbing).
