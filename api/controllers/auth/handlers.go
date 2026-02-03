@@ -34,8 +34,9 @@ func AuthLogin(svc auth.Service, logg *logger.Logger) http.HandlerFunc {
 		}
 
 		w.Header().Set("X-PF-Token", result.AccessToken)
-		responses.WriteSuccess(w, map[string]*users.UserDTO{
-			"user": result.User,
+		responses.WriteSuccess(w, map[string]any{
+			"stores": result.Stores,
+			"user":   result.User,
 		})
 	}
 }

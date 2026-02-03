@@ -28,6 +28,11 @@ type LoginResponse struct {
 	User         *users.UserDTO `json:"user"`
 }
 
+type LoginHTTPResponse struct {
+	Stores []StoreSummary `json:"stores"`
+	User   *users.UserDTO `json:"user"`
+}
+
 // AdminLoginResponse mirrors LoginResponse while exposing the admin user.
 type AdminLoginResponse struct {
 	AccessToken  string         `json:"access_token"`
