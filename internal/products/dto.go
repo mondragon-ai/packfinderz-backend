@@ -32,6 +32,7 @@ type ProductDTO struct {
 	VolumeDiscounts     []VolumeDiscountDTO `json:"volume_discounts,omitempty"`
 	Media               []ProductMediaDTO   `json:"media,omitempty"`
 	Vendor              VendorSummaryDTO    `json:"vendor"`
+	MaxQty              int                 `json:"max_qty"`
 	CreatedAt           time.Time           `json:"created_at"`
 	UpdatedAt           time.Time           `json:"updated_at"`
 }
@@ -53,6 +54,7 @@ type ProductSummary struct {
 	VendorStoreID       uuid.UUID `json:"vendor_store_id"`
 	CreatedAt           time.Time `json:"created_at"`
 	UpdatedAt           time.Time `json:"updated_at"`
+	MaxQty              int       `json:"max_qty"`
 }
 
 // ProductListResult wraps a page of product summaries plus the cursor for the next page.
@@ -63,9 +65,10 @@ type ProductListResult struct {
 
 // InventoryDTO exposes inventory counts.
 type InventoryDTO struct {
-	AvailableQty int       `json:"available_qty"`
-	ReservedQty  int       `json:"reserved_qty"`
-	UpdatedAt    time.Time `json:"updated_at"`
+	AvailableQty      int       `json:"available_qty"`
+	ReservedQty       int       `json:"reserved_qty"`
+	UpdatedAt         time.Time `json:"updated_at"`
+	LowStockThreshold int       `json:"low_stock_threshold"`
 }
 
 // VolumeDiscountDTO represents a tiered unit price.
@@ -116,6 +119,7 @@ func NewProductDTO(product *models.Product, summary *VendorSummary) *ProductDTO 
 		CBDPercent:          product.CBDPercent,
 		CreatedAt:           product.CreatedAt,
 		UpdatedAt:           product.UpdatedAt,
+		MaxQty:              product.MaxQty,
 	}
 	if product.Classification != nil {
 		classification := string(*product.Classification)
@@ -124,9 +128,10 @@ func NewProductDTO(product *models.Product, summary *VendorSummary) *ProductDTO 
 
 	if product.Inventory != nil {
 		dto.Inventory = &InventoryDTO{
-			AvailableQty: product.Inventory.AvailableQty,
-			ReservedQty:  product.Inventory.ReservedQty,
-			UpdatedAt:    product.Inventory.UpdatedAt,
+			AvailableQty:      product.Inventory.AvailableQty,
+			ReservedQty:       product.Inventory.ReservedQty,
+			UpdatedAt:         product.Inventory.UpdatedAt,
+			LowStockThreshold: product.Inventory.LowStockThreshold,
 		}
 	}
 

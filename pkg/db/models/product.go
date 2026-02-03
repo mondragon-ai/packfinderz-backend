@@ -31,6 +31,7 @@ type Product struct {
 	IsFeatured          bool                         `gorm:"column:is_featured;not null;default:false"`
 	THCPercent          *float64                     `gorm:"column:thc_percent;type:numeric(5,2)"`
 	CBDPercent          *float64                     `gorm:"column:cbd_percent;type:numeric(5,2)"`
+	MaxQty              int                          `gorm:"column:max_qty;not null;default:0"`
 	Inventory           *InventoryItem               `gorm:"foreignKey:ProductID;constraint:OnDelete:CASCADE"`
 	VolumeDiscounts     []ProductVolumeDiscount      `gorm:"foreignKey:ProductID;constraint:OnDelete:CASCADE"`
 	Media               []ProductMedia               `gorm:"foreignKey:ProductID;constraint:OnDelete:CASCADE"`
