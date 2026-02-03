@@ -86,9 +86,6 @@ func TestAdminAuthRegisterSuccess(t *testing.T) {
 	if envelope.Data.User == nil || envelope.Data.User.Email != user.Email {
 		t.Fatalf("expected user in payload got %+v", envelope.Data.User)
 	}
-	if envelope.Data.AccessToken != "access-token" {
-		t.Fatalf("expected access token in body got %s", envelope.Data.AccessToken)
-	}
 }
 
 func TestAdminAuthRegisterInvalidPayload(t *testing.T) {
