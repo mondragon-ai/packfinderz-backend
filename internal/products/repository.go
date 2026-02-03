@@ -257,6 +257,7 @@ func (r *Repository) ListProductSummaries(ctx context.Context, query productList
 			"p.created_at",
 			"p.updated_at",
 			"p.store_id",
+			"p.max_qty",
 			promoExistsClause + " AS has_promo",
 		}, ", ")).
 		Joins("JOIN stores s ON s.id = p.store_id")
@@ -356,6 +357,7 @@ type productSummaryRecord struct {
 	StoreID             uuid.UUID
 	CreatedAt           time.Time
 	UpdatedAt           time.Time
+	MaxQty              int
 }
 
 func (r productSummaryRecord) toSummary() ProductSummary {
@@ -375,6 +377,7 @@ func (r productSummaryRecord) toSummary() ProductSummary {
 		VendorStoreID:       r.StoreID,
 		CreatedAt:           r.CreatedAt,
 		UpdatedAt:           r.UpdatedAt,
+		MaxQty:              r.MaxQty,
 	}
 }
 

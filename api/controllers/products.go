@@ -89,6 +89,7 @@ type createProductRequest struct {
 	MOQ                 int                           `json:"moq" validate:"required,min=1"`
 	PriceCents          int                           `json:"price_cents" validate:"required,min=0"`
 	CompareAtPriceCents *int                          `json:"compare_at_price_cents,omitempty" validate:"omitempty,min=0"`
+	MaxQty              *int                          `json:"max_qty,omitempty"`
 	IsActive            *bool                         `json:"is_active,omitempty"`
 	IsFeatured          *bool                         `json:"is_featured,omitempty"`
 	THCPercent          *float64                      `json:"thc_percent,omitempty" validate:"omitempty,gte=0,lte=100"`
@@ -99,8 +100,9 @@ type createProductRequest struct {
 }
 
 type createInventoryRequest struct {
-	AvailableQty int `json:"available_qty" validate:"required,min=0"`
-	ReservedQty  int `json:"reserved_qty" validate:"omitempty,min=0"`
+	AvailableQty      int `json:"available_qty" validate:"required,min=0"`
+	ReservedQty       int `json:"reserved_qty" validate:"omitempty,min=0"`
+	LowStockThreshold int `json:"low_stock_threshold,omitempty" validate:"omitempty,min=0"`
 }
 
 type createVolumeDiscountRequest struct {
@@ -396,11 +398,13 @@ type updateProductRequest struct {
 	Inventory           *updateInventoryRequest        `json:"inventory,omitempty"`
 	MediaIDs            *[]string                      `json:"media_ids,omitempty"`
 	VolumeDiscounts     *[]updateVolumeDiscountRequest `json:"volume_discounts,omitempty"`
+	MaxQty              *int                           `json:"max_qty,omitempty" validate:"omitempty,min=0"`
 }
 
 type updateInventoryRequest struct {
-	AvailableQty *int `json:"available_qty,omitempty" validate:"omitempty,min=0"`
-	ReservedQty  *int `json:"reserved_qty,omitempty" validate:"omitempty,min=0"`
+	AvailableQty      *int `json:"available_qty,omitempty" validate:"omitempty,min=0"`
+	ReservedQty       *int `json:"reserved_qty,omitempty" validate:"omitempty,min=0"`
+	LowStockThreshold *int `json:"low_stock_threshold,omitempty" validate:"omitempty,min=0"`
 }
 
 type updateVolumeDiscountRequest struct {
@@ -483,11 +487,13 @@ func (r createProductRequest) toCreateInput() (productsvc.CreateProductInput, er
 		THCPercent:          r.THCPercent,
 		CBDPercent:          r.CBDPercent,
 		Inventory: productsvc.InventoryInput{
-			AvailableQty: r.Inventory.AvailableQty,
-			ReservedQty:  r.Inventory.ReservedQty,
+			AvailableQty:      r.Inventory.AvailableQty,
+			ReservedQty:       r.Inventory.ReservedQty,
+			LowStockThreshold: r.Inventory.LowStockThreshold,
 		},
 		MediaIDs:        mediaIDs,
 		VolumeDiscounts: discounts,
+		MaxQty:          intValue(r.MaxQty),
 	}, nil
 }
 
@@ -585,9 +591,13 @@ func (r updateProductRequest) toUpdateInput() (productsvc.UpdateProductInput, er
 		if r.Inventory.AvailableQty == nil || r.Inventory.ReservedQty == nil {
 			return input, pkgerrors.New(pkgerrors.CodeValidation, "inventory available_qty and reserved_qty are required")
 		}
+		if r.Inventory.LowStockThreshold == nil {
+			return input, pkgerrors.New(pkgerrors.CodeValidation, "inventory low_stock_threshold is required")
+		}
 		input.Inventory = &productsvc.InventoryInput{
-			AvailableQty: *r.Inventory.AvailableQty,
-			ReservedQty:  *r.Inventory.ReservedQty,
+			AvailableQty:      *r.Inventory.AvailableQty,
+			ReservedQty:       *r.Inventory.ReservedQty,
+			LowStockThreshold: *r.Inventory.LowStockThreshold,
 		}
 	}
 
@@ -608,6 +618,11 @@ func (r updateProductRequest) toUpdateInput() (productsvc.UpdateProductInput, er
 			}
 		}
 		input.VolumeDiscounts = &tiers
+	}
+
+	if r.MaxQty != nil {
+		val := *r.MaxQty
+		input.MaxQty = &val
 	}
 
 	return input, nil
@@ -746,4 +761,11 @@ func parseOptionalBool(r *http.Request, key string) (*bool, error) {
 		return nil, pkgerrors.New(pkgerrors.CodeValidation, fmt.Sprintf("query parameter %s must be true or false", key))
 	}
 	return &value, nil
+}
+
+func intValue(ptr *int) int {
+	if ptr == nil {
+		return 0
+	}
+	return *ptr
 }

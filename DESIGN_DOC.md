@@ -30,6 +30,7 @@
 
   * **Login required** to view catalog/pricing.
   * Buyer verification gates purchasing actions.
+  * Products now track `max_qty` (per-line ordering cap) and inventory rows record `low_stock_threshold` so service-layer validation can enforce ordering limits and low-stock awareness before we add notifications.
 * Commerce flow (MVP = cash at delivery):
 
  1. browse/search

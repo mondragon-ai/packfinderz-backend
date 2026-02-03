@@ -162,6 +162,24 @@ func stringPtr(value string) *string {
 	return &value
 }
 
+func TestValidateMaxQty(t *testing.T) {
+	if err := validateMaxQty(-1); err == nil {
+		t.Fatal("expected validation error for negative max_qty")
+	}
+	if err := validateMaxQty(0); err != nil {
+		t.Fatalf("expected no error for zero max_qty, got %v", err)
+	}
+}
+
+func TestValidateLowStockThreshold(t *testing.T) {
+	if err := validateLowStockThreshold(-5); err == nil {
+		t.Fatal("expected validation error for negative low_stock_threshold")
+	}
+	if err := validateLowStockThreshold(0); err != nil {
+		t.Fatalf("expected no error for zero threshold, got %v", err)
+	}
+}
+
 type fakeMediaReader struct {
 	rows map[uuid.UUID]*models.Media
 }

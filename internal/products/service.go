@@ -45,12 +45,14 @@ type CreateProductInput struct {
 	Inventory           InventoryInput
 	MediaIDs            []uuid.UUID
 	VolumeDiscounts     []VolumeDiscountInput
+	MaxQty              int
 }
 
 // InventoryInput captures the starting quantity for a product.
 type InventoryInput struct {
-	AvailableQty int
-	ReservedQty  int
+	AvailableQty      int
+	ReservedQty       int
+	LowStockThreshold int
 }
 
 // VolumeDiscountInput defines a tiered price for a given min quantity.
@@ -82,6 +84,7 @@ type UpdateProductInput struct {
 	Inventory           *InventoryInput
 	MediaIDs            *[]uuid.UUID
 	VolumeDiscounts     *[]VolumeDiscountInput
+	MaxQty              *int
 }
 
 type storeLoader interface {
@@ -148,6 +151,13 @@ func (s *service) CreateProduct(ctx context.Context, userID, storeID uuid.UUID, 
 		return nil, err
 	}
 
+	if err := validateMaxQty(input.MaxQty); err != nil {
+		return nil, err
+	}
+	if err := validateLowStockThreshold(input.Inventory.LowStockThreshold); err != nil {
+		return nil, err
+	}
+
 	var createdProductID uuid.UUID
 	if err := s.dbClient.WithTx(ctx, func(tx *gorm.DB) error {
 		txRepo := s.repo.WithTx(tx)
@@ -172,6 +182,7 @@ func (s *service) CreateProduct(ctx context.Context, userID, storeID uuid.UUID, 
 			IsFeatured:          input.IsFeatured,
 			THCPercent:          input.THCPercent,
 			CBDPercent:          input.CBDPercent,
+			MaxQty:              input.MaxQty,
 		}
 
 		created, err := txRepo.CreateProduct(ctx, product)
@@ -181,9 +192,10 @@ func (s *service) CreateProduct(ctx context.Context, userID, storeID uuid.UUID, 
 		createdProductID = created.ID
 
 		inventory := &models.InventoryItem{
-			ProductID:    created.ID,
-			AvailableQty: input.Inventory.AvailableQty,
-			ReservedQty:  input.Inventory.ReservedQty,
+			ProductID:         created.ID,
+			AvailableQty:      input.Inventory.AvailableQty,
+			ReservedQty:       input.Inventory.ReservedQty,
+			LowStockThreshold: input.Inventory.LowStockThreshold,
 		}
 		if _, err := txRepo.UpsertInventory(ctx, inventory); err != nil {
 			return pkgerrors.Wrap(pkgerrors.CodeDependency, err, "db: upsert inventory")
@@ -228,6 +240,18 @@ func (s *service) CreateProduct(ctx context.Context, userID, storeID uuid.UUID, 
 
 // UpdateProduct updates an existing product and related rows.
 func (s *service) UpdateProduct(ctx context.Context, userID, storeID, productID uuid.UUID, input UpdateProductInput) (*ProductDTO, error) {
+
+	if input.MaxQty != nil {
+		if err := validateMaxQty(*input.MaxQty); err != nil {
+			return nil, err
+		}
+	}
+
+	if input.Inventory != nil {
+		if err := validateLowStockThreshold(input.Inventory.LowStockThreshold); err != nil {
+			return nil, err
+		}
+	}
 
 	if input.Inventory != nil {
 		fmt.Printf("[UpdateProduct] input.Inventory available=%d reserved=%d\n", input.Inventory.AvailableQty, input.Inventory.ReservedQty)
@@ -279,9 +303,10 @@ func (s *service) UpdateProduct(ctx context.Context, userID, storeID, productID 
 
 		if input.Inventory != nil {
 			inventory := &models.InventoryItem{
-				ProductID:    product.ID,
-				AvailableQty: input.Inventory.AvailableQty,
-				ReservedQty:  input.Inventory.ReservedQty,
+				ProductID:         product.ID,
+				AvailableQty:      input.Inventory.AvailableQty,
+				ReservedQty:       input.Inventory.ReservedQty,
+				LowStockThreshold: input.Inventory.LowStockThreshold,
 			}
 
 			if _, err := txRepo.UpsertInventory(ctx, inventory); err != nil {
@@ -424,6 +449,20 @@ func ensureUniqueDiscounts(discounts []VolumeDiscountInput) error {
 	return nil
 }
 
+func validateMaxQty(value int) error {
+	if value < 0 {
+		return pkgerrors.New(pkgerrors.CodeValidation, "max_qty must be non-negative")
+	}
+	return nil
+}
+
+func validateLowStockThreshold(value int) error {
+	if value < 0 {
+		return pkgerrors.New(pkgerrors.CodeValidation, "low_stock_threshold must be non-negative")
+	}
+	return nil
+}
+
 func applyUpdateToProduct(product *models.Product, input UpdateProductInput) {
 	if input.SKU != nil {
 		product.SKU = strings.TrimSpace(*input.SKU)
@@ -478,6 +517,9 @@ func applyUpdateToProduct(product *models.Product, input UpdateProductInput) {
 	}
 	if input.CBDPercent != nil {
 		product.CBDPercent = input.CBDPercent
+	}
+	if input.MaxQty != nil {
+		product.MaxQty = *input.MaxQty
 	}
 }
 
