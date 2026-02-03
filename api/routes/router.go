@@ -133,6 +133,7 @@ func NewRouter(
 			r.Get("/ping", controllers.PrivatePing())
 
 			r.Route("/v1/vendor", func(r chi.Router) {
+				r.Get("/products", controllers.VendorProductList(productService, logg))
 				r.Post("/products", controllers.VendorCreateProduct(productService, logg))
 				r.Patch("/products/{productId}", controllers.VendorUpdateProduct(productService, logg))
 				r.Delete("/products/{productId}", controllers.VendorDeleteProduct(productService, logg))
