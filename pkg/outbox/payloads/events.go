@@ -108,6 +108,16 @@ type LicenseExpiredEvent struct {
 	ExpiredAt      time.Time `json:"expiredAt"`
 }
 
+// CheckoutConvertedEvent informs notifications consumers that a checkout finished.
+type CheckoutConvertedEvent struct {
+	CheckoutGroupID uuid.UUID   `json:"checkout_group_id"`
+	CartID          *uuid.UUID  `json:"cart_id,omitempty"`
+	BuyerStoreID    uuid.UUID   `json:"buyer_store_id"`
+	VendorOrderIDs  []uuid.UUID `json:"vendor_order_ids"`
+	VendorStoreIDs  []uuid.UUID `json:"vendor_store_ids"`
+	ConvertedAt     time.Time   `json:"converted_at"`
+}
+
 // LicenseStatusChangedEvent mirrors the payload emitted when license status updates.
 type LicenseStatusChangedEvent struct {
 	LicenseID   uuid.UUID           `json:"licenseId"`

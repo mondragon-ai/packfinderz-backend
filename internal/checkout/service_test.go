@@ -222,6 +222,16 @@ func TestServiceUsesVendorGroupTotals(t *testing.T) {
 	if intent.Status != enums.PaymentStatusUnpaid {
 		t.Fatalf("payment intent status changed: %s", intent.Status)
 	}
+	if len(publisher.events) != 2 {
+		t.Fatalf("expected 2 outbox events, got %d", len(publisher.events))
+	}
+	eventTypes := map[enums.OutboxEventType]bool{}
+	for _, e := range publisher.events {
+		eventTypes[e.EventType] = true
+	}
+	if !eventTypes[enums.EventOrderCreated] || !eventTypes[enums.EventCheckoutConverted] {
+		t.Fatalf("missing expected outbox events, got %+v", eventTypes)
+	}
 	if len(result.CartVendorGroups) != len(cartRecord.VendorGroups) {
 		t.Fatalf("expected %d vendor groups in response, got %d", len(cartRecord.VendorGroups), len(result.CartVendorGroups))
 	}
@@ -1083,11 +1093,11 @@ func (s stubReservationRunner) Reserve(ctx context.Context, tx *gorm.DB, request
 }
 
 type stubOutboxPublisher struct {
-	calls int
+	events []outbox.DomainEvent
 }
 
 func (s *stubOutboxPublisher) Emit(ctx context.Context, tx *gorm.DB, event outbox.DomainEvent) error {
-	s.calls++
+	s.events = append(s.events, event)
 	return nil
 }
 

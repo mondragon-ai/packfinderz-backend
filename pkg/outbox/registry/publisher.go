@@ -139,6 +139,12 @@ func NewEventRegistry(cfg config.PubSubConfig) (*EventRegistry, error) {
 			Topic:          notificationTopic,
 			PayloadFactory: func() interface{} { return &payloads.LicenseExpiredEvent{} },
 		},
+		{
+			EventType:      enums.EventCheckoutConverted,
+			AggregateType:  enums.AggregateCheckoutGroup,
+			Topic:          notificationTopic,
+			PayloadFactory: func() interface{} { return &payloads.CheckoutConvertedEvent{} },
+		},
 	} {
 		reg.register(desc)
 	}

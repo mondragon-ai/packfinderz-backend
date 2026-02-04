@@ -76,6 +76,7 @@ const (
 	EventAdActivated           OutboxEventType = "ad_activated"
 	EventAdExpired             OutboxEventType = "ad_expired"
 	EventAdDailyRollupReady    OutboxEventType = "ad_daily_rollup_ready"
+	EventCheckoutConverted     OutboxEventType = "checkout_converted"
 )
 
 var validOutboxEventTypes = []OutboxEventType{
@@ -104,6 +105,7 @@ var validOutboxEventTypes = []OutboxEventType{
 	EventAdActivated,
 	EventAdExpired,
 	EventAdDailyRollupReady,
+	EventCheckoutConverted,
 }
 
 // IsValid reports whether the value matches the canonical event_type enum.

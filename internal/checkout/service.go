@@ -187,6 +187,7 @@ func (s *service) Execute(ctx context.Context, buyerStoreID, cartID uuid.UUID, i
 			vendorGroups[group.VendorStoreID] = group
 		}
 		vendorOrderIDs := make([]uuid.UUID, 0, len(grouped))
+		vendorStoreIDs := make(map[uuid.UUID]struct{}, len(grouped))
 
 		appliedShippingAddress := input.ShippingAddress
 		if appliedShippingAddress == nil {
@@ -282,6 +283,7 @@ func (s *service) Execute(ctx context.Context, buyerStoreID, cartID uuid.UUID, i
 				return err
 			}
 			vendorOrderIDs = append(vendorOrderIDs, createdOrder.ID)
+			vendorStoreIDs[createdOrder.VendorStoreID] = struct{}{}
 		}
 
 		finalizeCart(record, appliedShippingAddress, appliedPaymentMethod, appliedShippingLine)
@@ -290,6 +292,10 @@ func (s *service) Execute(ctx context.Context, buyerStoreID, cartID uuid.UUID, i
 		}
 
 		if err := s.emitOrderCreatedEvent(ctx, tx, *checkoutGroupID, vendorOrderIDs); err != nil {
+			return err
+		}
+
+		if err := s.emitCheckoutConvertedEvent(ctx, tx, *checkoutGroupID, record.ID, buyerStoreID, vendorOrderIDs, vendorStoreIDs, record.ConvertedAt); err != nil {
 			return err
 		}
 
@@ -350,6 +356,31 @@ func (s *service) emitOrderCreatedEvent(ctx context.Context, tx *gorm.DB, checko
 			VendorOrderIDs:  append([]uuid.UUID{}, vendorOrderIDs...),
 		},
 		Version: 1,
+	}
+	return s.outbox.Emit(ctx, tx, event)
+}
+
+func (s *service) emitCheckoutConvertedEvent(ctx context.Context, tx *gorm.DB, checkoutGroupID, cartID, buyerStoreID uuid.UUID, vendorOrderIDs []uuid.UUID, vendorStoreIDs map[uuid.UUID]struct{}, convertedAt *time.Time) error {
+	vendors := make([]uuid.UUID, 0, len(vendorStoreIDs))
+	for id := range vendorStoreIDs {
+		vendors = append(vendors, id)
+	}
+	timestamp := time.Now().UTC()
+	if convertedAt != nil {
+		timestamp = *convertedAt
+	}
+	event := outbox.DomainEvent{
+		EventType:     enums.EventCheckoutConverted,
+		AggregateType: enums.AggregateCheckoutGroup,
+		AggregateID:   checkoutGroupID,
+		Data: payloads.CheckoutConvertedEvent{
+			CheckoutGroupID: checkoutGroupID,
+			CartID:          &cartID,
+			BuyerStoreID:    buyerStoreID,
+			VendorOrderIDs:  append([]uuid.UUID(nil), vendorOrderIDs...),
+			VendorStoreIDs:  vendors,
+			ConvertedAt:     timestamp,
+		},
 	}
 	return s.outbox.Emit(ctx, tx, event)
 }
