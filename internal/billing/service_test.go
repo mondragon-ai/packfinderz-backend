@@ -30,7 +30,7 @@ func (s *stubRepo) ListSubscriptionsByStore(ctx context.Context, storeID uuid.UU
 func (s *stubRepo) FindSubscription(ctx context.Context, storeID uuid.UUID) (*models.Subscription, error) {
 	return nil, nil
 }
-func (s *stubRepo) FindSubscriptionByStripeID(ctx context.Context, stripeSubscriptionID string) (*models.Subscription, error) {
+func (s *stubRepo) FindSubscriptionBySquareID(ctx context.Context, squareSubscriptionID string) (*models.Subscription, error) {
 	return nil, nil
 }
 func (s *stubRepo) CreatePaymentMethod(ctx context.Context, method *models.PaymentMethod) error {

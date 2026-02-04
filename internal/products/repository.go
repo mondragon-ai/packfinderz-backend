@@ -110,6 +110,18 @@ func (r *Repository) ReplaceProductMedia(ctx context.Context, productID uuid.UUI
 	return tx.Create(&media).Error
 }
 
+func (r *Repository) ListProductMediaIDs(ctx context.Context, productID uuid.UUID) ([]uuid.UUID, error) {
+	var ids []uuid.UUID
+	if err := r.db.WithContext(ctx).
+		Model(&models.ProductMedia{}).
+		Where("product_id = ? AND media_id IS NOT NULL", productID).
+		Pluck("media_id", &ids).
+		Error; err != nil {
+		return nil, err
+	}
+	return ids, nil
+}
+
 // CreateProduct inserts a new product row.
 func (r *Repository) CreateProduct(ctx context.Context, product *models.Product) (*models.Product, error) {
 	if err := r.db.WithContext(ctx).Create(product).Error; err != nil {

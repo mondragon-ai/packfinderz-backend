@@ -256,15 +256,15 @@ If a **vendor subscription is inactive/canceled**:
 * Ledger tracks buyer/vendor money lifecycle even in cash MVP.
 * Separate billing history for subscriptions/ads.
 
-Stripe-backed billing tables persist the canonical store-level state:
+Square-backed billing tables persist the canonical store-level state:
 
-* `subscriptions` stores one row per vendor (foreign key to `stores(id)` with `ON DELETE CASCADE`), tracks the normalized `stripe_subscription_id`, `status` (Stripe enum), optional `price_id`, period window timestamps, `cancel_at_period_end`, `canceled_at`, and metadata so the platform enforces the single active subscription per store before exposing vendor-only features (`pkg/migrate/migrations/20260201000000_create_billing_tables.sql:38-59`; `pkg/db/models/subscription.go:12-41`).
-* `payment_methods` keeps the Stripe payment method ID, `payment_method_type`, fingerprint, card brand/last4/expiry, billing details, and JSON metadata while indexing on `store_id`, letting future charges reference the same instrument without storing raw PAN data (`pkg/migrate/migrations/20260201000000_create_billing_tables.sql:61-92`; `pkg/db/models/payment_method.go:13-36`).
-* `charges` records platform charges (subscriptions today; orders/analytics later) with optional links to `subscriptions`/`payment_methods`, the Stripe charge ID, amount/currency, `charge_status`, descriptions, `billed_at`, and metadata so admins can reconcile billing history without hitting Stripe per request (`pkg/migrate/migrations/20260201000000_create_billing_tables.sql:94-121`; `pkg/db/models/charge.go:13-38`).
-* `usage_charges` ties metered usage (ads/other meters) to subscriptions and charges via nullable FKs, stores Stripe usage IDs, quantities, amounts, billing period windows, and metadata, and keeps every tenant query indexed by `store_id` so ad spend can be summarized before syncing with analytics (`pkg/migrate/migrations/20260201000000_create_billing_tables.sql:123-156`; `pkg/db/models/usage_charge.go:12-36`).
-* `/api/v1/webhooks/stripe` becomes the authoritative path for Stripe subscription lifecycle deltas; `internal/webhooks/stripe.Service` verifies the `Stripe-Signature`, parses `customer.subscription.*` and `invoice.*` events, deduplicates duplicates via a Redis guard keyed by `pf:idempotency:stripe-webhook:<event_id>` with TTL `PACKFINDERZ_EVENTING_IDEMPOTENCY_TTL`, and keeps `subscriptions.status` plus `stores.subscription_active` aligned with Stripe truth.
+* `subscriptions` stores one row per vendor (foreign key to `stores(id)` with `ON DELETE CASCADE`), tracks the normalized `square_subscription_id`, `status` (provider enum), optional `price_id`, period window timestamps, `cancel_at_period_end`, `canceled_at`, and metadata so the platform enforces the single active subscription per store before exposing vendor-only features (`pkg/migrate/migrations/20260201000000_create_billing_tables.sql:38-59`; `pkg/db/models/subscription.go:12-41`).
+* `payment_methods` keeps the Square payment method ID, `payment_method_type`, fingerprint, card brand/last4/expiry, billing details, and JSON metadata while indexing on `store_id`, letting future charges reference the same instrument without storing raw PAN data (`pkg/migrate/migrations/20260201000000_create_billing_tables.sql:61-92`; `pkg/db/models/payment_method.go:13-36`).
+* `charges` records platform charges (subscriptions today; orders/analytics later) with optional links to `subscriptions`/`payment_methods`, the Square charge ID, amount/currency, `charge_status`, descriptions, `billed_at`, and metadata so admins can reconcile billing history without hitting the provider per request (`pkg/migrate/migrations/20260201000000_create_billing_tables.sql:94-121`; `pkg/db/models/charge.go:13-38`).
+* `usage_charges` ties metered usage (ads/other meters) to subscriptions and charges via nullable FKs, stores Square usage IDs, quantities, amounts, billing period windows, and metadata, and keeps every tenant query indexed by `store_id` so ad spend can be summarized before syncing with analytics (`pkg/migrate/migrations/20260201000000_create_billing_tables.sql:123-156`; `pkg/db/models/usage_charge.go:12-36`).
+* `/api/v1/webhooks/square` becomes the authoritative path for Square subscription lifecycle deltas; `internal/webhooks/square.Service` verifies the `Square-Signature`, parses subscription/invoice events, deduplicates deliveries via a Redis guard keyed by `pf:idempotency:square-webhook:<event_id>` with TTL `PACKFINDERZ_EVENTING_IDEMPOTENCY_TTL`, and keeps `subscriptions.status` plus `stores.subscription_active` aligned with Square truth.
 * `internal/billing.Repository`/`Service` wrap these tables with store-scoped `Create`, `List`, and `Find` helpers so controllers or background consumers can persist subscriptions, charges, payment methods, and usage without re-implementing the SQL/tenant filters (`internal/billing/repo.go:1-158`; `internal/billing/service.go:12-56`).
-* `/api/v1/webhooks/stripe` validates the `Stripe-Signature` header, deduplicates events via `pf:idempotency:stripe-webhook:<event_id>` (TTL `PACKFINDERZ_EVENTING_IDEMPOTENCY_TTL`), and hands `customer.subscription.*` plus `invoice.paid|invoice.payment_failed` to `internal/webhooks/stripe.Service` so Stripe truth drives `subscriptions.status` and `stores.subscription_active` without replay hazards (`api/controllers/webhooks/stripe.go:13-82`; `internal/webhooks/stripe/service.go:1-178`; `internal/webhooks/stripe/idempotency.go:1-42`).
+* `/api/v1/webhooks/square` validates the `Square-Signature` header, deduplicates events via `pf:idempotency:square-webhook:<event_id>` (TTL `PACKFINDERZ_EVENTING_IDEMPOTENCY_TTL`), and hands subscription/invoice events to `internal/webhooks/square.Service` so Square truth drives `subscriptions.status` and `stores.subscription_active` without replay hazards (`api/controllers/webhooks/square.go:13-88`; `internal/webhooks/square/service.go:1-178`; `internal/webhooks/square/idempotency.go:1-42`).
 
 Ledger event types (MVP):
 
@@ -1944,7 +1944,7 @@ Headers:
 
 * `GET /ads/serve` selects a CPM winner by filtering `status=active` ads, enforcing store gating (subscription + KYC), checking Redis budget counters, using deterministic tie-breakers, and issuing signed tokens (`view_token`/`click_token`) that bind the buyer store, target, event type, and expiry (30d) for later tracking (`docs/AD_ENGINE.md`:30-150).
 * `/ads/impression` and `/ads/click` validate the tokens, dedupe via Redis guard keys, increment `imps:<adId>:<day>`, `clicks:<adId>:<day>`, and `spend:<adId>:<day>`, and either return `204` or redirect so counters remain server-truth; duplicate deliveries do not inflate budgets (`docs/AD_ENGINE.md`:106-170).
-* Nightly schedulers read Redis counters, upsert `ad_daily_rollups`, insert `usage_charges(type=ad_spend, for_date=day)`, emit outbox events, and keep BigQuery/Stripe bridges deterministic while checkout attribution uses the token bag to persist `vendor_orders.attribution` and `vendor_order_line_items.attribution` for per-order/line-item analytics emission (`docs/AD_ENGINE.md`:176-260).
+ * Nightly schedulers read Redis counters, upsert `ad_daily_rollups`, insert `usage_charges(type=ad_spend, for_date=day)`, emit outbox events, and keep BigQuery/billing bridges deterministic while checkout attribution uses the token bag to persist `vendor_orders.attribution` and `vendor_order_line_items.attribution` for per-order/line-item analytics emission (`docs/AD_ENGINE.md`:176-260).
 
 **Buyer: product detail**
 
@@ -2344,7 +2344,7 @@ Headers:
 
 * `POST /api/v1/vendor/subscriptions`
 
-  * Integrates Stripe CC; ties subscription to vendor store.
+  * Integrates Square CC; ties subscription to vendor store.
   * **Idempotent:** YES (required)
   * Success: `201`
   * Errors: `400, 401, 403, 409`
@@ -2366,14 +2366,14 @@ Headers:
   * Errors: `401, 403`
   * Returns the single active subscription row (or `null` when the store is unsubscribed)
 
-Creation/cancellation requests require an `Idempotency-Key` and must provide `stripe_customer_id` + `stripe_payment_method_id`; the optional `price_id` payload field falls back to the configured `PACKFINDERZ_STRIPE_SUBSCRIPTION_PRICE_ID`. The domain service mirrors Stripe metadata (customer/payment_method IDs, statuses, period windows) into `subscriptions.metadata` and flips `stores.subscription_active` so vendor visibility stays gated.
+ Creation/cancellation requests require an `Idempotency-Key` and must provide `square_customer_id` + `square_payment_method_id`; the optional `price_id` payload field falls back to the configured `PACKFINDERZ_SQUARE_SUBSCRIPTION_PLAN_ID`. The domain service mirrors Square metadata (customer/payment_method IDs, statuses, period windows) into `subscriptions.metadata` and flips `stores.subscription_active` so vendor visibility stays gated.
 
 **Billing history (charges only)**
 
 * `GET /api/v1/vendor/billing/charges`
 
   * Ads/subscriptions only. Payouts live in ledger/order views.
-  * Accepts `limit` (positive integer, defaults to 25, capped at 100), `cursor` (base64 `created_at|id`), `type` (`subscription`|`ad_spend`|`other`), and `status` (`pending`|`succeeded`|`failed`|`refunded`) filters so clients can page through the vendor’s `charges` rows without hitting Stripe again.
+  * Accepts `limit` (positive integer, defaults to 25, capped at 100), `cursor` (base64 `created_at|id`), `type` (`subscription`|`ad_spend`|`other`), and `status` (`pending`|`succeeded`|`failed`|`refunded`) filters so clients can page through the vendor’s `charges` rows without hitting the billing provider again.
   * Returns `200` with `charges[]` (each row includes `id`, `amount_cents`, `currency`, `type`, `status`, `description`, `created_at`, `billed_at`) plus the `cursor` for the next page.
   * Errors: `401, 403`
 
@@ -2385,7 +2385,7 @@ Creation/cancellation requests require an `Idempotency-Key` and must provide `st
 
 * `POST /api/v1/vendor/payment-methods/cc`
 
-  * Stripe setup intent flow.
+  * Square setup intent flow.
   * **Idempotent:** YES (required)
   * Success: `201`
   * Errors: `400, 401, 403, 409`
@@ -2651,7 +2651,7 @@ erDiagram
 * `ad_type`: `banner`, `promote_store`, `promote_product`
 * `ad_status`: `draft`, `active`, `paused`, `expired`, `archived`
 * `ad_event_type`: `impression`, `click`
-* `billing_provider`: `stripe` (**ASSUMPTION:** CC subs via Stripe), `ach_provider` future, `cash`
+* `billing_provider`: `square` (**ASSUMPTION:** CC subs via Square), `ach_provider` future, `cash`
 * `charge_type`: `subscription`, `ad_spend`, `other`
 * `charge_status`: `pending`, `paid`, `failed`, `canceled`
 * `notification_type`: `system_announcement`, `market_update`, `security_alert`, `order_alert`, `compliance`
@@ -3381,6 +3381,7 @@ Notes:
 * `entity_type`/`entity_id` describe the consuming entity (product, license, store, ad, order, etc.), with the polymorphic semantics enforced at the application layer.
 * Multiple rows per `media_id` are allowed so a single `media` row can appear in many attachments.
 * Attachment reconciliation flows use `internal/media.NewAttachmentReconciler` to diff old vs new media IDs within a transaction so all creations/removals follow the lifecycle rules.
+* Product gallery media (`product_media`) plus a single `coa_media_id` reference now call the reconciler with `entity_type='product_gallery'` and `entity_type='product_coa'` inside their create/update transactions so the `media_attachments` table always mirrors whatever gallery/COA media IDs the product currently exposes.
 * Lifecycle rules (protected attachments, deletion preconditions, and clean-up ordering) are documented in `docs/media_attachments_lifecycle.md`, and the service layer enforces them via `pkg/db/models/media_attachment.go`.
 
 ---
@@ -3504,7 +3505,7 @@ Fields
 
 * `id uuid pk`
 * `store_id uuid not null`
-* `provider billing_provider not null default 'stripe'`
+* `provider billing_provider not null default 'square'`
 * `provider_subscription_id text not null`
 * `status text not null` (**ASSUMPTION:** `active|canceled|past_due|incomplete`)
 * `current_period_end timestamptz null`
@@ -3531,7 +3532,7 @@ Fields
 
 * `id uuid pk`
 * `store_id uuid not null`
-* `provider billing_provider not null default 'stripe'`
+* `provider billing_provider not null default 'square'`
 * `provider_payment_method_id text not null`
 * `brand text null`
 * `last4 text null`
@@ -3563,7 +3564,7 @@ Fields
 * `amount_cents int not null`
 * `currency text not null default 'USD'`
 * `status charge_status not null default 'pending'`
-* `provider billing_provider not null default 'stripe'`
+* `provider billing_provider not null default 'square'`
 * `provider_charge_id text null`
 * `description text null`
 * `attempt_count int not null default 0`
@@ -4284,12 +4285,12 @@ type IdentityProvider interface {
 
   * DB credentials
   * JWT signing keys (rotatable)
-  * Stripe keys
-  * Stripe env selector (`PACKFINDERZ_STRIPE_ENV`) so test/live keys can be validated at boot
+  * Square keys
+  * Square env selector (`PACKFINDERZ_SQUARE_ENV`) so sandbox/production tokens can be validated at boot
   * GCS service account keys (prefer workload identity)
-* Stripe config loads `PACKFINDERZ_STRIPE_API_KEY`, `PACKFINDERZ_STRIPE_SECRET`, and `PACKFINDERZ_STRIPE_ENV` (default `test`) via `StripeConfig`, whose `.Environment()` helper lowercases/trim the selector so `pkg/stripe.NewClient` can enforce only `test|live` and validate `sk_*`/`rk_*` prefixes before returning the client (`pkg/config/config.go:191-209`; `pkg/stripe/client.go:33-119`).
-* `PACKFINDERZ_STRIPE_SUBSCRIPTION_PRICE_ID` defines the default Stripe price/plan used when vendors call `/api/v1/vendor/subscriptions`.
-* `cmd/api/main.go` and `cmd/worker/main.go` both call `pkg/stripe.NewClient` during bootstrap, log and exit when it errors, and therefore treat missing keys or env mismatches as fatal startup failures that prevent the API/worker from registering any routes or consumers (`cmd/api/main.go:55-65`; `cmd/worker/main.go:51-70`).
+* Square config loads `PACKFINDERZ_SQUARE_ACCESS_TOKEN`, `PACKFINDERZ_SQUARE_WEBHOOK_SECRET`, and `PACKFINDERZ_SQUARE_ENV` (default `sandbox`) via `SquareConfig`, whose `.Environment()` helper lowercases/trims the selector so `pkg/square.NewClient` can enforce valid environments before returning the client (`pkg/config/config.go:191-221`; `pkg/square/client.go:33-80`).
+* `PACKFINDERZ_SQUARE_SUBSCRIPTION_PLAN_ID` defines the default Square plan used when vendors call `/api/v1/vendor/subscriptions`.
+* `cmd/api/main.go` and `cmd/worker/main.go` both call `pkg/square.NewClient` during bootstrap, log and exit when it errors, and therefore treat missing credentials or env mismatches as fatal startup failures that prevent the API/worker from registering any routes or consumers (`cmd/api/main.go:55-65`; `cmd/worker/main.go:51-70`).
 
 ### 3.2 Config
 

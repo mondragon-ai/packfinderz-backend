@@ -17,7 +17,7 @@ type Repository interface {
 	UpdateSubscription(ctx context.Context, subscription *models.Subscription) error
 	ListSubscriptionsByStore(ctx context.Context, storeID uuid.UUID) ([]models.Subscription, error)
 	FindSubscription(ctx context.Context, storeID uuid.UUID) (*models.Subscription, error)
-	FindSubscriptionByStripeID(ctx context.Context, stripeSubscriptionID string) (*models.Subscription, error)
+	FindSubscriptionBySquareID(ctx context.Context, squareSubscriptionID string) (*models.Subscription, error)
 	CreatePaymentMethod(ctx context.Context, method *models.PaymentMethod) error
 	ListPaymentMethodsByStore(ctx context.Context, storeID uuid.UUID) ([]models.PaymentMethod, error)
 	CreateCharge(ctx context.Context, charge *models.Charge) error
@@ -75,13 +75,13 @@ func (r *repository) FindSubscription(ctx context.Context, storeID uuid.UUID) (*
 	return &sub, nil
 }
 
-func (r *repository) FindSubscriptionByStripeID(ctx context.Context, stripeSubscriptionID string) (*models.Subscription, error) {
-	if stripeSubscriptionID == "" {
+func (r *repository) FindSubscriptionBySquareID(ctx context.Context, squareSubscriptionID string) (*models.Subscription, error) {
+	if squareSubscriptionID == "" {
 		return nil, gorm.ErrRecordNotFound
 	}
 	var sub models.Subscription
 	if err := r.db.WithContext(ctx).
-		Where("stripe_subscription_id = ?", stripeSubscriptionID).
+		Where("square_subscription_id = ?", squareSubscriptionID).
 		First(&sub).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
 			return nil, nil

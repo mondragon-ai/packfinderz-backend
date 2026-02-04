@@ -22,7 +22,7 @@ import (
 	"github.com/angelmondragon/packfinderz-backend/internal/stores"
 	"github.com/angelmondragon/packfinderz-backend/internal/subscriptions"
 	"github.com/angelmondragon/packfinderz-backend/internal/users"
-	stripewebhook "github.com/angelmondragon/packfinderz-backend/internal/webhooks/stripe"
+	squarewebhook "github.com/angelmondragon/packfinderz-backend/internal/webhooks/square"
 	"github.com/angelmondragon/packfinderz-backend/pkg/auth/session"
 	"github.com/angelmondragon/packfinderz-backend/pkg/bigquery"
 	"github.com/angelmondragon/packfinderz-backend/pkg/config"
@@ -31,8 +31,8 @@ import (
 	"github.com/angelmondragon/packfinderz-backend/pkg/migrate"
 	"github.com/angelmondragon/packfinderz-backend/pkg/outbox"
 	"github.com/angelmondragon/packfinderz-backend/pkg/redis"
-	"github.com/angelmondragon/packfinderz-backend/pkg/storage/gcs"
-	"github.com/angelmondragon/packfinderz-backend/pkg/stripe"
+	"github.com/angelmondragon/packfinderz-backend/pkg/square"
+	gcs "github.com/angelmondragon/packfinderz-backend/pkg/storage/gcs"
 	"github.com/joho/godotenv"
 )
 
@@ -51,8 +51,8 @@ func main() {
 		WarnStack:   cfg.App.LogWarnStack,
 	})
 
-	stripeClient, err := stripe.NewClient(context.Background(), cfg.Stripe, logg)
-	requireResource(ctx, logg, "stripe client", err)
+	squareClient, err := square.NewClient(context.Background(), cfg.Square, logg)
+	requireResource(ctx, logg, "square client", err)
 
 	dbClient, err := db.New(context.Background(), cfg.DB, logg)
 	requireResource(ctx, logg, "database", err)
@@ -136,22 +136,22 @@ func main() {
 	subscriptionsService, err := subscriptions.NewService(subscriptions.ServiceParams{
 		BillingRepo:       billingRepo,
 		StoreRepo:         storeRepo,
-		StripeClient:      subscriptions.NewStripeClient(stripeClient),
-		DefaultPriceID:    cfg.Stripe.SubscriptionPriceID,
+		SquareClient:      subscriptions.NewSquareClient(),
+		DefaultPriceID:    cfg.Square.SubscriptionPlanID,
 		TransactionRunner: dbClient,
 	})
 	requireResource(ctx, logg, "subscription service", err)
 
-	stripeWebhookService, err := stripewebhook.NewService(stripewebhook.ServiceParams{
+	squareWebhookService, err := squarewebhook.NewService(squarewebhook.ServiceParams{
 		BillingRepo:       billingRepo,
 		StoreRepo:         storeRepo,
-		StripeClient:      subscriptions.NewStripeClient(stripeClient),
+		SquareClient:      subscriptions.NewSquareClient(),
 		TransactionRunner: dbClient,
 	})
-	requireResource(ctx, logg, "stripe webhook service", err)
+	requireResource(ctx, logg, "square webhook service", err)
 
-	stripeWebhookGuard, err := stripewebhook.NewIdempotencyGuard(redisClient, cfg.Eventing.OutboxIdempotencyTTL, "stripe-webhook")
-	requireResource(ctx, logg, "stripe webhook guard", err)
+	squareWebhookGuard, err := squarewebhook.NewIdempotencyGuard(redisClient, cfg.Eventing.OutboxIdempotencyTTL, "square-webhook")
+	requireResource(ctx, logg, "square webhook guard", err)
 
 	mediaRepo := media.NewRepository(dbClient.DB())
 	mediaAttachmentRepo := media.NewMediaAttachmentRepository(dbClient.DB())
@@ -169,7 +169,7 @@ func main() {
 	requireResource(ctx, logg, "attachment reconciler", err)
 
 	productRepo := products.NewRepository(dbClient.DB())
-	productService, err := products.NewService(productRepo, dbClient, storeRepo, membershipsRepo, mediaRepo)
+	productService, err := products.NewService(productRepo, dbClient, storeRepo, membershipsRepo, mediaRepo, attachmentReconciler)
 	requireResource(ctx, logg, "product service", err)
 
 	cartRepo := cart.NewRepository(dbClient.DB())
@@ -269,9 +269,9 @@ func main() {
 			ordersService,
 			subscriptionsService,
 			billingService,
-			stripeClient,
-			stripeWebhookService,
-			stripeWebhookGuard,
+			squareClient,
+			squareWebhookService,
+			squareWebhookGuard,
 		),
 	}
 

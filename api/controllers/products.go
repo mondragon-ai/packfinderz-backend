@@ -97,6 +97,7 @@ type createProductRequest struct {
 	Inventory           createInventoryRequest        `json:"inventory" validate:"required"`
 	MediaIDs            []string                      `json:"media_ids,omitempty"`
 	VolumeDiscounts     []createVolumeDiscountRequest `json:"volume_discounts,omitempty" validate:"omitempty,min=1,dive"`
+	CoaMediaID          *string                       `json:"coa_media_id,omitempty"`
 }
 
 type createInventoryRequest struct {
@@ -398,6 +399,7 @@ type updateProductRequest struct {
 	Inventory           *updateInventoryRequest        `json:"inventory,omitempty"`
 	MediaIDs            *[]string                      `json:"media_ids,omitempty"`
 	VolumeDiscounts     *[]updateVolumeDiscountRequest `json:"volume_discounts,omitempty"`
+	CoaMediaID          *string                        `json:"coa_media_id,omitempty"`
 	MaxQty              *int                           `json:"max_qty,omitempty" validate:"omitempty,min=0"`
 }
 
@@ -449,6 +451,10 @@ func (r createProductRequest) toCreateInput() (productsvc.CreateProductInput, er
 	if err != nil {
 		return productsvc.CreateProductInput{}, err
 	}
+	coaID, err := parseOptionalUUID(r.CoaMediaID)
+	if err != nil {
+		return productsvc.CreateProductInput{}, err
+	}
 
 	discounts := make([]productsvc.VolumeDiscountInput, 0, len(r.VolumeDiscounts))
 	for _, tier := range r.VolumeDiscounts {
@@ -493,6 +499,7 @@ func (r createProductRequest) toCreateInput() (productsvc.CreateProductInput, er
 		},
 		MediaIDs:        mediaIDs,
 		VolumeDiscounts: discounts,
+		COAMediaID:      coaID,
 		MaxQty:          intValue(r.MaxQty),
 	}, nil
 }
@@ -620,6 +627,15 @@ func (r updateProductRequest) toUpdateInput() (productsvc.UpdateProductInput, er
 		input.VolumeDiscounts = &tiers
 	}
 
+	if r.CoaMediaID != nil {
+		coaID, err := parseOptionalUUID(r.CoaMediaID)
+		if err != nil {
+			return input, err
+		}
+		input.COAMediaID = coaID
+		input.COAMediaIDSet = true
+	}
+
 	if r.MaxQty != nil {
 		val := *r.MaxQty
 		input.MaxQty = &val
@@ -656,6 +672,21 @@ func parseUUIDList(values []string) ([]uuid.UUID, error) {
 		result = append(result, parsed)
 	}
 	return result, nil
+}
+
+func parseOptionalUUID(raw *string) (*uuid.UUID, error) {
+	if raw == nil {
+		return nil, nil
+	}
+	trimmed := strings.TrimSpace(*raw)
+	if trimmed == "" {
+		return nil, pkgerrors.New(pkgerrors.CodeValidation, "coa_media_id cannot be empty")
+	}
+	parsed, err := uuid.Parse(trimmed)
+	if err != nil {
+		return nil, pkgerrors.Wrap(pkgerrors.CodeValidation, err, "invalid coa media id")
+	}
+	return &parsed, nil
 }
 
 func decodeProductFilters(r *http.Request) (productsvc.ProductListFilters, error) {

@@ -23,7 +23,7 @@ You’re building **request-time ad serving** (pick a winner when the buyer load
 - **Redis = realtime counters + guards**  
   Daily impressions/clicks/spend per ad, budget gating, idempotency/dedupe keys.
 - **Scheduler/worker = deterministic settlement**  
-  Read Redis daily counters → write `ad_daily_rollups` + `usage_charges` → outbox → pubsub → BigQuery/Stripe bridge.
+-  Read Redis daily counters → write `ad_daily_rollups` + `usage_charges` → outbox → pubsub → BigQuery/Square bridge.
 
 **Key design principle:**  
 You do NOT charge per event row in Postgres in realtime. You count fast in Redis and settle daily into Postgres.
@@ -327,7 +327,7 @@ flowchart TD
 
   OUT --> PS[(Pub/Sub)]
   PS --> A1[Analytics consumer] --> BQ[(BigQuery)]
-  PS --> B1[Billing consumer] --> STRIPE[Stripe metered usage\n(ASSUMPTION)]
+  PS --> B1[Billing consumer] --> SQUARE[Square metered usage\n(ASSUMPTION)]
 ```
 
 ### Rollup behavior (deterministic, idempotent)

@@ -31,6 +31,7 @@ type ProductDTO struct {
 	Inventory           *InventoryDTO       `json:"inventory,omitempty"`
 	VolumeDiscounts     []VolumeDiscountDTO `json:"volume_discounts,omitempty"`
 	Media               []ProductMediaDTO   `json:"media,omitempty"`
+	COAMediaID          *uuid.UUID          `json:"coa_media_id,omitempty"`
 	Vendor              VendorSummaryDTO    `json:"vendor"`
 	MaxQty              int                 `json:"max_qty"`
 	CreatedAt           time.Time           `json:"created_at"`
@@ -161,6 +162,7 @@ func NewProductDTO(product *models.Product, summary *VendorSummary) *ProductDTO 
 			}
 		}
 	}
+	dto.COAMediaID = product.COAMediaID
 
 	if summary != nil {
 		dto.Vendor = VendorSummaryDTO{

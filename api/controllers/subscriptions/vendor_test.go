@@ -36,7 +36,7 @@ func TestVendorSubscriptionCreateRequiresVendor(t *testing.T) {
 func TestVendorSubscriptionCreateSuccess(t *testing.T) {
 	sub := &models.Subscription{
 		ID:                   uuid.New(),
-		StripeSubscriptionID: "sub-123",
+		SquareSubscriptionID: "sub-123",
 		Status:               enums.SubscriptionStatusActive,
 		CurrentPeriodEnd:     time.Date(2025, 1, 2, 0, 0, 0, 0, time.UTC),
 	}
@@ -46,8 +46,8 @@ func TestVendorSubscriptionCreateSuccess(t *testing.T) {
 	handler := VendorSubscriptionCreate(service, logger.New(logger.Options{ServiceName: "test"}))
 
 	payload := vendorSubscriptionCreateRequest{
-		StripeCustomerID:      "cust-1",
-		StripePaymentMethodID: "pm-1",
+		SquareCustomerID:      "cust-1",
+		SquarePaymentMethodID: "pm-1",
 	}
 	body, _ := json.Marshal(payload)
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/vendor/subscriptions", bytes.NewReader(body))
@@ -70,7 +70,7 @@ func TestVendorSubscriptionCreateSuccess(t *testing.T) {
 	if err := json.NewDecoder(resp.Body).Decode(&envelope); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	if envelope.Data.StripeSubscriptionID != "sub-123" {
+	if envelope.Data.SquareSubscriptionID != "sub-123" {
 		t.Fatalf("unexpected payload")
 	}
 }

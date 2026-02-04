@@ -2,7 +2,7 @@ package enums
 
 import "fmt"
 
-// ChargeStatus mirrors Stripe charge statuses.
+// ChargeStatus mirrors billing provider charge statuses.
 type ChargeStatus string
 
 const (

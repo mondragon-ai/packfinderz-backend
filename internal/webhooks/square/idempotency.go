@@ -1,4 +1,4 @@
-package stripewebhook
+package squarewebhook
 
 import (
 	"context"

@@ -1,49 +1,51 @@
-package stripewebhook
+package squarewebhook
 
 import (
 	"context"
-	"encoding/json"
 	"testing"
 
 	"github.com/angelmondragon/packfinderz-backend/internal/billing"
+	"github.com/angelmondragon/packfinderz-backend/internal/subscriptions"
 	"github.com/angelmondragon/packfinderz-backend/pkg/db/models"
 	"github.com/angelmondragon/packfinderz-backend/pkg/enums"
 	"github.com/angelmondragon/packfinderz-backend/pkg/pagination"
 	"github.com/google/uuid"
-	"github.com/stripe/stripe-go/v84"
 	"gorm.io/gorm"
 )
 
-func TestService_HandleCustomerSubscriptionEventCreatesRow(t *testing.T) {
+func TestService_HandleSubscriptionEventCreatesRow(t *testing.T) {
 	storeID := uuid.New()
 	store := &models.Store{SubscriptionActive: false}
 	billingRepo := &stubBillingRepo{}
 	service, err := NewService(ServiceParams{
 		BillingRepo:       billingRepo,
 		StoreRepo:         &stubStoreRepo{store: store},
-		StripeClient:      &stubStripeClient{},
+		SquareClient:      &stubSquareClient{},
 		TransactionRunner: &stubTxRunner{},
 	})
 	if err != nil {
 		t.Fatalf("setup service: %v", err)
 	}
 
-	subscription := &stripe.Subscription{
+	subscription := &subscriptions.SquareSubscription{
 		ID:     "sub_test",
-		Status: stripe.SubscriptionStatusActive,
+		Status: "ACTIVE",
 		Metadata: map[string]string{
 			"store_id":                 storeID.String(),
-			"stripe_customer_id":       "cust",
-			"stripe_payment_method_id": "pm",
+			"square_customer_id":       "cust",
+			"square_payment_method_id": "pm",
 		},
-		Items: &stripe.SubscriptionItemList{
-			Data: []*stripe.SubscriptionItem{{CurrentPeriodStart: 1, CurrentPeriodEnd: 2}},
+		Items: &subscriptions.SquareSubscriptionItemList{
+			Data: []*subscriptions.SquareSubscriptionItem{{CurrentPeriodStart: 1, CurrentPeriodEnd: 2}},
 		},
 	}
-	raw, _ := json.Marshal(subscription)
-	event := &stripe.Event{
-		Type: stripe.EventTypeCustomerSubscriptionCreated,
-		Data: &stripe.EventData{Raw: raw},
+	event := &SquareWebhookEvent{
+		Type: "subscription.created",
+		Data: SquareWebhookData{
+			Object: SquareWebhookObject{
+				Subscription: subscription,
+			},
+		},
 	}
 
 	if err := service.HandleEvent(context.Background(), event); err != nil {
@@ -57,40 +59,43 @@ func TestService_HandleCustomerSubscriptionEventCreatesRow(t *testing.T) {
 	}
 }
 
-func TestService_HandleCustomerSubscriptionEventCancelsStore(t *testing.T) {
+func TestService_HandleSubscriptionEventCancelsStore(t *testing.T) {
 	storeID := uuid.New()
 	store := &models.Store{SubscriptionActive: true}
 	existing := &models.Subscription{
 		ID:                   uuid.New(),
 		StoreID:              storeID,
 		Status:               enums.SubscriptionStatusActive,
-		StripeSubscriptionID: "sub_cancel",
+		SquareSubscriptionID: "sub_cancel",
 	}
 	billingRepo := &stubBillingRepo{existing: existing}
 	service, err := NewService(ServiceParams{
 		BillingRepo:       billingRepo,
 		StoreRepo:         &stubStoreRepo{store: store},
-		StripeClient:      &stubStripeClient{},
+		SquareClient:      &stubSquareClient{},
 		TransactionRunner: &stubTxRunner{},
 	})
 	if err != nil {
 		t.Fatalf("setup service: %v", err)
 	}
 
-	subscription := &stripe.Subscription{
+	subscription := &subscriptions.SquareSubscription{
 		ID:     "sub_cancel",
-		Status: stripe.SubscriptionStatusCanceled,
+		Status: "CANCELED",
 		Metadata: map[string]string{
 			"store_id": storeID.String(),
 		},
-		Items: &stripe.SubscriptionItemList{
-			Data: []*stripe.SubscriptionItem{{CurrentPeriodStart: 1, CurrentPeriodEnd: 2}},
+		Items: &subscriptions.SquareSubscriptionItemList{
+			Data: []*subscriptions.SquareSubscriptionItem{{CurrentPeriodStart: 1, CurrentPeriodEnd: 2}},
 		},
 	}
-	raw, _ := json.Marshal(subscription)
-	event := &stripe.Event{
-		Type: stripe.EventTypeCustomerSubscriptionUpdated,
-		Data: &stripe.EventData{Raw: raw},
+	event := &SquareWebhookEvent{
+		Type: "subscription.updated",
+		Data: SquareWebhookData{
+			Object: SquareWebhookObject{
+				Subscription: subscription,
+			},
+		},
 	}
 
 	if err := service.HandleEvent(context.Background(), event); err != nil {
@@ -104,42 +109,44 @@ func TestService_HandleCustomerSubscriptionEventCancelsStore(t *testing.T) {
 	}
 }
 
-func TestService_HandleInvoiceEventFetchesStripe(t *testing.T) {
+func TestService_HandleInvoiceEventFetchesSquare(t *testing.T) {
 	storeID := uuid.New()
 	store := &models.Store{SubscriptionActive: true}
 	existing := &models.Subscription{
 		ID:                   uuid.New(),
 		StoreID:              storeID,
 		Status:               enums.SubscriptionStatusActive,
-		StripeSubscriptionID: "sub_invoice",
+		SquareSubscriptionID: "sub_invoice",
 	}
-	billingRepo := &stubBillingRepo{existing: existing}
-	stripeClient := &stubStripeClient{
-		getResp: &stripe.Subscription{
+	squareClient := &stubSquareClient{
+		getResp: &subscriptions.SquareSubscription{
 			ID:     "sub_invoice",
-			Status: stripe.SubscriptionStatusPastDue,
+			Status: "PAST_DUE",
 			Metadata: map[string]string{
 				"store_id": storeID.String(),
 			},
-			Items: &stripe.SubscriptionItemList{
-				Data: []*stripe.SubscriptionItem{{CurrentPeriodStart: 1, CurrentPeriodEnd: 2}},
+			Items: &subscriptions.SquareSubscriptionItemList{
+				Data: []*subscriptions.SquareSubscriptionItem{{CurrentPeriodStart: 1, CurrentPeriodEnd: 2}},
 			},
 		},
 	}
+	billingRepo := &stubBillingRepo{existing: existing}
 	service, err := NewService(ServiceParams{
 		BillingRepo:       billingRepo,
 		StoreRepo:         &stubStoreRepo{store: store},
-		StripeClient:      stripeClient,
+		SquareClient:      squareClient,
 		TransactionRunner: &stubTxRunner{},
 	})
 	if err != nil {
 		t.Fatalf("setup service: %v", err)
 	}
 
-	event := &stripe.Event{
-		Type: stripe.EventTypeInvoicePaymentFailed,
-		Data: &stripe.EventData{
-			Object: map[string]interface{}{"subscription": "sub_invoice"},
+	event := &SquareWebhookEvent{
+		Type: "invoice.payment_failed",
+		Data: SquareWebhookData{
+			Object: SquareWebhookObject{
+				ID: "sub_invoice",
+			},
 		},
 	}
 	if err := service.HandleEvent(context.Background(), event); err != nil {
@@ -151,6 +158,22 @@ func TestService_HandleInvoiceEventFetchesStripe(t *testing.T) {
 	if billingRepo.updated[0].Status != enums.SubscriptionStatusPastDue {
 		t.Fatalf("expected status past_due, got %s", billingRepo.updated[0].Status)
 	}
+}
+
+type stubSquareClient struct {
+	getResp *subscriptions.SquareSubscription
+}
+
+func (s *stubSquareClient) Create(ctx context.Context, params *subscriptions.SquareSubscriptionParams) (*subscriptions.SquareSubscription, error) {
+	return nil, nil
+}
+
+func (s *stubSquareClient) Cancel(ctx context.Context, id string, params *subscriptions.SquareSubscriptionCancelParams) (*subscriptions.SquareSubscription, error) {
+	return nil, nil
+}
+
+func (s *stubSquareClient) Get(ctx context.Context, id string, params *subscriptions.SquareSubscriptionParams) (*subscriptions.SquareSubscription, error) {
+	return s.getResp, nil
 }
 
 type stubBillingRepo struct {
@@ -181,8 +204,8 @@ func (s *stubBillingRepo) FindSubscription(ctx context.Context, storeID uuid.UUI
 	return s.existing, nil
 }
 
-func (s *stubBillingRepo) FindSubscriptionByStripeID(ctx context.Context, stripeSubscriptionID string) (*models.Subscription, error) {
-	if s.existing != nil && s.existing.StripeSubscriptionID == stripeSubscriptionID {
+func (s *stubBillingRepo) FindSubscriptionBySquareID(ctx context.Context, squareSubscriptionID string) (*models.Subscription, error) {
+	if s.existing != nil && s.existing.SquareSubscriptionID == squareSubscriptionID {
 		return s.existing, nil
 	}
 	return nil, nil
@@ -191,16 +214,23 @@ func (s *stubBillingRepo) FindSubscriptionByStripeID(ctx context.Context, stripe
 func (s *stubBillingRepo) CreatePaymentMethod(ctx context.Context, method *models.PaymentMethod) error {
 	return nil
 }
+
 func (s *stubBillingRepo) ListPaymentMethodsByStore(ctx context.Context, storeID uuid.UUID) ([]models.PaymentMethod, error) {
 	return nil, nil
 }
-func (s *stubBillingRepo) CreateCharge(ctx context.Context, charge *models.Charge) error { return nil }
+
+func (s *stubBillingRepo) CreateCharge(ctx context.Context, charge *models.Charge) error {
+	return nil
+}
+
 func (s *stubBillingRepo) ListCharges(ctx context.Context, params billing.ListChargesQuery) ([]models.Charge, *pagination.Cursor, error) {
 	return nil, nil, nil
 }
+
 func (s *stubBillingRepo) CreateUsageCharge(ctx context.Context, usage *models.UsageCharge) error {
 	return nil
 }
+
 func (s *stubBillingRepo) ListUsageChargesByStore(ctx context.Context, storeID uuid.UUID) ([]models.UsageCharge, error) {
 	return nil, nil
 }
@@ -226,24 +256,4 @@ type stubTxRunner struct{}
 
 func (s *stubTxRunner) WithTx(ctx context.Context, fn func(tx *gorm.DB) error) error {
 	return fn(nil)
-}
-
-type stubStripeClient struct {
-	getResp *stripe.Subscription
-	getErr  error
-}
-
-func (s *stubStripeClient) Create(ctx context.Context, params *stripe.SubscriptionParams) (*stripe.Subscription, error) {
-	return nil, nil
-}
-
-func (s *stubStripeClient) Cancel(ctx context.Context, id string, params *stripe.SubscriptionCancelParams) (*stripe.Subscription, error) {
-	return nil, nil
-}
-
-func (s *stubStripeClient) Get(ctx context.Context, id string, params *stripe.SubscriptionParams) (*stripe.Subscription, error) {
-	if s.getErr != nil {
-		return nil, s.getErr
-	}
-	return s.getResp, nil
 }
