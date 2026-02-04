@@ -786,12 +786,13 @@ func (s *service) AgentCashCollected(ctx context.Context, input AgentCashCollect
 		if detail.BuyerStore.ID == uuid.Nil || detail.VendorStore.ID == uuid.Nil {
 			return pkgerrors.New(pkgerrors.CodeDependency, "order stores missing")
 		}
-		if detail.Order.Status != enums.VendorOrderStatusReadyForDispatch && detail.Order.Status != enums.VendorOrderStatusInTransit && detail.Order.Status != enums.VendorOrderStatusDelivered {
-			reason := fmt.Sprintf("order status %s not ready for cash collection", detail.Order.Status)
-			return s.failCashCollection(ctx, repo, input.OrderID, reason)
-		}
 		if detail.PaymentIntent == nil {
 			return pkgerrors.New(pkgerrors.CodeDependency, "payment intent missing")
+		}
+		actor := buildActor(input.AgentUserID, uuid.Nil, string(enums.MemberRoleAgent))
+		if detail.Order.Status != enums.VendorOrderStatusReadyForDispatch && detail.Order.Status != enums.VendorOrderStatusInTransit && detail.Order.Status != enums.VendorOrderStatusDelivered {
+			reason := fmt.Sprintf("order status %s not ready for cash collection", detail.Order.Status)
+			return s.failCashCollection(ctx, tx, repo, input.OrderID, detail.PaymentIntent.ID, actor, reason)
 		}
 		status := detail.PaymentIntent.Status
 		if status == string(enums.PaymentStatusSettled) ||
@@ -813,7 +814,7 @@ func (s *service) AgentCashCollected(ctx context.Context, input AgentCashCollect
 		if detail.PaymentIntent.AmountCents > 0 {
 			if detail.Order.TotalCents != detail.PaymentIntent.AmountCents {
 				reason := fmt.Sprintf("order total %d differs from payment intent %d", detail.Order.TotalCents, detail.PaymentIntent.AmountCents)
-				return s.failCashCollection(ctx, repo, input.OrderID, reason)
+				return s.failCashCollection(ctx, tx, repo, input.OrderID, detail.PaymentIntent.ID, actor, reason)
 			}
 			amount = detail.PaymentIntent.AmountCents
 		}
@@ -889,7 +890,7 @@ func (s *service) AgentCashCollected(ctx context.Context, input AgentCashCollect
 	})
 }
 
-func (s *service) failCashCollection(ctx context.Context, repo Repository, orderID uuid.UUID, reason string) error {
+func (s *service) failCashCollection(ctx context.Context, tx *gorm.DB, repo Repository, orderID, paymentIntentID uuid.UUID, actor *outbox.ActorRef, reason string) error {
 	paymentUpdates := map[string]any{
 		"status":         enums.PaymentStatusFailed,
 		"failure_reason": reason,
@@ -905,7 +906,33 @@ func (s *service) failCashCollection(ctx context.Context, repo Repository, order
 		return pkgerrors.Wrap(pkgerrors.CodeDependency, err, "hold order after cash collection failure")
 	}
 
+	failureReason := reason
+	if err := s.emitPaymentStatusEvent(ctx, tx, actor, enums.EventPaymentFailed, orderID, paymentIntentID, &failureReason); err != nil {
+		return err
+	}
 	return pkgerrors.New(pkgerrors.CodeStateConflict, reason)
+}
+
+func (s *service) emitPaymentStatusEvent(ctx context.Context, tx *gorm.DB, actor *outbox.ActorRef, eventType enums.OutboxEventType, orderID, paymentIntentID uuid.UUID, failureReason *string) error {
+	if tx == nil {
+		return fmt.Errorf("transaction required")
+	}
+	event := outbox.DomainEvent{
+		EventType:     eventType,
+		AggregateType: enums.AggregateVendorOrder,
+		AggregateID:   orderID,
+		Version:       1,
+		Actor:         actor,
+		Data: payloads.PaymentStatusEvent{
+			OrderID:         orderID,
+			PaymentIntentID: paymentIntentID,
+			FailureReason:   failureReason,
+		},
+	}
+	if err := s.outbox.Emit(ctx, tx, event); err != nil {
+		return pkgerrors.Wrap(pkgerrors.CodeDependency, err, fmt.Sprintf("emit %s event", eventType))
+	}
+	return nil
 }
 
 func mapDecisionToStatus(decision enums.VendorOrderDecision) (enums.VendorOrderStatus, error) {

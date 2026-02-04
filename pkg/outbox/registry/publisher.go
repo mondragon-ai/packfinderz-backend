@@ -100,6 +100,18 @@ func NewEventRegistry(cfg config.PubSubConfig) (*EventRegistry, error) {
 			PayloadFactory: func() interface{} { return &payloads.CashCollectedEvent{} },
 		},
 		{
+			EventType:      enums.EventPaymentFailed,
+			AggregateType:  enums.AggregateVendorOrder,
+			Topic:          ordersTopic,
+			PayloadFactory: func() interface{} { return &payloads.PaymentStatusEvent{} },
+		},
+		{
+			EventType:      enums.EventPaymentRejected,
+			AggregateType:  enums.AggregateVendorOrder,
+			Topic:          ordersTopic,
+			PayloadFactory: func() interface{} { return &payloads.PaymentStatusEvent{} },
+		},
+		{
 			EventType:      enums.EventOrderPendingNudge,
 			AggregateType:  enums.AggregateVendorOrder,
 			Topic:          ordersTopic,
