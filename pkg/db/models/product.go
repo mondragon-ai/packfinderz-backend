@@ -23,6 +23,7 @@ type Product struct {
 	Usage               pq.StringArray               `gorm:"column:usage;type:usage[];not null;default:ARRAY[]::usage[]"`
 	Strain              *string                      `gorm:"column:strain"`
 	Classification      *enums.ProductClassification `gorm:"column:classification;type:classification"`
+	COAMediaID          *uuid.UUID                   `gorm:"column:coa_media_id;type:uuid"`
 	Unit                enums.ProductUnit            `gorm:"column:unit;type:unit;not null"`
 	MOQ                 int                          `gorm:"column:moq;not null;default:1"`
 	PriceCents          int                          `gorm:"column:price_cents;not null"`

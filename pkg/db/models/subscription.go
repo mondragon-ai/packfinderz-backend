@@ -9,11 +9,11 @@ import (
 	"github.com/angelmondragon/packfinderz-backend/pkg/enums"
 )
 
-// Subscription persists Stripe subscription state per store.
+// Subscription persists Square subscription state per store.
 type Subscription struct {
 	ID                   uuid.UUID                `gorm:"type:uuid;default:gen_random_uuid();primaryKey"`
 	StoreID              uuid.UUID                `gorm:"column:store_id;type:uuid;not null;index"`
-	StripeSubscriptionID string                   `gorm:"column:stripe_subscription_id;not null;unique"`
+	SquareSubscriptionID string                   `gorm:"column:square_subscription_id;not null;unique"`
 	Status               enums.SubscriptionStatus `gorm:"column:status;type:subscription_status;not null;default:'active'"`
 	PriceID              *string                  `gorm:"column:price_id"`
 	CurrentPeriodStart   *time.Time               `gorm:"column:current_period_start"`

@@ -34,10 +34,12 @@ func NewClient(ctx context.Context, gcp config.GCPConfig, cfg config.PubSubConfi
 	}
 
 	var opts []option.ClientOption
-	if strings.TrimSpace(gcp.CredentialsJSON) != "" {
-		opts = append(opts, option.WithCredentialsJSON([]byte(gcp.CredentialsJSON)))
-	} else if strings.TrimSpace(gcp.ApplicationCredentials) != "" {
-		opts = append(opts, option.WithCredentialsFile(gcp.ApplicationCredentials))
+	switch {
+	case strings.TrimSpace(gcp.CredentialsJSON) != "":
+		opts = append(opts, option.WithAuthCredentialsJSON(option.ServiceAccount, []byte(gcp.CredentialsJSON)))
+
+	case strings.TrimSpace(gcp.ApplicationCredentials) != "":
+		opts = append(opts, option.WithAuthCredentialsFile(option.ServiceAccount, gcp.ApplicationCredentials))
 	}
 
 	psClient, err := pubsub.NewClient(ctx, gcp.ProjectID, opts...)

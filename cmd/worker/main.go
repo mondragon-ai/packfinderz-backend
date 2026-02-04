@@ -24,8 +24,8 @@ import (
 	"github.com/angelmondragon/packfinderz-backend/pkg/outbox/idempotency"
 	"github.com/angelmondragon/packfinderz-backend/pkg/pubsub"
 	"github.com/angelmondragon/packfinderz-backend/pkg/redis"
+	"github.com/angelmondragon/packfinderz-backend/pkg/square"
 	"github.com/angelmondragon/packfinderz-backend/pkg/storage/gcs"
-	"github.com/angelmondragon/packfinderz-backend/pkg/stripe"
 )
 
 func main() {
@@ -45,8 +45,8 @@ func main() {
 		WarnStack:   cfg.App.LogWarnStack,
 	})
 
-	stripeClient, err := stripe.NewClient(context.Background(), cfg.Stripe, logg)
-	requireResource(ctx, logg, "stripe client", err)
+	squareClient, err := square.NewClient(context.Background(), cfg.Square, logg)
+	requireResource(ctx, logg, "square client", err)
 
 	dbClient, err := db.New(context.Background(), cfg.DB, logg)
 	requireResource(ctx, logg, "database", err)
@@ -124,7 +124,7 @@ func main() {
 		LicenseScheduler:     licenseScheduler,
 		GCS:                  gcsClient,
 		BigQuery:             bqClient,
-		Stripe:               stripeClient,
+		Square:               squareClient,
 	})
 	requireResource(ctx, logg, "worker service", err)
 

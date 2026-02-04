@@ -26,7 +26,7 @@ type Config struct {
 	Media         MediaConfig
 	PubSub        PubSubConfig
 	BigQuery      BigQueryConfig
-	Stripe        StripeConfig
+	Square        SquareConfig
 	Sendgrid      SendgridConfig
 	Outbox        OutboxConfig
 }
@@ -193,11 +193,11 @@ type OutboxConfig struct {
 	MaxAttempts    int `envconfig:"PACKFINDERZ_OUTBOX_MAX_ATTEMPTS" default:"10"`
 }
 
-type StripeConfig struct {
-	APIKey              string `envconfig:"PACKFINDERZ_STRIPE_API_KEY"`
-	Secret              string `envconfig:"PACKFINDERZ_STRIPE_SECRET"`
-	Env                 string `envconfig:"PACKFINDERZ_STRIPE_ENV" default:"test"`
-	SubscriptionPriceID string `envconfig:"PACKFINDERZ_STRIPE_SUBSCRIPTION_PRICE_ID"`
+type SquareConfig struct {
+	AccessToken        string `envconfig:"PACKFINDERZ_SQUARE_ACCESS_TOKEN"`
+	WebhookSecret      string `envconfig:"PACKFINDERZ_SQUARE_WEBHOOK_SECRET"`
+	Env                string `envconfig:"PACKFINDERZ_SQUARE_ENV" default:"sandbox"`
+	SubscriptionPlanID string `envconfig:"PACKFINDERZ_SQUARE_SUBSCRIPTION_PLAN_ID"`
 }
 
 type SendgridConfig struct {
@@ -205,11 +205,11 @@ type SendgridConfig struct {
 	DefaultFrom string `envconfig:"PACKFINDERZ_SENDGRID_FROM_EMAIL"`
 }
 
-// Environment returns the normalized Stripe environment (test/live).
-func (s StripeConfig) Environment() string {
+// Environment returns the normalized Square environment (sandbox/production).
+func (s SquareConfig) Environment() string {
 	env := strings.TrimSpace(strings.ToLower(s.Env))
 	if env == "" {
-		return "test"
+		return "sandbox"
 	}
 	return env
 }

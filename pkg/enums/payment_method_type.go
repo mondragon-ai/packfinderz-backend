@@ -2,7 +2,7 @@ package enums
 
 import "fmt"
 
-// PaymentMethodType mirrors Stripe payment method categories.
+// PaymentMethodType mirrors the billing provider's payment method categories.
 type PaymentMethodType string
 
 const (

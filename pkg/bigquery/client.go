@@ -83,12 +83,16 @@ func NewClient(ctx context.Context, gcp config.GCPConfig, cfg config.BigQueryCon
 
 func clientOptions(gcp config.GCPConfig) []option.ClientOption {
 	var opts []option.ClientOption
+
 	switch {
 	case strings.TrimSpace(gcp.CredentialsJSON) != "":
-		opts = append(opts, option.WithCredentialsJSON([]byte(gcp.CredentialsJSON)))
+
+		opts = append(opts, option.WithAuthCredentialsJSON(option.ServiceAccount, []byte(gcp.CredentialsJSON)))
+
 	case strings.TrimSpace(gcp.ApplicationCredentials) != "":
-		opts = append(opts, option.WithCredentialsFile(gcp.ApplicationCredentials))
+		opts = append(opts, option.WithAuthCredentialsFile(option.ServiceAccount, gcp.ApplicationCredentials))
 	}
+
 	return opts
 }
 

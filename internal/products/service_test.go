@@ -205,3 +205,59 @@ func (f *fakeMediaReader) FindByID(ctx context.Context, id uuid.UUID) (*models.M
 	}
 	return nil, gorm.ErrRecordNotFound
 }
+
+func TestFetchStoreScopedMedia(t *testing.T) {
+	storeID := uuid.New()
+	productMediaID := uuid.New()
+	otherStoreID := uuid.New()
+	coaMediaID := uuid.New()
+
+	repo := &fakeMediaReader{
+		rows: map[uuid.UUID]*models.Media{
+			productMediaID: {
+				ID:      productMediaID,
+				StoreID: storeID,
+				Kind:    enums.MediaKindProduct,
+			},
+			otherStoreID: {
+				ID:      otherStoreID,
+				StoreID: uuid.New(),
+				Kind:    enums.MediaKindProduct,
+			},
+			coaMediaID: {
+				ID:      coaMediaID,
+				StoreID: storeID,
+				Kind:    enums.MediaKindCOA,
+			},
+		},
+	}
+	svc := &service{
+		mediaRepo: repo,
+	}
+
+	t.Run("success", func(t *testing.T) {
+		row, err := svc.fetchStoreScopedMedia(context.Background(), storeID, productMediaID, enums.MediaKindProduct)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if row.ID != productMediaID {
+			t.Fatalf("expected media id %s, got %s", productMediaID, row.ID)
+		}
+	})
+
+	t.Run("store mismatch", func(t *testing.T) {
+		if _, err := svc.fetchStoreScopedMedia(context.Background(), storeID, otherStoreID, enums.MediaKindProduct); err == nil {
+			t.Fatal("expected error for cross-store media")
+		} else if typed := pkgerrors.As(err); typed == nil || typed.Code() != pkgerrors.CodeValidation {
+			t.Fatalf("expected validation error, got %v", err)
+		}
+	})
+
+	t.Run("kind mismatch", func(t *testing.T) {
+		if _, err := svc.fetchStoreScopedMedia(context.Background(), storeID, coaMediaID, enums.MediaKindProduct); err == nil {
+			t.Fatal("expected error for wrong media kind")
+		} else if typed := pkgerrors.As(err); typed == nil || typed.Code() != pkgerrors.CodeValidation {
+			t.Fatalf("expected validation error, got %v", err)
+		}
+	})
+}

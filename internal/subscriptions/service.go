@@ -9,7 +9,6 @@ import (
 	"github.com/angelmondragon/packfinderz-backend/pkg/db/models"
 	pkgerrors "github.com/angelmondragon/packfinderz-backend/pkg/errors"
 	"github.com/google/uuid"
-	"github.com/stripe/stripe-go/v84"
 	"gorm.io/gorm"
 )
 
@@ -33,22 +32,22 @@ type Service interface {
 type ServiceParams struct {
 	BillingRepo       billing.Repository
 	StoreRepo         storeRepository
-	StripeClient      StripeSubscriptionClient
+	SquareClient      SquareSubscriptionClient
 	DefaultPriceID    string
 	TransactionRunner txRunner
 }
 
 // CreateSubscriptionInput captures the data required to start a subscription.
 type CreateSubscriptionInput struct {
-	StripeCustomerID      string
-	StripePaymentMethodID string
+	SquareCustomerID      string
+	SquarePaymentMethodID string
 	PriceID               string
 }
 
 type service struct {
 	billingRepo billing.Repository
 	storeRepo   storeRepository
-	stripe      StripeSubscriptionClient
+	square      SquareSubscriptionClient
 	priceID     string
 	txRunner    txRunner
 }
@@ -61,8 +60,8 @@ func NewService(params ServiceParams) (Service, error) {
 	if params.StoreRepo == nil {
 		return nil, fmt.Errorf("store repo required")
 	}
-	if params.StripeClient == nil {
-		return nil, fmt.Errorf("stripe client required")
+	if params.SquareClient == nil {
+		return nil, fmt.Errorf("square client required")
 	}
 	if params.TransactionRunner == nil {
 		return nil, fmt.Errorf("transaction runner required")
@@ -73,7 +72,7 @@ func NewService(params ServiceParams) (Service, error) {
 	return &service{
 		billingRepo: params.BillingRepo,
 		storeRepo:   params.StoreRepo,
-		stripe:      params.StripeClient,
+		square:      params.SquareClient,
 		priceID:     strings.TrimSpace(params.DefaultPriceID),
 		txRunner:    params.TransactionRunner,
 	}, nil
@@ -84,13 +83,13 @@ func (s *service) Create(ctx context.Context, storeID uuid.UUID, input CreateSub
 	if storeID == uuid.Nil {
 		return nil, false, pkgerrors.New(pkgerrors.CodeValidation, "store id is required")
 	}
-	customerID := strings.TrimSpace(input.StripeCustomerID)
+	customerID := strings.TrimSpace(input.SquareCustomerID)
 	if customerID == "" {
-		return nil, false, pkgerrors.New(pkgerrors.CodeValidation, "stripe_customer_id is required")
+		return nil, false, pkgerrors.New(pkgerrors.CodeValidation, "square_customer_id is required")
 	}
-	paymentMethodID := strings.TrimSpace(input.StripePaymentMethodID)
+	paymentMethodID := strings.TrimSpace(input.SquarePaymentMethodID)
 	if paymentMethodID == "" {
-		return nil, false, pkgerrors.New(pkgerrors.CodeValidation, "stripe_payment_method_id is required")
+		return nil, false, pkgerrors.New(pkgerrors.CodeValidation, "square_payment_method_id is required")
 	}
 
 	priceID := strings.TrimSpace(input.PriceID)
@@ -107,20 +106,18 @@ func (s *service) Create(ctx context.Context, storeID uuid.UUID, input CreateSub
 		return existing, false, nil
 	}
 
-	params := &stripe.SubscriptionParams{
-		Customer: stripe.String(customerID),
-		Items: []*stripe.SubscriptionItemsParams{
-			{Price: stripe.String(priceID)},
+	params := &SquareSubscriptionParams{
+		CustomerID:      customerID,
+		PriceID:         priceID,
+		PaymentMethodID: paymentMethodID,
+		Metadata: map[string]string{
+			"store_id": storeID.String(),
 		},
-		DefaultPaymentMethod: stripe.String(paymentMethodID),
-	}
-	params.Metadata = map[string]string{
-		"store_id": storeID.String(),
 	}
 
-	stripeSub, err := s.stripe.Create(ctx, params)
+	squareSub, err := s.square.Create(ctx, params)
 	if err != nil {
-		return nil, false, pkgerrors.Wrap(pkgerrors.CodeDependency, err, "create stripe subscription")
+		return nil, false, pkgerrors.Wrap(pkgerrors.CodeDependency, err, "create square subscription")
 	}
 
 	var (
@@ -141,7 +138,7 @@ func (s *service) Create(ctx context.Context, storeID uuid.UUID, input CreateSub
 			return nil
 		}
 
-		sub, err := BuildSubscriptionFromStripe(stripeSub, storeID, priceID, customerID, paymentMethodID)
+		sub, err := BuildSubscriptionFromSquare(squareSub, storeID, priceID, customerID, paymentMethodID)
 		if err != nil {
 			return err
 		}
@@ -169,16 +166,16 @@ func (s *service) Create(ctx context.Context, storeID uuid.UUID, input CreateSub
 
 	if err != nil {
 		if !skipped {
-			if cancelErr := s.cancelStripe(ctx, stripeSub.ID); cancelErr != nil {
-				return nil, false, pkgerrors.Wrap(pkgerrors.CodeDependency, cancelErr, "cancel stripe subscription after db error")
+			if cancelErr := s.cancelSquare(ctx, squareSub.ID); cancelErr != nil {
+				return nil, false, pkgerrors.Wrap(pkgerrors.CodeDependency, cancelErr, "cancel square subscription after db error")
 			}
 		}
 		return nil, false, pkgerrors.Wrap(pkgerrors.CodeDependency, err, "persist subscription")
 	}
 
 	if skipped {
-		if cancelErr := s.cancelStripe(ctx, stripeSub.ID); cancelErr != nil {
-			return nil, false, pkgerrors.Wrap(pkgerrors.CodeDependency, cancelErr, "cancel stripe subscription due to race")
+		if cancelErr := s.cancelSquare(ctx, squareSub.ID); cancelErr != nil {
+			return nil, false, pkgerrors.Wrap(pkgerrors.CodeDependency, cancelErr, "cancel square subscription due to race")
 		}
 		return existingAfter, false, nil
 	}
@@ -200,9 +197,9 @@ func (s *service) Cancel(ctx context.Context, storeID uuid.UUID) error {
 		return s.ensureStoreFlag(ctx, storeID, false)
 	}
 
-	stripeSub, err := s.stripe.Cancel(ctx, active.StripeSubscriptionID, &stripe.SubscriptionCancelParams{})
+	squareSub, err := s.square.Cancel(ctx, active.SquareSubscriptionID, &SquareSubscriptionCancelParams{})
 	if err != nil {
-		return pkgerrors.Wrap(pkgerrors.CodeDependency, err, "cancel stripe subscription")
+		return pkgerrors.Wrap(pkgerrors.CodeDependency, err, "cancel square subscription")
 	}
 
 	if err := s.txRunner.WithTx(ctx, func(tx *gorm.DB) error {
@@ -215,7 +212,7 @@ func (s *service) Cancel(ctx context.Context, storeID uuid.UUID) error {
 			return pkgerrors.New(pkgerrors.CodeNotFound, "subscription not found")
 		}
 
-		if err := UpdateSubscriptionFromStripe(stored, stripeSub, stored.PriceID); err != nil {
+		if err := UpdateSubscriptionFromSquare(stored, squareSub, stored.PriceID); err != nil {
 			return err
 		}
 		if err := txRepo.UpdateSubscription(ctx, stored); err != nil {
@@ -288,7 +285,7 @@ func (s *service) ensureStoreFlag(ctx context.Context, storeID uuid.UUID, active
 	})
 }
 
-func (s *service) cancelStripe(ctx context.Context, id string) error {
-	_, err := s.stripe.Cancel(ctx, id, &stripe.SubscriptionCancelParams{})
+func (s *service) cancelSquare(ctx context.Context, id string) error {
+	_, err := s.square.Cancel(ctx, id, &SquareSubscriptionCancelParams{})
 	return err
 }

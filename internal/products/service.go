@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/angelmondragon/packfinderz-backend/internal/media"
 	"github.com/angelmondragon/packfinderz-backend/pkg/db"
 	"github.com/angelmondragon/packfinderz-backend/pkg/db/models"
 	"github.com/angelmondragon/packfinderz-backend/pkg/enums"
@@ -46,6 +47,7 @@ type CreateProductInput struct {
 	MediaIDs            []uuid.UUID
 	VolumeDiscounts     []VolumeDiscountInput
 	MaxQty              int
+	COAMediaID          *uuid.UUID
 }
 
 // InventoryInput captures the starting quantity for a product.
@@ -85,6 +87,8 @@ type UpdateProductInput struct {
 	MediaIDs            *[]uuid.UUID
 	VolumeDiscounts     *[]VolumeDiscountInput
 	MaxQty              *int
+	COAMediaID          *uuid.UUID
+	COAMediaIDSet       bool
 }
 
 type storeLoader interface {
@@ -106,10 +110,11 @@ type service struct {
 	storeRepo         storeLoader
 	membershipChecker membershipChecker
 	mediaRepo         mediaReader
+	attachments       media.AttachmentReconciler
 }
 
 // NewService constructs a product service instance.
-func NewService(repo *Repository, dbClient *db.Client, storeRepo storeLoader, membershipChecker membershipChecker, mediaRepo mediaReader) (Service, error) {
+func NewService(repo *Repository, dbClient *db.Client, storeRepo storeLoader, membershipChecker membershipChecker, mediaRepo mediaReader, attachments media.AttachmentReconciler) (Service, error) {
 	if repo == nil {
 		return nil, fmt.Errorf("product repository required")
 	}
@@ -125,12 +130,16 @@ func NewService(repo *Repository, dbClient *db.Client, storeRepo storeLoader, me
 	if mediaRepo == nil {
 		return nil, fmt.Errorf("media repository required")
 	}
+	if attachments == nil {
+		return nil, fmt.Errorf("attachment reconciler required")
+	}
 	return &service{
 		repo:              repo,
 		dbClient:          dbClient,
 		storeRepo:         storeRepo,
 		membershipChecker: membershipChecker,
 		mediaRepo:         mediaRepo,
+		attachments:       attachments,
 	}, nil
 }
 
@@ -145,6 +154,12 @@ func (s *service) CreateProduct(ctx context.Context, userID, storeID uuid.UUID, 
 	}
 	if err := s.ensureUserRole(ctx, userID, storeID); err != nil {
 		return nil, err
+	}
+
+	if input.COAMediaID != nil {
+		if _, err := s.fetchStoreScopedMedia(ctx, storeID, *input.COAMediaID, enums.MediaKindCOA); err != nil {
+			return nil, err
+		}
 	}
 
 	if err := ensureUniqueDiscounts(input.VolumeDiscounts); err != nil {
@@ -188,6 +203,7 @@ func (s *service) CreateProduct(ctx context.Context, userID, storeID uuid.UUID, 
 			THCPercent:          input.THCPercent,
 			CBDPercent:          input.CBDPercent,
 			MaxQty:              input.MaxQty,
+			COAMediaID:          input.COAMediaID,
 		}
 
 		created, err := txRepo.CreateProduct(ctx, product)
@@ -226,6 +242,13 @@ func (s *service) CreateProduct(ctx context.Context, userID, storeID uuid.UUID, 
 			if err := txRepo.ReplaceProductMedia(ctx, created.ID, entries); err != nil {
 				return pkgerrors.Wrap(pkgerrors.CodeDependency, err, "db: replace product media")
 			}
+		}
+
+		if err := s.reconcileProductGalleryAttachments(ctx, tx, storeID, created.ID, nil, input.MediaIDs); err != nil {
+			return err
+		}
+		if err := s.reconcileProductCOAAttachments(ctx, tx, storeID, created.ID, nil, input.COAMediaID); err != nil {
+			return err
 		}
 
 		return nil
@@ -280,6 +303,12 @@ func (s *service) UpdateProduct(ctx context.Context, userID, storeID, productID 
 		return nil, err
 	}
 
+	if input.COAMediaID != nil {
+		if _, err := s.fetchStoreScopedMedia(ctx, storeID, *input.COAMediaID, enums.MediaKindCOA); err != nil {
+			return nil, err
+		}
+	}
+
 	if input.VolumeDiscounts != nil {
 		if err := ensureUniqueDiscounts(*input.VolumeDiscounts); err != nil {
 			return nil, err
@@ -305,6 +334,18 @@ func (s *service) UpdateProduct(ctx context.Context, userID, storeID, productID 
 	var updatedID uuid.UUID
 	if err := s.dbClient.WithTx(ctx, func(tx *gorm.DB) error {
 		txRepo := s.repo.WithTx(tx)
+		var oldGalleryIDs []uuid.UUID
+		if input.MediaIDs != nil {
+			var err error
+			oldGalleryIDs, err = txRepo.ListProductMediaIDs(ctx, product.ID)
+			if err != nil {
+				return err
+			}
+		}
+		oldCOAID := product.COAMediaID
+		if input.COAMediaIDSet {
+			product.COAMediaID = input.COAMediaID
+		}
 
 		applyUpdateToProduct(product, input)
 		if _, err := txRepo.UpdateProduct(ctx, product); err != nil {
@@ -346,9 +387,17 @@ func (s *service) UpdateProduct(ctx context.Context, userID, storeID, productID 
 			if err := txRepo.ReplaceProductMedia(ctx, product.ID, entries); err != nil {
 				return err
 			}
+			if err := s.reconcileProductGalleryAttachments(ctx, tx, storeID, product.ID, oldGalleryIDs, *input.MediaIDs); err != nil {
+				return err
+			}
 		}
 
 		updatedID = product.ID
+		if input.COAMediaIDSet {
+			if err := s.reconcileProductCOAAttachments(ctx, tx, storeID, product.ID, oldCOAID, product.COAMediaID); err != nil {
+				return err
+			}
+		}
 		return nil
 	}); err != nil {
 		if pkgerrors.As(err) != nil {
@@ -552,18 +601,9 @@ func (s *service) buildProductMediaRows(ctx context.Context, storeID, productID 
 		}
 		seen[mediaID] = struct{}{}
 
-		mediaRow, err := s.mediaRepo.FindByID(ctx, mediaID)
+		mediaRow, err := s.fetchStoreScopedMedia(ctx, storeID, mediaID, enums.MediaKindProduct)
 		if err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				return nil, pkgerrors.New(pkgerrors.CodeValidation, "media not found")
-			}
-			return nil, pkgerrors.Wrap(pkgerrors.CodeDependency, err, "load media")
-		}
-		if mediaRow.StoreID != storeID {
-			return nil, pkgerrors.New(pkgerrors.CodeValidation, "media must belong to the active store")
-		}
-		if mediaRow.Kind != enums.MediaKindProduct {
-			return nil, pkgerrors.New(pkgerrors.CodeValidation, "media must be product kind")
+			return nil, err
 		}
 
 		rows = append(rows, models.ProductMedia{
@@ -574,4 +614,43 @@ func (s *service) buildProductMediaRows(ctx context.Context, storeID, productID 
 		})
 	}
 	return rows, nil
+}
+
+func (s *service) fetchStoreScopedMedia(ctx context.Context, storeID, mediaID uuid.UUID, expected enums.MediaKind) (*models.Media, error) {
+	mediaRow, err := s.mediaRepo.FindByID(ctx, mediaID)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, pkgerrors.New(pkgerrors.CodeValidation, "media not found")
+		}
+		return nil, pkgerrors.Wrap(pkgerrors.CodeDependency, err, "load media")
+	}
+	if mediaRow.StoreID != storeID {
+		return nil, pkgerrors.New(pkgerrors.CodeValidation, "media must belong to the active store")
+	}
+	if expected != "" && mediaRow.Kind != expected {
+		return nil, pkgerrors.New(pkgerrors.CodeValidation, fmt.Sprintf("media must be %s kind", expected))
+	}
+	return mediaRow, nil
+}
+
+func (s *service) reconcileProductGalleryAttachments(ctx context.Context, tx *gorm.DB, storeID, productID uuid.UUID, oldIDs, newIDs []uuid.UUID) error {
+	if tx == nil {
+		return fmt.Errorf("transaction required")
+	}
+	return s.attachments.Reconcile(ctx, tx, models.AttachmentEntityProductGallery, productID, storeID, oldIDs, newIDs)
+}
+
+func (s *service) reconcileProductCOAAttachments(ctx context.Context, tx *gorm.DB, storeID, productID uuid.UUID, oldID, newID *uuid.UUID) error {
+	if tx == nil {
+		return fmt.Errorf("transaction required")
+	}
+	var oldIDs []uuid.UUID
+	if oldID != nil {
+		oldIDs = append(oldIDs, *oldID)
+	}
+	var newIDs []uuid.UUID
+	if newID != nil {
+		newIDs = append(newIDs, *newID)
+	}
+	return s.attachments.Reconcile(ctx, tx, models.AttachmentEntityProductCOA, productID, storeID, oldIDs, newIDs)
 }

@@ -22,6 +22,8 @@ var ProtectedAttachmentEntities = map[string]struct{}{
 }
 
 const (
-	AttachmentEntityLicense = "license"
-	AttachmentEntityAd      = "ad"
+	AttachmentEntityLicense        = "license"
+	AttachmentEntityAd             = "ad"
+	AttachmentEntityProductGallery = "product_gallery"
+	AttachmentEntityProductCOA     = "product_coa"
 )

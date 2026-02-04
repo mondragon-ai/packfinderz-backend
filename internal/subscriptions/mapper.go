@@ -2,6 +2,7 @@ package subscriptions
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 	"time"
 
@@ -9,83 +10,83 @@ import (
 	"github.com/angelmondragon/packfinderz-backend/pkg/enums"
 	pkgerrors "github.com/angelmondragon/packfinderz-backend/pkg/errors"
 	"github.com/google/uuid"
-	"github.com/stripe/stripe-go/v84"
 )
 
-// BuildSubscriptionFromStripe maps a Stripe subscription to the canonical model.
-func BuildSubscriptionFromStripe(stripeSub *stripe.Subscription, storeID uuid.UUID, priceID, customerID, paymentMethodID string) (*models.Subscription, error) {
-	if stripeSub == nil {
-		return nil, pkgerrors.New(pkgerrors.CodeDependency, "stripe subscription is nil")
+// BuildSubscriptionFromSquare maps a Square subscription into the canonical model.
+func BuildSubscriptionFromSquare(squareSub *SquareSubscription, storeID uuid.UUID, priceID, customerID, paymentMethodID string) (*models.Subscription, error) {
+	if squareSub == nil {
+		return nil, pkgerrors.New(pkgerrors.CodeDependency, "square subscription is nil")
 	}
-	status := enums.SubscriptionStatus(stripeSub.Status)
-	if !status.IsValid() {
-		return nil, pkgerrors.New(pkgerrors.CodeDependency, "invalid stripe subscription status")
+	status, err := mapSquareStatus(squareSub.Status)
+	if err != nil {
+		return nil, pkgerrors.Wrap(pkgerrors.CodeDependency, err, "invalid square subscription status")
 	}
 
 	metaExtras := map[string]string{}
 	if customerID != "" {
-		metaExtras["stripe_customer_id"] = customerID
+		metaExtras["square_customer_id"] = customerID
 	}
 	if paymentMethodID != "" {
-		metaExtras["stripe_payment_method_id"] = paymentMethodID
+		metaExtras["square_payment_method_id"] = paymentMethodID
 	}
 
-	metadata, err := mergeMetadata(stripeSub.Metadata, metaExtras)
+	metadata, err := mergeMetadata(squareSub.Metadata, metaExtras)
 	if err != nil {
 		return nil, pkgerrors.Wrap(pkgerrors.CodeDependency, err, "marshal metadata")
 	}
 
-	startTS, endTS := periodFromSubscription(stripeSub)
+	startTS, endTS := periodFromSubscription(squareSub)
 	var price *string
 	if strings.TrimSpace(priceID) != "" {
 		price = &priceID
 	}
+
 	return &models.Subscription{
 		StoreID:              storeID,
-		StripeSubscriptionID: stripeSub.ID,
+		SquareSubscriptionID: squareSub.ID,
 		Status:               status,
 		PriceID:              price,
 		CurrentPeriodStart:   toTimePtr(startTS),
 		CurrentPeriodEnd:     toTime(endTS),
-		CancelAtPeriodEnd:    stripeSub.CancelAtPeriodEnd,
-		CanceledAt:           toTimePtr(stripeSub.CanceledAt),
+		CancelAtPeriodEnd:    squareSub.CancelAtPeriodEnd,
+		CanceledAt:           toTimePtr(squareSub.CanceledAt),
 		Metadata:             metadata,
 	}, nil
 }
 
-// UpdateSubscriptionFromStripe mutates the provided subscription with new Stripe data.
-func UpdateSubscriptionFromStripe(target *models.Subscription, stripeSub *stripe.Subscription, priceID *string) error {
+// UpdateSubscriptionFromSquare mutates the provided subscription with new Square data.
+func UpdateSubscriptionFromSquare(target *models.Subscription, squareSub *SquareSubscription, priceID *string) error {
 	if target == nil {
 		return pkgerrors.New(pkgerrors.CodeInternal, "target subscription is nil")
 	}
-	if stripeSub == nil {
-		return pkgerrors.New(pkgerrors.CodeDependency, "stripe subscription is nil")
+	if squareSub == nil {
+		return pkgerrors.New(pkgerrors.CodeDependency, "square subscription is nil")
 	}
-	status := enums.SubscriptionStatus(stripeSub.Status)
-	if !status.IsValid() {
-		return pkgerrors.New(pkgerrors.CodeDependency, "invalid stripe subscription status")
+	status, err := mapSquareStatus(squareSub.Status)
+	if err != nil {
+		return pkgerrors.Wrap(pkgerrors.CodeDependency, err, "invalid square subscription status")
 	}
 
-	metadata, err := mergeMetadata(stripeSub.Metadata, nil)
+	metadata, err := mergeMetadata(squareSub.Metadata, nil)
 	if err != nil {
 		return pkgerrors.Wrap(pkgerrors.CodeDependency, err, "marshal metadata")
 	}
 
-	target.StripeSubscriptionID = stripeSub.ID
+	target.SquareSubscriptionID = squareSub.ID
 	target.Status = status
 	if priceID != nil {
 		target.PriceID = priceID
 	}
-	startTS, endTS := periodFromSubscription(stripeSub)
+	startTS, endTS := periodFromSubscription(squareSub)
 	target.CurrentPeriodStart = toTimePtr(startTS)
 	target.CurrentPeriodEnd = toTime(endTS)
-	target.CancelAtPeriodEnd = stripeSub.CancelAtPeriodEnd
-	target.CanceledAt = toTimePtr(stripeSub.CanceledAt)
+	target.CancelAtPeriodEnd = squareSub.CancelAtPeriodEnd
+	target.CanceledAt = toTimePtr(squareSub.CanceledAt)
 	target.Metadata = metadata
 	return nil
 }
 
-// StoreIDFromMetadata extracts the store ID that was attached to Stripe metadata.
+// StoreIDFromMetadata extracts the store ID that was attached to Square metadata.
 func StoreIDFromMetadata(metadata map[string]string) (uuid.UUID, error) {
 	if metadata == nil {
 		return uuid.Nil, pkgerrors.New(pkgerrors.CodeValidation, "subscription metadata is required")
@@ -142,10 +143,31 @@ func toTimePtr(ts int64) *time.Time {
 	return &t
 }
 
-func periodFromSubscription(sub *stripe.Subscription) (int64, int64) {
-	if sub == nil || sub.Items == nil || len(sub.Items.Data) == 0 {
+func periodFromSubscription(sub *SquareSubscription) (int64, int64) {
+	if sub == nil {
 		return 0, 0
 	}
-	item := sub.Items.Data[0]
-	return item.CurrentPeriodStart, item.CurrentPeriodEnd
+	if sub.StartDate != 0 && sub.ChargedThroughDate != 0 {
+		return sub.StartDate, sub.ChargedThroughDate
+	}
+	if sub.Items != nil && len(sub.Items.Data) > 0 {
+		item := sub.Items.Data[0]
+		return item.CurrentPeriodStart, item.CurrentPeriodEnd
+	}
+	return 0, 0
+}
+
+func mapSquareStatus(raw string) (enums.SubscriptionStatus, error) {
+	switch strings.ToUpper(strings.TrimSpace(raw)) {
+	case "ACTIVE":
+		return enums.SubscriptionStatusActive, nil
+	case "PENDING":
+		return enums.SubscriptionStatusTrialing, nil
+	case "CANCELED", "DEACTIVATED", "PAUSED", "COMPLETED":
+		return enums.SubscriptionStatusCanceled, nil
+	case "PAST_DUE", "PAST-DUE", "PASTDUE":
+		return enums.SubscriptionStatusPastDue, nil
+	default:
+		return "", fmt.Errorf("unknown square subscription status %q", raw)
+	}
 }

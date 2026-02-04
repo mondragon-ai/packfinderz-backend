@@ -2,7 +2,7 @@ package enums
 
 import "fmt"
 
-// SubscriptionStatus mirrors Stripe's subscription state.
+// SubscriptionStatus mirrors the billing provider's subscription state.
 type SubscriptionStatus string
 
 const (

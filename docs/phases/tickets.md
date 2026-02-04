@@ -300,7 +300,7 @@
 * **Phase 8 — Attachment Wiring for Core Domains**
   **Goal:** Make attachments usable across MVP surfaces and keep delete semantics correct.
 
-  * [ ] Ticket [PF-251]: Wire license ↔ media attachments
+  * [x] Ticket [PF-251]: Wire license ↔ media attachments
   * [ ] Ticket [PF-252]: Wire product ↔ media attachments (gallery + COA)
   * [ ] Ticket [PF-253]: Wire store ↔ media attachments (logo/banner)
   * [ ] Ticket [PF-254]: Wire user ↔ media attachments (avatar)
@@ -325,61 +325,109 @@
 
 > Subscription Plan Catalog (Multi-Plan, Config-Driven) Support 2 monthly + 2 annual plans (annual = monthly-equivalent with % discount), and make plan changes safe without code rewrites.
 
-  * [ ] Ticket [PF-XXX]: Define canonical “plan catalog” shape (PlanID, name, interval, price_cents, discount_percent, stripe_price_id, is_active, sort_order)
-  * [ ] Ticket [PF-XXX]: Implement config loader for plan catalog (env/JSON) with schema validation + startup fail-fast on invalid config
-  * [ ] Ticket [PF-XXX]: Add persistence strategy for plan catalog (decision + wiring): **config-only** vs **DB-backed mirror** (pick one and implement)
-  * [ ] Ticket [PF-XXX]: Add `subscriptions.plan_id` (and/or `stripe_price_id`) and store the chosen plan at purchase time
-  * [ ] Ticket [PF-XXX]: Implement plan resolution helper (given plan_id → returns Stripe price id + normalized billing interval metadata)
+  * [ ] Ticket [PF-XXX]: Define canonical `billing_plan` shape (
+    ```ts
+    export type BillingInterval = "EVERY_30_DAYS" | "ANNUAL";
+    export type BillingCurrencyCode = "USD" | "BRL" | "EUR" | "GBP" | string;
+
+    export type PlanStatus = "active" | "deprecated" | "hidden";
+
+    export interface Money {
+      amount: string; // decimal as string to avoid float bugs ("9.99")
+      currencyCode: BillingCurrencyCode;
+    }
+
+    export interface Trial {
+      days: number; // 0 means no trial
+      requirePaymentMethod?: boolean; // some apps still want card on file even during trial
+      startOnActivation?: boolean; // usually true
+    }
+
+    export interface SubscriptionComponent {
+      interval: BillingInterval;
+      price: Money;
+      // Optional: metadata for UI / feature gating
+      features?: string[];
+    }
+
+    export interface BillingPlan {
+      id: string; // internal stable plan id, e.g. "starter_v1"
+      name: string; // merchant-facing
+      status: PlanStatus;
+
+      // Common toggles
+      test?: boolean; // Shopify test charges in dev stores
+      trial?: Trial;
+
+      // Components
+      subscription?: SubscriptionComponent;
+
+      // Plan selection / migration controls
+      isDefault?: boolean;
+      createdAt?: string; // ISO
+      updatedAt?: string; // ISO
+
+      // Used by embed/config UI
+      ui?: {
+        badge?: "popular" | "best_value" | "new";
+        description?: string;
+        bullets?: string[];
+      };
+    }
+    ```
+  ) + Goose migration and gorm model
+  * [ ] Ticket [PF-XXX]: Implement repo, helpers, mapping to fetch plans (via vendor), add plans (via admin). 
+  * [ ] Ticket [PF-XXX]: Add `subscriptions.plan_id` (and/or `price_id`) and store the chosen plan at purchase time
+  * [ ] Ticket [PF-XXX]: Implement plan resolution helper (given plan_id → returns Square price id + normalized billing interval metadata)
   * [ ] Ticket [PF-XXX]: Add endpoint to list available subscription plans (`GET /api/v1/subscriptions/plans`) store-scoped and filtered by `is_active`
+  * [ ] Ticket [PF-XXX]: Add endpoint to create a plan available subscription plan (`POST /api/v1/admin/subscriptions/plans`) & an other endpoint to delete a plan given a plan ID
 
 > Subscription API & Service Refactor (Plan-Aware) Make create/cancel/get subscription endpoints handle any number of plans without special-casing.
 
-  * [ ] Ticket [PF-XXX]: Update subscription create DTO to accept `plan_id` only (remove Stripe IDs from request contract)
-  * [ ] Ticket [PF-XXX]: Update subscription service to resolve plan via catalog and pass only server-resolved Stripe identifiers to Stripe client
-  * [ ] Ticket [PF-XXX]: Implement subscription “change plan” behavior decision (MVP: disallow vs allow). If allow: add endpoint + service flow.
+  * [ ] Ticket [PF-XXX]: Update subscription service to resolve plan via catalog and pass only server-resolved Square identifiers to Square client
   * [ ] Ticket [PF-XXX]: Update subscription repo queries/indexes to support plan_id + store_id lookup patterns cleanly
-  * [ ] Ticket [PF-XXX]: Add migration/index to enforce “one active subscription per store” (or explicitly allow multiple if intended; pick and enforce)
+  * [ ] Ticket [PF-XXX]: Add migration/index to enforce “one active subscription per store”
 
-> Payment Method Sourcing (DB-First, No Client Pass-Through) Pull payment method from DB using `activeStoreId`; never accept StripeCustomerID / StripePaymentMethodID from request.
+> Payment Method Sourcing (DB-First, No Client Pass-Through) Pull payment method from DB using `activeStoreId`; never accept SquareCustomerID / SquarePaymentMethodID from request.
 
   * [ ] Ticket [PF-XXX]: Update `payment_methods` table usage to support “default payment method on file” per store (fields + index if missing)
-  * [ ] Ticket [PF-XXX]: Implement repo helper: fetch StripeCustomerID + default StripePaymentMethodID by `store_id` (active store)
+  * [ ] Ticket [PF-XXX]: Implement repo helper: fetch SquareCustomerID + default SquarePaymentMethodID by `store_id` (active store)
   * [ ] Ticket [PF-XXX]: Remove these fields from create-subscription request handling:
 
-  * `payload.StripeCustomerID`
-  * `payload.StripePaymentMethodID`
+  * `payload.SquareCustomerID`
+  * `payload.SquarePaymentMethodID`
   * [ ] Ticket [PF-XXX]: Update subscription create flow to:
 
   * load store billing identity (customer id)
   * load default payment method id
   * fail with typed error if missing/invalid
-  * [ ] Ticket [PF-XXX]: Add endpoint to “set default payment method” (if not already present) using existing Stripe customer/payment method objects
+  * [ ] Ticket [PF-XXX]: Add endpoint to “set default payment method” (if not already present) using existing Square customer/payment method objects
 
-> Edge Cases & Failure Modes (PM Missing/Invalid/Expired) Robust behavior when billing data is missing, stale, or rejected by Stripe.
+> Edge Cases & Failure Modes (PM Missing/Invalid/Expired) Robust behavior when billing data is missing, stale, or rejected by Square.
 
-  * [ ] Ticket [PF-XXX]: Define error taxonomy for billing failures (no PM on file, invalid PM, customer missing, Stripe hard decline, Stripe transient)
+  * [ ] Ticket [PF-XXX]: Define error taxonomy for billing failures (no PM on file, invalid PM, customer missing, Square hard decline, Square transient)
   * [ ] Ticket [PF-XXX]: Implement “no default PM on file” handling (clear response + next-step messaging)
-  * [ ] Ticket [PF-XXX]: Implement “payment method invalid” handling (detect via Stripe error codes; mark PM as invalid in DB if appropriate)
-  * [ ] Ticket [PF-XXX]: Add retry-safe idempotency behavior for create subscription when Stripe returns ambiguous/transient errors
-  * [ ] Ticket [PF-XXX]: Add webhook-driven reconciliation rule: if Stripe says payment method detached/expired → update local payment_methods state
+  * [ ] Ticket [PF-XXX]: Implement “payment method invalid” handling (detect via Square error codes; mark PM as invalid in DB if appropriate)
+  * [ ] Ticket [PF-XXX]: Add retry-safe idempotency behavior for create subscription when Square returns ambiguous/transient errors
+  * [ ] Ticket [PF-XXX]: Add webhook-driven reconciliation rule: if Square says payment method detached/expired → update local payment_methods state
 
-> Webhooks & State Sync Hardening (Plans + Billing Identity) Ensure `stores.subscription_active` and subscription rows remain correct across plan changes, cancellations, and Stripe-side updates.
+> Webhooks & State Sync Hardening (Plans + Billing Identity) Ensure `stores.subscription_active` and subscription rows remain correct across plan changes, cancellations, and Square-side updates.
 
-  * [ ] Ticket [PF-XXX]: Extend webhook consumer mapping to persist: plan_id/stripe_price_id, interval, current_period_end, cancel_at_period_end, status
-  * [ ] Ticket [PF-XXX]: Implement “catalog mismatch” guard: webhook arrives with unknown stripe_price_id → log + DLQ (don’t silently corrupt state)
-  * [ ] Ticket [PF-XXX]: Add reconciliation job: periodically re-fetch subscription from Stripe for “recently failing/updated” records (minimal MVP cadence)
+  * [ ] Ticket [PF-XXX]: Extend webhook consumer mapping to persist: plan_id/Square_price_id, interval, current_period_end, cancel_at_period_end, status
+  * [ ] Ticket [PF-XXX]: Implement “catalog mismatch” guard: webhook arrives with unknown Square_price_id → log + DLQ (don’t silently corrupt state)
+  * [ ] Ticket [PF-XXX]: Add reconciliation job: periodically re-fetch subscription from Square for “recently failing/updated” records (minimal MVP cadence)
 
 > Tests & Integration Coverage (Billing Contracts Locked) Prevent regressions while you add plan variants and DB-sourced payment methods.
 
   * [ ] Ticket [PF-XXX]: Unit tests: plan catalog parsing/validation (missing fields, duplicate ids, invalid discounts)
-  * [ ] Ticket [PF-XXX]: Unit tests: plan resolution helper (plan_id → stripe price id; annual discount logic invariants)
-  * [ ] Ticket [PF-XXX]: Unit tests: subscription create service uses DB PM and rejects request-supplied Stripe IDs
+  * [ ] Ticket [PF-XXX]: Unit tests: plan resolution helper (plan_id → Square price id; annual discount logic invariants)
+  * [ ] Ticket [PF-XXX]: Unit tests: subscription create service uses DB PM and rejects request-supplied Square IDs
   * [ ] Ticket [PF-XXX]: Unit tests: edge cases (no PM, invalid PM, customer missing)
   * [ ] Ticket [PF-XXX]: Integration script: create store → attach payment method → create monthly → cancel → create annual (happy path)
 
 > Ops Guardrails (Minimum Viable) Make billing debuggable in production without “SSH and pray”.
 
-  * [ ] Ticket [PF-XXX]: Add structured logs for billing actions (store_id, subscription_id, plan_id, stripe ids redacted, idempotency key)
+  * [ ] Ticket [PF-XXX]: Add structured logs for billing actions (store_id, subscription_id, plan_id, Square ids redacted, idempotency key)
   * [ ] Ticket [PF-XXX]: Add metrics counters for billing outcomes (created/canceled/failed + reason buckets)
   * [ ] Ticket [PF-XXX]: Add admin-only endpoint to view store billing identity summary (customer exists, default PM exists, last charge outcome)
 

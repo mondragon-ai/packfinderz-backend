@@ -25,7 +25,7 @@ Central config via `envconfig`.
 * App, Service, DB, Redis, JWT, FeatureFlags
 * OpenAI, GoogleMaps
 * GCP, GCS, Media
-* Pub/Sub, Stripe, Sendgrid, Outbox
+* Pub/Sub, Square, Sendgrid, Outbox
 
 **FeatureFlags**
 
@@ -37,13 +37,12 @@ Central config via `envconfig`.
 
   * Synthesizes legacy vars → `PACKFINDERZ_DB_DSN` if missing.
 
-**StripeConfig**
+**SquareConfig**
 
-* Loads `PACKFINDERZ_STRIPE_API_KEY`, `PACKFINDERZ_STRIPE_SECRET`, and `PACKFINDERZ_STRIPE_ENV` (default `test`).
-* `cfg.Environment()` normalizes to `test|live`, and `pkg/stripe.NewClient` enforces the matching `sk_*`/`rk_*` prefix so misconfigured keys fail fast.
-* The signing secret stays available for webhook verification while the API key bootstraps the Stripe client used by both the API and worker binaries.
-* `internal/webhooks/stripe.Service` consumes `/api/v1/webhooks/stripe`, verifies the `Stripe-Signature` header, deduplicates deliveries via a Redis guard (key pattern `pf:idempotency:stripe-webhook:<event_id>` with TTL `PACKFINDERZ_EVENTING_IDEMPOTENCY_TTL`), and mirrors `customer.subscription.*`/`invoice.paid|invoice.payment_failed` events into `subscriptions.status` plus `stores.subscription_active`.
-* `cmd/api/main.go` and `cmd/worker/main.go` both call `pkg/stripe.NewClient` during startup and exit immediately when the client returns an error, ensuring missing or invalid Stripe keys block API/worker bootstrapping (`cmd/api/main.go:55-65`; `cmd/worker/main.go:51-70`).
+* Loads `PACKFINDERZ_SQUARE_ACCESS_TOKEN`, `PACKFINDERZ_SQUARE_WEBHOOK_SECRET`, and `PACKFINDERZ_SQUARE_ENV` (default `sandbox`).
+* `cfg.Environment()` normalizes to `sandbox|production`, and `pkg/square.NewClient` validates the tokens and keeps the signing secret handy for webhook verification.
+* `internal/webhooks/square.Service` consumes `/api/v1/webhooks/square`, verifies the `Square-Signature` header, deduplicates deliveries via a Redis guard (key pattern `pf:idempotency:square-webhook:<event_id>` with TTL `PACKFINDERZ_EVENTING_IDEMPOTENCY_TTL`), and mirrors subscription/invoice events into `subscriptions.status` plus `stores.subscription_active`.
+* `cmd/api/main.go` and `cmd/worker/main.go` both call `pkg/square.NewClient` during startup and exit immediately when the client returns an error, ensuring missing or invalid Square credentials block API/worker bootstrapping (`cmd/api/main.go:55-65`; `cmd/worker/main.go:51-70`).
 
 ---
 
@@ -605,6 +604,7 @@ All enums implement:
 * `DELETE /api/v1/media/{mediaId}` enforces the same lifecycle by loading `media_attachments`, rejecting the request whenever any `entity_type` is in `ProtectedAttachmentEntities` (`license`/`ad`), and only emitting the downstream delete event after the guard clears so protected assets never lose their attachments before a worker detaches the remaining references.
 * `service` enforces vendor store type, allowed user roles, `reserved_qty <= available_qty`, unique `min_qty` per discount, and that each requested media belongs to the store with `kind=product`; product, inventory, discounts, and product media are saved inside a single transaction before `NewProductDTO` returns the created record with the preloaded vendor summary (internal/products/service.go:63-204).
 * `product_media` rows now carry an optional `media_id` (FK to `media(id)`) so the cleanup flows in `internal/media/consumer.DeletionConsumer` and the attachment reconciler can include product rows when detaching media in the same order they were stored.
+* Product creation/update accept a `COAMediaID` plus gallery `MediaIDs` and now call `internal/media.AttachmentReconciler` inside the same transaction for `entity_type='product_gallery'` and `entity_type='product_coa'`, keeping `media_attachments` aligned with whichever gallery/COA IDs the product currently exposes.
 * `media.gcs_key` is now canonical (`{store_id}/{media_kind}/{media_id}.{extension}` with the extension when provided) so services that sign or delete objects can derive the bucket path without relying on uploader-supplied filenames.
 * `service.DeleteProduct` reuses the same ownership + role guards, fetches the product to ensure it belongs to the active vendor, then deletes the row so FK cascades remove inventory, discounts, and media attachments while the route returns `204` (internal/products/service.go:317-338).
 * `service.UpdateProduct` applies the optional changes via `applyUpdateToProduct`, synchronously replaces inventory rows, volume discounts, and media attachments (via `buildProductMediaRows`), defends against duplicate discounts/media IDs, enforces that each media belongs to the active store with `kind=product`, revalidates ownership/roles, and returns the updated `ProductDTO` so the PATCH endpoint surfaces the same canonical payload as creation (internal/products/service.go:226-355).
@@ -717,11 +717,11 @@ Redis-backed refresh sessions.
 ### `internal/billing`
 
 * `Repository` lives next to `pkg/db/models` (`subscription.go`, `payment_method.go`, `charge.go`, `usage_charge.go`) and exposes scoped CRUD helpers for `subscriptions`, `payment_methods`, `charges`, and `usage_charges`. Every call filters by `store_id`, orders by `created_at DESC`, and returns `nil` when no subscription exists so downstream services can gate features by ownership.
-* `Service` composes the repository, guards against `nil` dependencies, and exposes methods like `CreateSubscription`, `ListCharges`, and `CreateUsageCharge`, letting controllers/consumers record Stripe state without replaying SQL.
+* `Service` composes the repository, guards against `nil` dependencies, and exposes methods like `CreateSubscription`, `ListCharges`, and `CreateUsageCharge`, letting controllers/consumers record Square state without replaying SQL.
 * `Service.ListCharges` accepts store-scoped `limit`, `cursor`, `type`, and `status`, normalizes the cursor pagination via `pkg/pagination`, and returns the canonical `charges` rows plus the next cursor so vendor billing dashboards stay consistent.
-* `api/controllers/billing.VendorBillingCharges` enforces vendor context, parses those filters, and streams `charges[]` (amount, currency, type, status, description, billed_at, created_at) plus the encoded cursor so `/api/v1/vendor/billing/charges` mirrors Stripe/local history without hitting Stripe per request.
-* The new tables persist Stripe data per store: `subscriptions` carries the Stripe ID, status, period window timestamps, cancel metadata, and arbitrary metadata; `payment_methods` stores the Stripe payment method ID, `payment_method_type`, fingerprint, card brand/last4/expiry, billing details, and metadata; `charges` records amounts, currency, `charge_status`, optional description, `billed_at`, and nullable relations back to subscriptions/payment methods; `usage_charges` keeps metered quantities/amounts per subscription/charge with billing-period windows (pkg/db/models/subscription.go:12-41; pkg/db/models/payment_method.go:13-36; pkg/db/models/charge.go:13-38; pkg/db/models/usage_charge.go:12-36; pkg/migrate/migrations/20260201000000_create_billing_tables.sql:38-156).
-* Vendor subscription creation/cancellation is implemented in `api/controllers/subscriptions/vendor` and `internal/subscriptions.Service`, which drive Stripe + DB state in one transaction, gate `stores.subscription_active`, and uses the configured `PACKFINDERZ_STRIPE_SUBSCRIPTION_PRICE_ID` as the default plan.
+* `api/controllers/billing.VendorBillingCharges` enforces vendor context, parses those filters, and streams `charges[]` (amount, currency, type, status, description, billed_at, created_at) plus the encoded cursor so `/api/v1/vendor/billing/charges` mirrors Square/local history without hitting Square per request.
+* The new tables persist Square data per store: `subscriptions` carries the Square ID, status, period window timestamps, cancel metadata, and arbitrary metadata; `payment_methods` stores the Square payment method ID, `payment_method_type`, fingerprint, card brand/last4/expiry, billing details, and metadata; `charges` records amounts, currency, `charge_status`, optional description, `billed_at`, and nullable relations back to subscriptions/payment methods; `usage_charges` keeps metered quantities/amounts per subscription/charge with billing-period windows (pkg/db/models/subscription.go:12-41; pkg/db/models/payment_method.go:13-36; pkg/db/models/charge.go:13-38; pkg/db/models/usage_charge.go:12-36; pkg/migrate/migrations/20260201000000_create_billing_tables.sql:38-156).
+* Vendor subscription creation/cancellation is implemented in `api/controllers/subscriptions/vendor` and `internal/subscriptions.Service`, which drive Square + DB state in one transaction, gate `stores.subscription_active`, and uses the configured `PACKFINDERZ_SQUARE_SUBSCRIPTION_PLAN_ID` as the default plan.
 
 
 ## API

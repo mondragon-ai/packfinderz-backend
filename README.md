@@ -281,7 +281,7 @@ Re-running the migration is safe because the statements use `CREATE EXTENSION IF
 * Canonical analytics DTOs (envelope, marketplace/ad rows, query requests/responses) live under `internal/analytics/types` while event enums live in `pkg/enums/analytics_event_type.go`/`pkg/enums/ad_event_fact_type.go`.
 * Vendors and buyers can query KPIs/time-series via `GET /api/v1/vendor/analytics` (vendor-only route) or the new `GET /api/v1/analytics/marketplace` endpoint, both of which run parameterized BigQuery queries (presets 7d/30d/90d or custom `from`/`to`) against `marketplace_events` and return the canonical success envelope scoped to `activeStoreId`.
 * Analytics ingestion uses `cmd/analytics-worker` powered by `PACKFINDERZ_PUBSUB_ANALYTICS_TOPIC`/`PACKFINDERZ_PUBSUB_ANALYTICS_SUBSCRIPTION`; the worker decodes the canonical analytics envelope and writes the `pf:evt:processed:analytics:<event_id>` guard via `PACKFINDERZ_EVENTING_IDEMPOTENCY_TTL`.
-* Vendor subscription lifecycle is handled through `POST /api/v1/vendor/subscriptions` (create, idempotent), `POST /api/v1/vendor/subscriptions/cancel` (idempotent), and `GET /api/v1/vendor/subscriptions` (fetch the single active subscription or `null`). The POSTs require an `Idempotency-Key` and Stripe customer/payment method IDs; the API mirrors Stripe state into the local `subscriptions` table and flips `stores.subscription_active`.
+* Vendor subscription lifecycle is handled through `POST /api/v1/vendor/subscriptions` (create, idempotent), `POST /api/v1/vendor/subscriptions/cancel` (idempotent), and `GET /api/v1/vendor/subscriptions` (fetch the single active subscription or `null`). The POSTs require an `Idempotency-Key` and Square customer/payment method IDs; the API mirrors Square state into the local `subscriptions` table and flips `stores.subscription_active`.
 
 ---
 
@@ -295,13 +295,14 @@ Re-running the migration is safe because the statements use `CREATE EXTENSION IF
 * Inventory (`inventory_items` tracks available/reserved counts per product), orders
 * Cart staging tables (`cart_records`, `cart_items`, `cart_vendor_groups`) persist the authoritative quote (cart totals, vendor aggregates, item warnings) at checkout confirmation (status `active|converted`) before creating checkout groups
 * Checkout tables (`vendor_orders`, `order_line_items`, `payment_intents`) capture the per-vendor order state, line items, and payment intent before checkout execution hands off to fulfillment while `checkout_group_id` remains the shared anchor stored on carts/orders.
-* Payments, ledger events, and Stripe billing tables (`subscriptions`, `payment_methods`, `charges`, `usage_charges`)
+* Payments, ledger events, and Square billing tables (`subscriptions`, `payment_methods`, `charges`, `usage_charges`)
 * Ads, subscriptions
 * Outbox events
 * Audit logs
 * Google Cloud Storage (pkg/storage/gcs) verified via `/health/ready`
 * Media metadata (`media` + `media_attachments`, which tie `entity_type`/`entity_id` to `store_id` and cache `gcs_key` so usage lookups stay tenant-scoped)
   * License uploads now persist a `media_attachments` row (`entity_type='license'`) so the referenced `media_kind=license_doc` asset stays protected while the license exists.
+  * Product gallery media plus the single COA reference (`products.coa_media_id`) now call the canonical `internal/media.AttachmentReconciler` during create/update transactions (`entity_type='product_gallery'` / `product_coa`) so their attachments mirror the latest media IDs without cross-store leaks.
   * Attachment reconciliation happens through `internal/media.NewAttachmentReconciler`, which diffs usages inside a transaction and follows the lifecycle rules described in `docs/media_attachments_lifecycle.md`.
   * Lifecycle rules (protected attachments, deletion preconditions, and cleanup ordering) are detailed in `docs/media_attachments_lifecycle.md`.
   * `DELETE /api/v1/media/{mediaId}` loads `media_attachments`, rejects the request whenever a `license` or `ad` attachment exists, and deletes the GCS object once the guard passes so the delete-media worker sees the corresponding `OBJECT_DELETE` event.
@@ -418,7 +419,7 @@ The GitHub Actions workflow (`.github/workflows/ci.yml`) runs gofmt, `golangci-l
 
 ### Vendor Billing History
 
-* `GET /api/v1/vendor/billing/charges` – vendor-only endpoint that streams the local `charges` rows in cursor order. Requires the vendor store context, accepts optional `limit` (positive integer, default 25, max 100), `cursor` (`created_at|id` base64 token), `type` (`subscription`|`ad_spend`|`other`), and `status` (`pending`|`succeeded`|`failed`|`refunded`) filters, and returns `charges[]` plus a `cursor` for the next page. Each charge exposes `id`, `amount_cents`, `currency`, `type`, `status`, `description`, `created_at`, and `billed_at`, so the UI mirrors Stripe/local history without calling Stripe per request.
+* `GET /api/v1/vendor/billing/charges` – vendor-only endpoint that streams the local `charges` rows in cursor order. Requires the vendor store context, accepts optional `limit` (positive integer, default 25, max 100), `cursor` (`created_at|id` base64 token), `type` (`subscription`|`ad_spend`|`other`), and `status` (`pending`|`succeeded`|`failed`|`refunded`) filters, and returns `charges[]` plus a `cursor` for the next page. Each charge exposes `id`, `amount_cents`, `currency`, `type`, `status`, `description`, `created_at`, and `billed_at`, so the UI mirrors provider/local history without calling the billing provider per request.
 
 ### Health
 
@@ -529,9 +530,9 @@ These endpoints rely on `activeStoreId` and enforce owner/manager access for mut
 * Signed READ URLs for `uploaded`/`ready` media are generated via the media service helper and expire according to `PACKFINDERZ_GCS_DOWNLOAD_URL_EXPIRY`.
 * `DELETE /api/v1/media/{mediaId}` – removes media whose status is `uploaded`/`ready`, deletes the GCS object (ignores missing objects), and marks the row as `deleted`; rejects mismatched stores or invalid states with `403`/`409`.
 
-### Stripe Webhooks
+### Square Webhooks
 
-* `POST /api/v1/webhooks/stripe` – consumes `customer.subscription.created/updated/deleted` and `invoice.paid/payment_failed` events from Stripe. The handler verifies the `Stripe-Signature` header using `PACKFINDERZ_STRIPE_SECRET`, deduplicates deliveries via a Redis guard keyed by `event.id` (TTL=`PACKFINDERZ_EVENTING_IDEMPOTENCY_TTL`), and keeps `subscriptions.status` plus `stores.subscription_active` aligned with Stripe truth.
+* `POST /api/v1/webhooks/square` – consumes Square `subscription.*` and `invoice.*` events. The handler verifies the `Square-Signature` header using `PACKFINDERZ_SQUARE_WEBHOOK_SECRET`, deduplicates deliveries via a Redis guard keyed by `event.id` (TTL=`PACKFINDERZ_EVENTING_IDEMPOTENCY_TTL`), and keeps `subscriptions.status` plus `stores.subscription_active` aligned with Square truth.
 
 ### Error Contract
 
@@ -575,12 +576,12 @@ PACKFINDERZ_EVENTING_IDEMPOTENCY_TTL=720h
 
 * `PACKFINDERZ_FEATURE_ALLOW_ACH` (default `false`) controls whether checkout accepts `payment_method=ach`. When enabled, each vendor order seeds its `payment_intents` row with `method=ach` and `status=pending` so downstream ACH pipelines see the intended transaction; when disabled, ACH requests return a validation error and buyers must use `cash`. Payment intents still honor `amount_cents = vendor_orders.total_cents`, and future ACH work can move `payment_status` into the new `failed`/`rejected` values when transactions are declined.
 
-### Stripe
+### Square
 
-* `PACKFINDERZ_STRIPE_API_KEY` (required) – the Stripe secret key (`sk_*`/`rk_*`) for the current environment.
-* `PACKFINDERZ_STRIPE_SECRET` (required) – the webhook signing secret used for event verification.
-* `PACKFINDERZ_STRIPE_ENV` (default `test`) – switches between the test and live Stripe environments; using `test` requires a `sk_test`/`rk_test` key and `live` requires `sk_live`/`rk_live`. The API and worker binaries fail fast when keys are missing or contain the wrong prefix so misconfigured envs surface immediately.
-* `PACKFINDERZ_STRIPE_SUBSCRIPTION_PRICE_ID` (required) – the Stripe price ID used when creating vendor subscriptions.
+* `PACKFINDERZ_SQUARE_ACCESS_TOKEN` (required) – the Square access token used for API calls.
+* `PACKFINDERZ_SQUARE_WEBHOOK_SECRET` (required) – the webhook signing secret used to verify Square events.
+* `PACKFINDERZ_SQUARE_ENV` (default `sandbox`) – selects between sandbox/production Square hosts and enforces the matching token conventions. The API and worker boot fail fast when tokens are missing or invalid so misconfigured environments surface immediately.
+* `PACKFINDERZ_SQUARE_SUBSCRIPTION_PLAN_ID` (required) – the Square plan variation ID used when creating vendor subscriptions.
 
 ### Outbox Publisher Tuning
 

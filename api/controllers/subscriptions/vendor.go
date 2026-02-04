@@ -16,14 +16,14 @@ import (
 )
 
 type vendorSubscriptionCreateRequest struct {
-	StripeCustomerID      string `json:"stripe_customer_id" validate:"required"`
-	StripePaymentMethodID string `json:"stripe_payment_method_id" validate:"required"`
+	SquareCustomerID      string `json:"square_customer_id" validate:"required"`
+	SquarePaymentMethodID string `json:"square_payment_method_id" validate:"required"`
 	PriceID               string `json:"price_id,omitempty"`
 }
 
 type vendorSubscriptionResponse struct {
 	ID                   uuid.UUID  `json:"id"`
-	StripeSubscriptionID string     `json:"stripe_subscription_id"`
+	SquareSubscriptionID string     `json:"square_subscription_id"`
 	Status               string     `json:"status"`
 	PriceID              *string    `json:"price_id,omitempty"`
 	CurrentPeriodStart   *time.Time `json:"current_period_start,omitempty"`
@@ -52,8 +52,8 @@ func VendorSubscriptionCreate(svc subsvc.Service, logg *logger.Logger) http.Hand
 		}
 
 		sub, created, err := svc.Create(r.Context(), storeID, subsvc.CreateSubscriptionInput{
-			StripeCustomerID:      payload.StripeCustomerID,
-			StripePaymentMethodID: payload.StripePaymentMethodID,
+			SquareCustomerID:      payload.SquareCustomerID,
+			SquarePaymentMethodID: payload.SquarePaymentMethodID,
 			PriceID:               payload.PriceID,
 		})
 		if err != nil {
@@ -125,7 +125,7 @@ func newVendorSubscriptionResponse(sub *models.Subscription) *vendorSubscription
 	}
 	return &vendorSubscriptionResponse{
 		ID:                   sub.ID,
-		StripeSubscriptionID: sub.StripeSubscriptionID,
+		SquareSubscriptionID: sub.SquareSubscriptionID,
 		Status:               string(sub.Status),
 		PriceID:              sub.PriceID,
 		CurrentPeriodStart:   sub.CurrentPeriodStart,

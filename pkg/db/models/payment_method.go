@@ -9,11 +9,11 @@ import (
 	"github.com/angelmondragon/packfinderz-backend/pkg/enums"
 )
 
-// PaymentMethod mirrors Stripe payment methods per store.
+// PaymentMethod mirrors Square payment methods per store.
 type PaymentMethod struct {
 	ID                    uuid.UUID               `gorm:"type:uuid;default:gen_random_uuid();primaryKey"`
 	StoreID               uuid.UUID               `gorm:"column:store_id;type:uuid;not null;index"`
-	StripePaymentMethodID string                  `gorm:"column:stripe_payment_method_id;not null;unique"`
+	SquarePaymentMethodID string                  `gorm:"column:square_payment_method_id;not null;unique"`
 	Type                  enums.PaymentMethodType `gorm:"column:type;type:payment_method_type;not null;default:'card'"`
 	Fingerprint           *string                 `gorm:"column:fingerprint"`
 	CardBrand             *string                 `gorm:"column:card_brand"`

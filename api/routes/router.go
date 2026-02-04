@@ -26,15 +26,15 @@ import (
 	products "github.com/angelmondragon/packfinderz-backend/internal/products"
 	"github.com/angelmondragon/packfinderz-backend/internal/stores"
 	subscriptionsvc "github.com/angelmondragon/packfinderz-backend/internal/subscriptions"
-	stripewebhook "github.com/angelmondragon/packfinderz-backend/internal/webhooks/stripe"
+	squarewebhook "github.com/angelmondragon/packfinderz-backend/internal/webhooks/square"
 	"github.com/angelmondragon/packfinderz-backend/pkg/auth/session"
 	"github.com/angelmondragon/packfinderz-backend/pkg/bigquery"
 	"github.com/angelmondragon/packfinderz-backend/pkg/config"
 	"github.com/angelmondragon/packfinderz-backend/pkg/db"
 	"github.com/angelmondragon/packfinderz-backend/pkg/logger"
 	"github.com/angelmondragon/packfinderz-backend/pkg/redis"
-	"github.com/angelmondragon/packfinderz-backend/pkg/storage/gcs"
-	"github.com/angelmondragon/packfinderz-backend/pkg/stripe"
+	"github.com/angelmondragon/packfinderz-backend/pkg/square"
+	gcs "github.com/angelmondragon/packfinderz-backend/pkg/storage/gcs"
 )
 
 type sessionManager interface {
@@ -68,14 +68,14 @@ func NewRouter(
 	ordersSvc orders.Service,
 	subscriptionsService subscriptionsvc.Service,
 	billingService billingcontrollers.ChargesService,
-	stripeClient *stripe.Client,
-	stripeWebhookService *stripewebhook.Service,
-	stripeWebhookGuard *stripewebhook.IdempotencyGuard,
+	squareClient *square.Client,
+	squareWebhookService *squarewebhook.Service,
+	squareWebhookGuard *squarewebhook.IdempotencyGuard,
 ) http.Handler {
 	r := chi.NewRouter()
-	// if stripeClient != nil && logg != nil {
-	// 	ctx := logg.WithField(context.Background(), "stripe_env", stripeClient.Environment())
-	// 	logg.Info(ctx, "stripe client wired to API routes")
+	// if squareClient != nil && logg != nil {
+	// 	ctx := logg.WithField(context.Background(), "square_env", squareClient.Environment())
+	// 	logg.Info(ctx, "square client wired to API routes")
 	// }
 	r.Use(
 		middleware.Recoverer(logg),
@@ -107,7 +107,7 @@ func NewRouter(
 	})
 
 	r.Route("/api/v1/webhooks", func(r chi.Router) {
-		r.Post("/stripe", webhookcontrollers.StripeWebhook(stripeWebhookService, stripeClient, stripeWebhookGuard, logg))
+		r.Post("/square", webhookcontrollers.SquareWebhook(squareWebhookService, squareClient, squareWebhookGuard, logg))
 	})
 
 	r.Route("/api/v1/auth", func(r chi.Router) {
