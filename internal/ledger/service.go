@@ -13,6 +13,7 @@ import (
 // Service defines operations that record ledger events.
 type Service interface {
 	RecordEvent(ctx context.Context, input RecordLedgerEventInput) (*models.LedgerEvent, error)
+	HasEvent(ctx context.Context, orderID uuid.UUID, eventType enums.LedgerEventType) (bool, error)
 }
 
 type service struct {
@@ -69,4 +70,24 @@ func (s *service) RecordEvent(ctx context.Context, input RecordLedgerEventInput)
 		return nil, err
 	}
 	return event, nil
+}
+
+func (s *service) HasEvent(ctx context.Context, orderID uuid.UUID, eventType enums.LedgerEventType) (bool, error) {
+	if orderID == uuid.Nil {
+		return false, fmt.Errorf("order id is required")
+	}
+	if !eventType.IsValid() {
+		return false, fmt.Errorf("invalid ledger event type %q", eventType)
+	}
+
+	events, err := s.repo.ListByOrderID(ctx, orderID)
+	if err != nil {
+		return false, err
+	}
+	for _, event := range events {
+		if event.Type == eventType {
+			return true, nil
+		}
+	}
+	return false, nil
 }

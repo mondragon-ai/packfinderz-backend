@@ -183,6 +183,10 @@ func (s *stubControllerOrdersService) AgentDeliver(ctx context.Context, input in
 	return nil
 }
 
+func (s *stubControllerOrdersService) AgentCashCollected(ctx context.Context, input internalorders.AgentCashCollectedInput) error {
+	return nil
+}
+
 func (s *stubControllerOrdersService) ConfirmPayout(ctx context.Context, input internalorders.ConfirmPayoutInput) error {
 	if s.confirmPayout != nil {
 		return s.confirmPayout(ctx, input)

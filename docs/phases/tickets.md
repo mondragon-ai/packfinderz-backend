@@ -289,7 +289,7 @@
 
   * [ ] Ticket [PF-243]: Transition fulfilled orders into hold/ready-for-dispatch semantics when all items in the order are no longer pending & then Emit outbox event `order_ready_for_dispatch` on fulfillment for admin and agents (one dispatch for both)
 
-  * [ ] Ticket [PF-244]: Implement agent cash-collected endpoint (`POST /api/v1/agent/orders/{orderId}/cash-collected`) & Append `ledger_events(cash_collected)` during cash-collected flow
+  * [x] Ticket [PF-244]: Implement agent cash-collected endpoint (`POST /api/v1/agent/orders/{orderId}/cash-collected`) & Append `ledger_events(cash_collected)` during cash-collected flow
   * [ ] Ticket [PF-245]: Set `payment_intents.status=settled` + `cash_collected_at` & Emit outbox event `cash_collected` & update the order states too.
   * [ ] Ticket [PF-246]: Reject cash collection when order is not dispatch-ready & create endpoint (`POST /agent/orders/{orderId}/cash-collected`)
   * [ ] Ticket [PF-247]: Prevent duplicate cash collection on already settled or paid orders

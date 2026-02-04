@@ -42,6 +42,7 @@ type Service interface {
 	RetryOrder(ctx context.Context, input BuyerRetryInput) (*BuyerRetryResult, error)
 	AgentPickup(ctx context.Context, input AgentPickupInput) error
 	AgentDeliver(ctx context.Context, input AgentDeliverInput) error
+	AgentCashCollected(ctx context.Context, input AgentCashCollectedInput) error
 	ConfirmPayout(ctx context.Context, input ConfirmPayoutInput) error
 }
 
@@ -118,6 +119,11 @@ type AgentPickupInput struct {
 }
 
 type AgentDeliverInput struct {
+	OrderID     uuid.UUID
+	AgentUserID uuid.UUID
+}
+
+type AgentCashCollectedInput struct {
 	OrderID     uuid.UUID
 	AgentUserID uuid.UUID
 }
@@ -748,6 +754,62 @@ func (s *service) AgentDeliver(ctx context.Context, input AgentDeliverInput) err
 			if err := repo.UpdateOrderAssignment(ctx, detail.ActiveAssignment.ID, assignUpdates); err != nil {
 				return pkgerrors.Wrap(pkgerrors.CodeDependency, err, "update order assignment")
 			}
+		}
+
+		return nil
+	})
+}
+
+func (s *service) AgentCashCollected(ctx context.Context, input AgentCashCollectedInput) error {
+	if input.OrderID == uuid.Nil {
+		return pkgerrors.New(pkgerrors.CodeValidation, "order id required")
+	}
+	if input.AgentUserID == uuid.Nil {
+		return pkgerrors.New(pkgerrors.CodeUnauthorized, "agent identity missing")
+	}
+
+	return s.tx.WithTx(ctx, func(tx *gorm.DB) error {
+		repo := s.repo.WithTx(tx)
+		detail, err := repo.FindOrderDetail(ctx, input.OrderID)
+		if err != nil {
+			if err == gorm.ErrRecordNotFound {
+				return pkgerrors.New(pkgerrors.CodeNotFound, "order not found")
+			}
+			return pkgerrors.Wrap(pkgerrors.CodeDependency, err, "load order detail")
+		}
+		if detail == nil || detail.ActiveAssignment == nil || detail.Order == nil {
+			return pkgerrors.New(pkgerrors.CodeForbidden, "order not assigned to agent")
+		}
+		if detail.ActiveAssignment.AgentUserID != input.AgentUserID {
+			return pkgerrors.New(pkgerrors.CodeForbidden, "order not assigned to agent")
+		}
+		if detail.BuyerStore.ID == uuid.Nil || detail.VendorStore.ID == uuid.Nil {
+			return pkgerrors.New(pkgerrors.CodeDependency, "order stores missing")
+		}
+
+		has, err := s.ledger.HasEvent(ctx, input.OrderID, enums.LedgerEventTypeCashCollected)
+		if err != nil {
+			return pkgerrors.Wrap(pkgerrors.CodeDependency, err, "check ledger events")
+		}
+		if has {
+			return nil
+		}
+
+		amount := detail.Order.TotalCents
+		if detail.PaymentIntent != nil && detail.PaymentIntent.AmountCents > 0 {
+			amount = detail.PaymentIntent.AmountCents
+		}
+
+		ledgerInput := ledger.RecordLedgerEventInput{
+			OrderID:       input.OrderID,
+			BuyerStoreID:  detail.BuyerStore.ID,
+			VendorStoreID: detail.VendorStore.ID,
+			ActorUserID:   input.AgentUserID,
+			Type:          enums.LedgerEventTypeCashCollected,
+			AmountCents:   amount,
+		}
+		if _, err := s.ledger.RecordEvent(ctx, ledgerInput); err != nil {
+			return pkgerrors.Wrap(pkgerrors.CodeDependency, err, "append ledger event")
 		}
 
 		return nil
