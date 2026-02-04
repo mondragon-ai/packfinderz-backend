@@ -203,6 +203,7 @@ func NewRouter(
 				r.Get("/{orderId}", controllers.AgentAssignedOrderDetail(ordersRepo, logg))
 				r.Post("/{orderId}/pickup", controllers.AgentPickupOrder(ordersSvc, logg))
 				r.Post("/{orderId}/deliver", controllers.AgentDeliverOrder(ordersSvc, logg))
+				r.Post("/{orderId}/cash-collected", controllers.AgentCashCollectedOrder(ordersSvc, logg))
 			})
 		})
 	})

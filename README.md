@@ -46,6 +46,7 @@
 * Internal agent delivery with **cash-at-delivery**
 * Internal agents authenticate via `users.system_role='agent'`, receive JWTs with `role=agent`, and use `/api/v1/agent/orders` (list/detail) plus `/api/v1/agent/orders/queue` to manage assigned and unassigned pickups. They confirm handoffs (pickup/deliver) through `POST /api/v1/agent/orders/{orderId}/pickup` and `/api/v1/agent/orders/{orderId}/deliver`, which transition the vendor order through `in_transit` → `delivered` while recording the agent’s timestamps.
 * Agents confirm pickups with `POST /api/v1/agent/orders/{orderId}/pickup`, which marks the order as `in_transit` while recording the assignment’s `pickup_time` and rejecting invalid states.
+* After delivery they call `POST /api/v1/agent/orders/{orderId}/cash-collected` so the ledger records a single `cash_collected` event (idempotently) before the payment intent settles later in PF-245.
 * Append-only **ledger events**
 * Subscription-gated vendor visibility
 * Ads with **last-click attribution**

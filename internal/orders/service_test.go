@@ -219,6 +219,7 @@ func (s *stubOrdersRepo) UpdateOrderAssignment(ctx context.Context, assignmentID
 
 type stubLedgerService struct {
 	recordFn func(ctx context.Context, input ledger.RecordLedgerEventInput) (*models.LedgerEvent, error)
+	hasFn    func(ctx context.Context, orderID uuid.UUID, eventType enums.LedgerEventType) (bool, error)
 }
 
 func (s *stubLedgerService) RecordEvent(ctx context.Context, input ledger.RecordLedgerEventInput) (*models.LedgerEvent, error) {
@@ -228,12 +229,22 @@ func (s *stubLedgerService) RecordEvent(ctx context.Context, input ledger.Record
 	return &models.LedgerEvent{ID: uuid.New()}, nil
 }
 
-func newStubLedgerService(recordFn func(ctx context.Context, input ledger.RecordLedgerEventInput) (*models.LedgerEvent, error)) *stubLedgerService {
-	return &stubLedgerService{recordFn: recordFn}
+func (s *stubLedgerService) HasEvent(ctx context.Context, orderID uuid.UUID, eventType enums.LedgerEventType) (bool, error) {
+	if s.hasFn != nil {
+		return s.hasFn(ctx, orderID, eventType)
+	}
+	return false, nil
+}
+
+func newStubLedgerService(recordFn func(ctx context.Context, input ledger.RecordLedgerEventInput) (*models.LedgerEvent, error), hasFn func(ctx context.Context, orderID uuid.UUID, eventType enums.LedgerEventType) (bool, error)) *stubLedgerService {
+	return &stubLedgerService{
+		recordFn: recordFn,
+		hasFn:    hasFn,
+	}
 }
 
 func newTestOrdersService(repo Repository, tx txRunner, outbox outboxPublisher, inventory InventoryReleaser, reserver inventoryReserver) (Service, error) {
-	return NewService(repo, tx, outbox, inventory, reserver, newStubLedgerService(nil))
+	return NewService(repo, tx, outbox, inventory, reserver, newStubLedgerService(nil, nil))
 }
 
 type stubOutboxPublisher struct {
@@ -1025,6 +1036,118 @@ func TestAgentDeliverIdempotent(t *testing.T) {
 	}
 }
 
+func TestAgentCashCollectedAppendsLedgerEvent(t *testing.T) {
+	orderID := uuid.New()
+	agentID := uuid.New()
+	buyerID := uuid.New()
+	vendorID := uuid.New()
+	detail := &OrderDetail{
+		Order: &VendorOrderSummary{
+			Status: enums.VendorOrderStatusDelivered,
+		},
+		BuyerStore: OrderStoreSummary{ID: buyerID},
+		VendorStore: OrderStoreSummary{
+			ID: vendorID,
+		},
+		ActiveAssignment: &OrderAssignmentSummary{
+			AgentUserID: agentID,
+			AssignedAt:  time.Now().UTC(),
+		},
+		PaymentIntent: &PaymentIntentDetail{
+			AmountCents: 1234,
+		},
+	}
+	repo := &stubOrdersRepo{
+		order: &models.VendorOrder{ID: orderID},
+		findOrderDetail: func(ctx context.Context, id uuid.UUID) (*OrderDetail, error) {
+			if id != orderID {
+				t.Fatalf("unexpected order id %s", id)
+			}
+			return detail, nil
+		},
+	}
+	ledgerCalls := 0
+	ledger := newStubLedgerService(func(ctx context.Context, input ledger.RecordLedgerEventInput) (*models.LedgerEvent, error) {
+		if input.OrderID != orderID {
+			t.Fatalf("unexpected order id %s", input.OrderID)
+		}
+		if input.AmountCents != 1234 {
+			t.Fatalf("unexpected amount %d", input.AmountCents)
+		}
+		ledgerCalls++
+		return &models.LedgerEvent{ID: uuid.New()}, nil
+	}, func(ctx context.Context, orderID uuid.UUID, eventType enums.LedgerEventType) (bool, error) {
+		return false, nil
+	})
+	svc, _ := NewService(repo, stubTxRunner{}, &stubOutboxPublisher{}, &stubInventoryReleaser{}, &stubInventoryReserver{}, ledger)
+	if err := svc.AgentCashCollected(context.Background(), AgentCashCollectedInput{
+		OrderID:     orderID,
+		AgentUserID: agentID,
+	}); err != nil {
+		t.Fatalf("expected success got %v", err)
+	}
+	if ledgerCalls != 1 {
+		t.Fatalf("expected ledger to be called once, got %d", ledgerCalls)
+	}
+}
+
+func TestAgentCashCollectedIdempotent(t *testing.T) {
+	orderID := uuid.New()
+	agentID := uuid.New()
+	buyerID := uuid.New()
+	vendorID := uuid.New()
+	detail := &OrderDetail{
+		Order: &VendorOrderSummary{
+			Status: enums.VendorOrderStatusDelivered,
+		},
+		BuyerStore: OrderStoreSummary{ID: buyerID},
+		VendorStore: OrderStoreSummary{
+			ID: vendorID,
+		},
+		ActiveAssignment: &OrderAssignmentSummary{
+			AgentUserID: agentID,
+			AssignedAt:  time.Now().UTC(),
+		},
+		PaymentIntent: &PaymentIntentDetail{
+			AmountCents: 2000,
+		},
+	}
+	repo := &stubOrdersRepo{
+		order: &models.VendorOrder{ID: orderID},
+		findOrderDetail: func(ctx context.Context, id uuid.UUID) (*OrderDetail, error) {
+			return detail, nil
+		},
+	}
+	hasCalls := 0
+	recordCalls := 0
+	ledger := newStubLedgerService(func(ctx context.Context, input ledger.RecordLedgerEventInput) (*models.LedgerEvent, error) {
+		recordCalls++
+		return &models.LedgerEvent{ID: uuid.New()}, nil
+	}, func(ctx context.Context, id uuid.UUID, eventType enums.LedgerEventType) (bool, error) {
+		hasCalls++
+		return hasCalls > 1, nil
+	})
+	svc, _ := NewService(repo, stubTxRunner{}, &stubOutboxPublisher{}, &stubInventoryReleaser{}, &stubInventoryReserver{}, ledger)
+	if err := svc.AgentCashCollected(context.Background(), AgentCashCollectedInput{
+		OrderID:     orderID,
+		AgentUserID: agentID,
+	}); err != nil {
+		t.Fatalf("expected success got %v", err)
+	}
+	if err := svc.AgentCashCollected(context.Background(), AgentCashCollectedInput{
+		OrderID:     orderID,
+		AgentUserID: agentID,
+	}); err != nil {
+		t.Fatalf("expected success got %v", err)
+	}
+	if recordCalls != 1 {
+		t.Fatalf("expected ledger record once, got %d", recordCalls)
+	}
+	if hasCalls < 2 {
+		t.Fatalf("expected hasEvent to run twice, got %d", hasCalls)
+	}
+}
+
 func TestService_ConfirmPayoutFinalizesOrder(t *testing.T) {
 	orderID := uuid.New()
 	buyerID := uuid.New()
@@ -1058,7 +1181,7 @@ func TestService_ConfirmPayoutFinalizesOrder(t *testing.T) {
 	ledgerSvc := newStubLedgerService(func(ctx context.Context, input ledger.RecordLedgerEventInput) (*models.LedgerEvent, error) {
 		recorded = input
 		return &models.LedgerEvent{ID: uuid.New()}, nil
-	})
+	}, nil)
 
 	outbox := &stubOutboxPublisher{}
 	svc, err := NewService(repo, stubTxRunner{}, outbox, &stubInventoryReleaser{}, &stubInventoryReserver{}, ledgerSvc)
@@ -1153,7 +1276,7 @@ func TestService_ConfirmPayoutIdempotent(t *testing.T) {
 	ledgerSvc := newStubLedgerService(func(ctx context.Context, input ledger.RecordLedgerEventInput) (*models.LedgerEvent, error) {
 		ledgerCalled = true
 		return &models.LedgerEvent{ID: uuid.New()}, nil
-	})
+	}, nil)
 
 	outbox := &stubOutboxPublisher{}
 	svc, _ := NewService(repo, stubTxRunner{}, outbox, &stubInventoryReleaser{}, &stubInventoryReserver{}, ledgerSvc)
@@ -1181,7 +1304,7 @@ func TestService_ConfirmPayoutIdempotent(t *testing.T) {
 }
 
 func TestService_ConfirmPayoutValidation(t *testing.T) {
-	svc, _ := NewService(&stubOrdersRepo{}, stubTxRunner{}, &stubOutboxPublisher{}, &stubInventoryReleaser{}, &stubInventoryReserver{}, newStubLedgerService(nil))
+	svc, _ := NewService(&stubOrdersRepo{}, stubTxRunner{}, &stubOutboxPublisher{}, &stubInventoryReleaser{}, &stubInventoryReserver{}, newStubLedgerService(nil, nil))
 
 	if err := svc.ConfirmPayout(context.Background(), ConfirmPayoutInput{OrderID: uuid.Nil, ActorUserID: uuid.New()}); err == nil {
 		t.Fatal("expected validation error for missing order")
@@ -1203,7 +1326,7 @@ func TestService_ConfirmPayoutMissingPaymentIntent(t *testing.T) {
 			}, nil
 		},
 	}
-	svc, _ := NewService(repo, stubTxRunner{}, &stubOutboxPublisher{}, &stubInventoryReleaser{}, &stubInventoryReserver{}, newStubLedgerService(nil))
+	svc, _ := NewService(repo, stubTxRunner{}, &stubOutboxPublisher{}, &stubInventoryReleaser{}, &stubInventoryReserver{}, newStubLedgerService(nil, nil))
 
 	if err := svc.ConfirmPayout(context.Background(), ConfirmPayoutInput{OrderID: orderID, ActorUserID: uuid.New()}); err == nil {
 		t.Fatal("expected error for missing payment intent")

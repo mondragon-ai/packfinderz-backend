@@ -414,6 +414,10 @@ func (s stubOrdersService) AgentDeliver(ctx context.Context, input ordersrepo.Ag
 	return nil
 }
 
+func (s stubOrdersService) AgentCashCollected(ctx context.Context, input ordersrepo.AgentCashCollectedInput) error {
+	return nil
+}
+
 func (s stubOrdersService) ConfirmPayout(ctx context.Context, input ordersrepo.ConfirmPayoutInput) error {
 	return nil
 }

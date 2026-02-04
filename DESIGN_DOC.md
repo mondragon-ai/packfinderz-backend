@@ -2451,7 +2451,7 @@ Creation/cancellation requests require an `Idempotency-Key` and must provide `st
 
 * `POST /api/v1/agent/orders/{orderId}/cash-collected`
 
-  * Creates `LedgerEvent(cash_collected)` + sets payment `settled`.
+  * Appends a single `LedgerEvent(cash_collected)` entry (payment-settled logic fires in PF-245) and ignores repeats.
   * **Idempotent:** YES (required)
   * Success: `200`
   * Errors: `401, 403, 404, 409`
