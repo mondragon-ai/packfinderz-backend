@@ -323,7 +323,7 @@ func (s *service) LineItemDecision(ctx context.Context, input LineItemDecisionIn
 				fulfillment = enums.VendorOrderFulfillmentStatusFulfilled
 			}
 			updates["fulfillment_status"] = fulfillment
-			updates["status"] = enums.VendorOrderStatusHold
+			updates["status"] = enums.VendorOrderStatusReadyForDispatch
 		}
 
 		if err := repo.UpdateVendorOrder(ctx, order.ID, updates); err != nil {
@@ -335,21 +335,22 @@ func (s *service) LineItemDecision(ctx context.Context, input LineItemDecisionIn
 		order.BalanceDueCents = balance
 		if pending == 0 {
 			order.FulfillmentStatus = fulfillment
-			order.Status = enums.VendorOrderStatusHold
+			order.Status = enums.VendorOrderStatusReadyForDispatch
 		}
 
 		if pending == 0 {
 			event := outbox.DomainEvent{
-				EventType:     enums.EventOrderFulfilled,
+				EventType:     enums.EventOrderReadyForDispatch,
 				AggregateType: enums.AggregateVendorOrder,
 				AggregateID:   order.ID,
 				Version:       1,
 				Actor:         buildActor(input.ActorUserID, input.ActorStoreID, input.ActorRole),
-				Data: payloads.OrderFulfilledEvent{
+				Data: payloads.OrderReadyForDispatchEvent{
 					OrderID:            order.ID,
 					CheckoutGroupID:    order.CheckoutGroupID,
 					BuyerStoreID:       order.BuyerStoreID,
 					VendorStoreID:      order.VendorStoreID,
+					VendorStoreIDs:     []uuid.UUID{order.VendorStoreID},
 					FulfillmentStatus:  order.FulfillmentStatus,
 					ShippingStatus:     order.ShippingStatus,
 					RejectedItemCount:  rejected,
@@ -659,6 +660,7 @@ func (s *service) AgentPickup(ctx context.Context, input AgentPickupInput) error
 		}
 		status := detail.Order.Status
 		if status != enums.VendorOrderStatusHold &&
+			status != enums.VendorOrderStatusReadyForDispatch &&
 			status != enums.VendorOrderStatusHoldForPickup &&
 			status != enums.VendorOrderStatusInTransit {
 			return pkgerrors.New(pkgerrors.CodeStateConflict, "order cannot be picked up in current state")

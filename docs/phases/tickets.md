@@ -281,17 +281,21 @@
 
   * [x] Ticket [PF-239] - [PF-240]: Prevent duplicate vendor orders on retry (uniqueness anchored on checkout_group_id+vendor_store_id and/or cart_id) & Prevent duplicate outbox rows on retry for same conversion anchor
 
-  * [ ] Ticket [PF-240]: Add outbox payload versioning rules for these events
-  * [ ] Ticket [PF-241]: Add checkout regression tests (idempotent retry, expired/already converted behavior, exactly two outbox events)
+  * [ ] Ticket [PF-241]: Add outbox payload versioning rules for these events
+  * [ ] Ticket [PF-242]: Add checkout regression tests (idempotent retry, expired/already converted behavior, exactly two outbox events)
 
 * **Phase 7 — Orders + Fulfillment + Cash Collection Completion**
   **Goal:** Finish the operational lifecycle for vendors/agents and cash settlement.
 
-  * [ ] Ticket [PF-242]: Implement vendor fulfill endpoint (`POST /api/v1/vendor/orders/{orderId}/fulfill`) idempotently (all line items must be non-pending to move state -> partial fulfilled)
-  * [ ] Ticket [PF-XXX]: Transition fulfilled orders into hold/ready-for-dispatch semantics when all items in the order are no longer pending & then Emit outbox event `order_ready_for_dispatch` on fulfillment for admin and agents (one dispatch for both)
+  * [ ] Ticket [PF-243]: Transition fulfilled orders into hold/ready-for-dispatch semantics when all items in the order are no longer pending & then Emit outbox event `order_ready_for_dispatch` on fulfillment for admin and agents (one dispatch for both)
 
-  * [ ] Ticket [PF-XXX]: Implement agent cash-collected endpoint (`POST /api/v1/agent/orders/{orderId}/cash-collected`) & Append `ledger_events(cash_collected)` during cash-collected flow
-  * [ ] Ticket [PF-XXX]: Set `payment_intents.status=settled` + `cash_collected_at` & Emit outbox event `cash_collected` & update the order states too.
+  * [ ] Ticket [PF-244]: Implement agent cash-collected endpoint (`POST /api/v1/agent/orders/{orderId}/cash-collected`) & Append `ledger_events(cash_collected)` during cash-collected flow
+  * [ ] Ticket [PF-245]: Set `payment_intents.status=settled` + `cash_collected_at` & Emit outbox event `cash_collected` & update the order states too.
+  * [ ] Ticket [PF-246]: Reject cash collection when order is not dispatch-ready & create endpoint (`POST /agent/orders/{orderId}/cash-collected`)
+  * [ ] Ticket [PF-247]: Prevent duplicate cash collection on already settled or paid orders
+  * [ ] Ticket [PF-248]: Mark payment intent as failed when cash collection validation fails
+  * [ ] Ticket [PF-249]: Support rejected payment state for future ACH or admin-declined settlements
+  * [ ] Ticket [PF-250]: Emit payment_failed or payment_rejected outbox events for downstream consumers
 
 * **Phase 8 — Attachment Wiring for Core Domains**
   **Goal:** Make attachments usable across MVP surfaces and keep delete semantics correct.
