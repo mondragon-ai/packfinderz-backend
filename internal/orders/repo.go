@@ -64,6 +64,20 @@ func (r *repository) FindVendorOrdersByCheckoutGroup(ctx context.Context, checko
 	return orders, nil
 }
 
+func (r *repository) FindVendorOrderByCheckoutGroupAndVendor(ctx context.Context, checkoutGroupID, vendorStoreID uuid.UUID) (*models.VendorOrder, error) {
+	var order models.VendorOrder
+	err := r.db.WithContext(ctx).
+		Preload("Items").
+		Preload("PaymentIntent").
+		Preload("Assignments").
+		Where("checkout_group_id = ? AND vendor_store_id = ?", checkoutGroupID, vendorStoreID).
+		First(&order).Error
+	if err != nil {
+		return nil, err
+	}
+	return &order, nil
+}
+
 func (r *repository) FindOrderLineItemsByOrder(ctx context.Context, orderID uuid.UUID) ([]models.OrderLineItem, error) {
 	var items []models.OrderLineItem
 	err := r.db.WithContext(ctx).

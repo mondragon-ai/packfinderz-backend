@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 
+	dbpkg "github.com/angelmondragon/packfinderz-backend/pkg/db"
 	"github.com/angelmondragon/packfinderz-backend/pkg/db/models"
 	"github.com/angelmondragon/packfinderz-backend/pkg/enums"
 	"github.com/angelmondragon/packfinderz-backend/pkg/logger"
@@ -76,6 +77,26 @@ func (s *Service) Emit(ctx context.Context, tx *gorm.DB, event DomainEvent) erro
 		}
 		logCtx := s.logg.WithFields(ctx, fields)
 		s.logg.Info(logCtx, "outbox event queued")
+	}
+	return nil
+}
+
+func (s *Service) EmitIfNotExists(ctx context.Context, tx *gorm.DB, event DomainEvent) error {
+	if tx == nil {
+		return errors.New("transaction required")
+	}
+	exists, err := s.repo.ExistsTx(tx, event.EventType, event.AggregateType, event.AggregateID)
+	if err != nil {
+		return err
+	}
+	if exists {
+		return nil
+	}
+	if err := s.Emit(ctx, tx, event); err != nil {
+		if dbpkg.IsUniqueViolation(err, "ux_outbox_events_event_aggregate") {
+			return nil
+		}
+		return err
 	}
 	return nil
 }

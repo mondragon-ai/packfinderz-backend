@@ -135,6 +135,16 @@ func (s *stubOrdersRepo) FindVendorOrdersByCheckoutGroup(ctx context.Context, ch
 	return s.vendorOrders[checkoutGroupID], nil
 }
 
+func (s *stubOrdersRepo) FindVendorOrderByCheckoutGroupAndVendor(ctx context.Context, checkoutGroupID, vendorStoreID uuid.UUID) (*models.VendorOrder, error) {
+	for _, order := range s.vendorOrders[checkoutGroupID] {
+		if order.VendorStoreID == vendorStoreID {
+			copy := order
+			return &copy, nil
+		}
+	}
+	return nil, gorm.ErrRecordNotFound
+}
+
 func (s *stubOrdersRepo) FindOrderLineItemsByOrder(ctx context.Context, orderID uuid.UUID) ([]models.OrderLineItem, error) {
 	panic("not implemented")
 }
