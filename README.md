@@ -301,6 +301,7 @@ Re-running the migration is safe because the statements use `CREATE EXTENSION IF
 * Audit logs
 * Google Cloud Storage (pkg/storage/gcs) verified via `/health/ready`
 * Media metadata (`media` + `media_attachments`, which tie `entity_type`/`entity_id` to `store_id` and cache `gcs_key` so usage lookups stay tenant-scoped)
+  * License uploads now persist a `media_attachments` row (`entity_type='license'`) so the referenced `media_kind=license_doc` asset stays protected while the license exists.
   * Attachment reconciliation happens through `internal/media.NewAttachmentReconciler`, which diffs usages inside a transaction and follows the lifecycle rules described in `docs/media_attachments_lifecycle.md`.
   * Lifecycle rules (protected attachments, deletion preconditions, and cleanup ordering) are detailed in `docs/media_attachments_lifecycle.md`.
   * `DELETE /api/v1/media/{mediaId}` loads `media_attachments`, rejects the request whenever a `license` or `ad` attachment exists, and deletes the GCS object once the guard passes so the delete-media worker sees the corresponding `OBJECT_DELETE` event.

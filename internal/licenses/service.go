@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/angelmondragon/packfinderz-backend/internal/media"
 	"github.com/angelmondragon/packfinderz-backend/pkg/db/models"
 	"github.com/angelmondragon/packfinderz-backend/pkg/enums"
 	pkgerrors "github.com/angelmondragon/packfinderz-backend/pkg/errors"
@@ -46,6 +47,7 @@ type licensesRepository interface {
 	List(ctx context.Context, opts listQuery) ([]models.License, error)
 	FindByID(ctx context.Context, id uuid.UUID) (*models.License, error)
 	Delete(ctx context.Context, id uuid.UUID) error
+	DeleteWithTx(tx *gorm.DB, id uuid.UUID) error
 	CountValidLicenses(ctx context.Context, storeID uuid.UUID) (int64, error)
 	UpdateStatus(ctx context.Context, id uuid.UUID, status enums.LicenseStatus) error
 	CreateWithTx(tx *gorm.DB, license *models.License) (*models.License, error)
@@ -70,6 +72,7 @@ type service struct {
 	repo         licensesRepository
 	mediaRepo    mediasRepository
 	memberships  membershipsRepository
+	attachments  media.AttachmentReconciler
 	gcs          gcsClient
 	bucket       string
 	downloadTTL  time.Duration
@@ -90,7 +93,7 @@ type CreateLicenseInput struct {
 }
 
 // NewService builds a license service backed by the provided repositories and GCS signer.
-func NewService(repo licensesRepository, mediaRepo mediasRepository, memberships membershipsRepository, gcs gcsClient, bucket string, downloadTTL time.Duration, storeRepo storesRepository, tx txRunner, publisher outboxPublisher) (Service, error) {
+func NewService(repo licensesRepository, mediaRepo mediasRepository, memberships membershipsRepository, attachments media.AttachmentReconciler, gcs gcsClient, bucket string, downloadTTL time.Duration, storeRepo storesRepository, tx txRunner, publisher outboxPublisher) (Service, error) {
 	if repo == nil {
 		return nil, fmt.Errorf("license repository required")
 	}
@@ -99,6 +102,9 @@ func NewService(repo licensesRepository, mediaRepo mediasRepository, memberships
 	}
 	if memberships == nil {
 		return nil, fmt.Errorf("memberships repository required")
+	}
+	if attachments == nil {
+		return nil, fmt.Errorf("attachment reconciler required")
 	}
 	if gcs == nil {
 		return nil, fmt.Errorf("gcs client required")
@@ -122,6 +128,7 @@ func NewService(repo licensesRepository, mediaRepo mediasRepository, memberships
 		repo:        repo,
 		mediaRepo:   mediaRepo,
 		memberships: memberships,
+		attachments: attachments,
 		gcs:         gcs,
 		bucket:      bucket,
 		downloadTTL: downloadTTL,
@@ -204,6 +211,9 @@ func (s *service) CreateLicense(ctx context.Context, userID, storeID uuid.UUID, 
 	if err := s.tx.WithTx(ctx, func(tx *gorm.DB) error {
 		stored, err := s.repo.CreateWithTx(tx, license)
 		if err != nil {
+			return err
+		}
+		if err := s.attachments.Reconcile(ctx, tx, models.AttachmentEntityLicense, stored.ID, stored.StoreID, nil, []uuid.UUID{stored.MediaID}); err != nil {
 			return err
 		}
 		created = stored
@@ -299,7 +309,15 @@ func (s *service) DeleteLicense(ctx context.Context, userID, storeID, licenseID 
 		return pkgerrors.New(pkgerrors.CodeConflict, "only rejected or expired licenses can be deleted")
 	}
 
-	if err := s.repo.Delete(ctx, licenseID); err != nil {
+	if err := s.tx.WithTx(ctx, func(tx *gorm.DB) error {
+		if err := s.attachments.Reconcile(ctx, tx, models.AttachmentEntityLicense, license.ID, license.StoreID, []uuid.UUID{license.MediaID}, nil); err != nil {
+			return err
+		}
+		if err := s.repo.DeleteWithTx(tx, licenseID); err != nil {
+			return err
+		}
+		return nil
+	}); err != nil {
 		return pkgerrors.Wrap(pkgerrors.CodeDependency, err, "delete license")
 	}
 
