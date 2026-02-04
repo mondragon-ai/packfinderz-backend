@@ -208,6 +208,7 @@ func main() {
 		cfg.FeatureFlags.AllowACH,
 	)
 	requireResource(ctx, logg, "checkout service", err)
+	checkoutRepo := checkoutsvc.NewRepository(dbClient.DB(), ordersRepo)
 
 	licenseService, err := licenses.NewService(
 		licenses.NewRepository(dbClient.DB()),
@@ -258,6 +259,7 @@ func main() {
 			licenseService,
 			productService,
 			checkoutService,
+			checkoutRepo,
 			cartService,
 			notificationsService,
 			ordersRepo,

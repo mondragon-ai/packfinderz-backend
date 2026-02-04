@@ -61,6 +61,7 @@ func NewRouter(
 	licenseService licenses.Service,
 	productService products.Service,
 	checkoutService checkoutsvc.Service,
+	checkoutRepo checkoutsvc.Repository,
 	cartService cart.Service,
 	notificationsService notifications.Service,
 	ordersRepo orders.Repository,
@@ -190,6 +191,7 @@ func NewRouter(
 				r.Post("/{orderId}/retry", ordercontrollers.RetryOrder(ordersSvc, logg))
 			})
 			r.Post("/v1/checkout", controllers.Checkout(checkoutService, storeService, logg))
+			r.Get("/v1/checkout/{identifier}/confirmation", controllers.CheckoutConfirmation(checkoutRepo, storeService, logg))
 		})
 
 		r.Route("/v1/agent", func(r chi.Router) {
