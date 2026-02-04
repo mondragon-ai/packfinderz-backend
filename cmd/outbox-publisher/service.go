@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math/rand"
+	"strings"
 	"time"
 
 	gcppubsub "cloud.google.com/go/pubsub/v2"
@@ -317,7 +318,21 @@ func dlqErrorMessage(err error) *string {
 }
 
 func (s *Service) publishResolved(ctx context.Context, event models.OutboxEvent, resolved *registry.ResolvedEvent) error {
-	topic := resolved.Descriptor.Topic
+	if err := s.publishToTopic(ctx, event, resolved, resolved.Descriptor.Topic); err != nil {
+		return err
+	}
+	if event.EventType == enums.EventCheckoutConverted {
+		analyticsTopic := strings.TrimSpace(s.cfg.PubSub.AnalyticsTopic)
+		if analyticsTopic != "" && analyticsTopic != resolved.Descriptor.Topic {
+			if err := s.publishToTopic(ctx, event, resolved, analyticsTopic); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func (s *Service) publishToTopic(ctx context.Context, event models.OutboxEvent, resolved *registry.ResolvedEvent, topic string) error {
 	pub := s.publisherFactory(topic)
 	if pub == nil {
 		return registry.NewNonRetryableError(fmt.Errorf("publisher not configured for topic %s", topic))

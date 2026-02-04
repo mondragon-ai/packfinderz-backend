@@ -291,16 +291,16 @@ func (s *service) Execute(ctx context.Context, buyerStoreID, cartID uuid.UUID, i
 			return err
 		}
 
+		orderRecords, err := ordersRepo.FindVendorOrdersByCheckoutGroup(ctx, *checkoutGroupID)
+		if err != nil {
+			return err
+		}
+
 		if err := s.emitOrderCreatedEvent(ctx, tx, *checkoutGroupID, vendorOrderIDs); err != nil {
 			return err
 		}
 
-		if err := s.emitCheckoutConvertedEvent(ctx, tx, *checkoutGroupID, record.ID, buyerStoreID, vendorOrderIDs, vendorStoreIDs, record.ConvertedAt); err != nil {
-			return err
-		}
-
-		orderRecords, err := ordersRepo.FindVendorOrdersByCheckoutGroup(ctx, *checkoutGroupID)
-		if err != nil {
+		if err := s.emitCheckoutConvertedEvent(ctx, tx, *checkoutGroupID, record.ID, buyerStoreID, vendorOrderIDs, vendorStoreIDs, record, orderRecords, record.ConvertedAt); err != nil {
 			return err
 		}
 
@@ -360,7 +360,18 @@ func (s *service) emitOrderCreatedEvent(ctx context.Context, tx *gorm.DB, checko
 	return s.outbox.Emit(ctx, tx, event)
 }
 
-func (s *service) emitCheckoutConvertedEvent(ctx context.Context, tx *gorm.DB, checkoutGroupID, cartID, buyerStoreID uuid.UUID, vendorOrderIDs []uuid.UUID, vendorStoreIDs map[uuid.UUID]struct{}, convertedAt *time.Time) error {
+func (s *service) emitCheckoutConvertedEvent(
+	ctx context.Context,
+	tx *gorm.DB,
+	checkoutGroupID,
+	cartID,
+	buyerStoreID uuid.UUID,
+	vendorOrderIDs []uuid.UUID,
+	vendorStoreIDs map[uuid.UUID]struct{},
+	cart *models.CartRecord,
+	vendorOrders []models.VendorOrder,
+	convertedAt *time.Time,
+) error {
 	vendors := make([]uuid.UUID, 0, len(vendorStoreIDs))
 	for id := range vendorStoreIDs {
 		vendors = append(vendors, id)
@@ -369,6 +380,7 @@ func (s *service) emitCheckoutConvertedEvent(ctx context.Context, tx *gorm.DB, c
 	if convertedAt != nil {
 		timestamp = *convertedAt
 	}
+	analytics := buildCheckoutConvertedAnalyticsEvent(cart, vendorOrders)
 	event := outbox.DomainEvent{
 		EventType:     enums.EventCheckoutConverted,
 		AggregateType: enums.AggregateCheckoutGroup,
@@ -380,9 +392,93 @@ func (s *service) emitCheckoutConvertedEvent(ctx context.Context, tx *gorm.DB, c
 			VendorOrderIDs:  append([]uuid.UUID(nil), vendorOrderIDs...),
 			VendorStoreIDs:  vendors,
 			ConvertedAt:     timestamp,
+			Analytics:       analytics,
 		},
 	}
 	return s.outbox.Emit(ctx, tx, event)
+}
+
+func buildCheckoutConvertedAnalyticsEvent(cart *models.CartRecord, vendorOrders []models.VendorOrder) payloads.CheckoutConvertedAnalyticsEvent {
+	if cart == nil {
+		return payloads.CheckoutConvertedAnalyticsEvent{}
+	}
+	shippingAddress := (*payloads.ShippingAddress)(nil)
+	if addr := cart.ShippingAddress; addr != nil {
+		shippingAddress = &payloads.ShippingAddress{
+			PostalCode: addr.PostalCode,
+			Lat:        addr.Lat,
+			Lng:        addr.Lng,
+		}
+	}
+	paymentMethod := ""
+	if cart.PaymentMethod != nil {
+		paymentMethod = string(*cart.PaymentMethod)
+	}
+
+	analytics := payloads.CheckoutConvertedAnalyticsEvent{
+		Currency:        string(cart.Currency),
+		PaymentMethod:   paymentMethod,
+		ShippingAddress: shippingAddress,
+		ShippingLine:    cart.ShippingLine,
+		SubtotalCents:   int64(cart.SubtotalCents),
+		DiscountsCents:  int64(cart.DiscountsCents),
+		TotalCents:      int64(cart.TotalCents),
+		VendorOrders:    make([]payloads.CheckoutConvertedAnalyticsVendor, 0, len(vendorOrders)),
+		Items:           make([]payloads.CheckoutConvertedAnalyticsItem, 0),
+		AdTokens:        append([]string(nil), cart.AdTokens...),
+	}
+
+	for _, order := range vendorOrders {
+		intentStatus := ""
+		intentMethod := ""
+		if order.PaymentIntent != nil {
+			intentStatus = string(order.PaymentIntent.Status)
+			intentMethod = string(order.PaymentIntent.Method)
+		}
+		analytics.VendorOrders = append(analytics.VendorOrders, payloads.CheckoutConvertedAnalyticsVendor{
+			OrderID:             order.ID.String(),
+			VendorStoreID:       order.VendorStoreID.String(),
+			Status:              string(order.Status),
+			PaymentStatus:       intentStatus,
+			PaymentMethod:       string(order.PaymentMethod),
+			TotalCents:          int64(order.TotalCents),
+			BalanceDueCents:     int64(order.BalanceDueCents),
+			PaymentIntentStatus: intentStatus,
+			PaymentIntentMethod: intentMethod,
+		})
+
+		for _, item := range order.Items {
+			analytics.Items = append(analytics.Items, payloads.CheckoutConvertedAnalyticsItem{
+				OrderID:               order.ID.String(),
+				VendorStoreID:         order.VendorStoreID.String(),
+				ProductID:             uuidToString(item.ProductID),
+				Name:                  item.Name,
+				Category:              item.Category,
+				Strain:                item.Strain,
+				Classification:        item.Classification,
+				Unit:                  string(item.Unit),
+				MOQ:                   item.MOQ,
+				MaxQty:                item.MaxQty,
+				Qty:                   item.Qty,
+				UnitPriceCents:        item.UnitPriceCents,
+				DiscountCents:         item.DiscountCents,
+				LineSubtotalCents:     item.LineSubtotalCents,
+				LineTotalCents:        item.TotalCents,
+				Status:                string(item.Status),
+				Warnings:              item.Warnings,
+				AppliedVolumeDiscount: item.AppliedVolumeDiscount,
+				AttributedToken:       item.AttributedToken,
+			})
+		}
+	}
+	return analytics
+}
+
+func uuidToString(u *uuid.UUID) string {
+	if u == nil {
+		return ""
+	}
+	return u.String()
 }
 
 func buildLineItem(orderID uuid.UUID, cartItem models.CartItem, product *models.Product, reservation reservation.InventoryReservationResult) models.OrderLineItem {

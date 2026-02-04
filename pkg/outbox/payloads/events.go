@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/angelmondragon/packfinderz-backend/pkg/enums"
+	"github.com/angelmondragon/packfinderz-backend/pkg/types"
 	"github.com/google/uuid"
 )
 
@@ -110,12 +111,70 @@ type LicenseExpiredEvent struct {
 
 // CheckoutConvertedEvent informs notifications consumers that a checkout finished.
 type CheckoutConvertedEvent struct {
-	CheckoutGroupID uuid.UUID   `json:"checkout_group_id"`
-	CartID          *uuid.UUID  `json:"cart_id,omitempty"`
-	BuyerStoreID    uuid.UUID   `json:"buyer_store_id"`
-	VendorOrderIDs  []uuid.UUID `json:"vendor_order_ids"`
-	VendorStoreIDs  []uuid.UUID `json:"vendor_store_ids"`
-	ConvertedAt     time.Time   `json:"converted_at"`
+	CheckoutGroupID uuid.UUID                       `json:"checkout_group_id"`
+	CartID          *uuid.UUID                      `json:"cart_id,omitempty"`
+	BuyerStoreID    uuid.UUID                       `json:"buyer_store_id"`
+	VendorOrderIDs  []uuid.UUID                     `json:"vendor_order_ids"`
+	VendorStoreIDs  []uuid.UUID                     `json:"vendor_store_ids"`
+	ConvertedAt     time.Time                       `json:"converted_at"`
+	Analytics       CheckoutConvertedAnalyticsEvent `json:"analytics"`
+}
+
+// ShippingAddress mirrors the canonical subset used by analytics payloads.
+type ShippingAddress struct {
+	PostalCode string  `json:"postal_code"`
+	Lat        float64 `json:"lat"`
+	Lng        float64 `json:"lng"`
+}
+
+// CheckoutConvertedAnalyticsVendor summarizes a vendor order for analytics.
+type CheckoutConvertedAnalyticsVendor struct {
+	OrderID             string `json:"order_id"`
+	VendorStoreID       string `json:"vendor_store_id"`
+	Status              string `json:"status"`
+	PaymentStatus       string `json:"payment_status"`
+	PaymentMethod       string `json:"payment_method"`
+	TotalCents          int64  `json:"total_cents"`
+	BalanceDueCents     int64  `json:"balance_due_cents"`
+	PaymentIntentStatus string `json:"payment_intent_status"`
+	PaymentIntentMethod string `json:"payment_intent_method"`
+}
+
+// CheckoutConvertedAnalyticsItem captures a line item snapshot for analytics.
+type CheckoutConvertedAnalyticsItem struct {
+	OrderID               string                       `json:"order_id"`
+	VendorStoreID         string                       `json:"vendor_store_id"`
+	ProductID             string                       `json:"product_id"`
+	Name                  string                       `json:"name"`
+	Category              string                       `json:"category"`
+	Strain                *string                      `json:"strain,omitempty"`
+	Classification        *string                      `json:"classification,omitempty"`
+	Unit                  string                       `json:"unit"`
+	MOQ                   int                          `json:"moq"`
+	MaxQty                *int                         `json:"max_qty,omitempty"`
+	Qty                   int                          `json:"qty"`
+	UnitPriceCents        int                          `json:"unit_price_cents"`
+	DiscountCents         int                          `json:"discount_cents"`
+	LineSubtotalCents     int                          `json:"line_subtotal_cents"`
+	LineTotalCents        int                          `json:"line_total_cents"`
+	Status                string                       `json:"status"`
+	Warnings              []types.CartItemWarning      `json:"warnings,omitempty"`
+	AppliedVolumeDiscount *types.AppliedVolumeDiscount `json:"applied_volume_discount,omitempty"`
+	AttributedToken       *types.JSONMap               `json:"attributed_token,omitempty"`
+}
+
+// CheckoutConvertedAnalyticsEvent contains the cart snapshot emitted when checkout converts.
+type CheckoutConvertedAnalyticsEvent struct {
+	Currency        string                             `json:"currency"`
+	PaymentMethod   string                             `json:"payment_method"`
+	ShippingAddress *ShippingAddress                   `json:"shipping_address,omitempty"`
+	ShippingLine    *types.ShippingLine                `json:"shipping_line,omitempty"`
+	SubtotalCents   int64                              `json:"subtotal_cents"`
+	DiscountsCents  int64                              `json:"discounts_cents"`
+	TotalCents      int64                              `json:"total_cents"`
+	VendorOrders    []CheckoutConvertedAnalyticsVendor `json:"vendor_orders"`
+	Items           []CheckoutConvertedAnalyticsItem   `json:"items"`
+	AdTokens        []string                           `json:"ad_tokens,omitempty"`
 }
 
 // LicenseStatusChangedEvent mirrors the payload emitted when license status updates.
