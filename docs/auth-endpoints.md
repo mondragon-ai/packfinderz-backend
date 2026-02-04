@@ -358,6 +358,18 @@ curl -X POST "{{API_BASE_URL}}/api/v1/checkout" \
 - `checkout_group_id`: UUID representing the checkout run.
 - `vendor_orders`: array of vendors with totals (`subtotal_cents`, `transport_fee_cents`, `discount_cents`, `tax_cents`, `total_cents`, `balance_due_cents`) and their `items`.
 - Each line item includes `line_item_id`, `product_id` (nullable), `product_name`, `qty`, `unit`, `unit_price_cents`, `discount_cents`, `total_cents`, `status`, and optional `notes`.
+
+### GET /api/v1/checkout/{identifier}/confirmation
+Polls the confirmed checkout snapshot using either the `checkout_group_id` assigned during checkout or the `cart_id` that spawned it. Buyers use this endpoint to monitor each `vendor_order` status, the attached payment intent, and the cached `cart_vendor_groups` once the checkout transaction has committed.
+
+#### Path parameters
+- `identifier`: UUID representing either the completed checkout group or the originating cart record.
+
+#### Behavior
+- Requires the buyer store context; the handler verifies the store belongs to the checkout before returning data.
+- `200 OK` returns the canonical vendor orders with their `payment_intent`, `active_assignment`, and vendor group metadata so the buyer can see what each vendor is doing.
+- `403 Forbidden` when the checkout belongs to a different store.
+- `404 Not Found` when the identifier does not match any known checkout group or cart.
 - `rejected_vendors`: appears when one or more vendors reject items their order; each entry provides `vendor_store_id` and the rejected line items.
 
 ## Order endpoints

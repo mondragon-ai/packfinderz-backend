@@ -420,6 +420,20 @@ func (s stubCheckoutService) Execute(ctx context.Context, buyerStoreID uuid.UUID
 	panic("unimplemented")
 }
 
+type stubCheckoutRepo struct{}
+
+func (stubCheckoutRepo) WithTx(tx *gorm.DB) checkout.Repository {
+	return stubCheckoutRepo{}
+}
+
+func (stubCheckoutRepo) FindByCheckoutGroupID(ctx context.Context, checkoutGroupID uuid.UUID) (*models.CheckoutGroup, error) {
+	return nil, nil
+}
+
+func (stubCheckoutRepo) FindByCartID(ctx context.Context, cartID uuid.UUID) (*models.CheckoutGroup, error) {
+	return nil, nil
+}
+
 func testConfig() *config.Config {
 	return &config.Config{
 		App: config.AppConfig{Env: "test", Port: "0"},
@@ -452,6 +466,7 @@ func newTestRouter(cfg *config.Config) http.Handler {
 		stubLicensesService{},
 		stubProductService{},
 		stubCheckoutService{},
+		stubCheckoutRepo{},
 		stubCartService{},
 		stubNotificationsService{},
 		&stubOrdersRepo{},
@@ -718,6 +733,7 @@ func TestAgentAssignedOrdersRequiresAgentRole(t *testing.T) {
 		stubLicensesService{},
 		stubProductService{},
 		stubCheckoutService{},
+		stubCheckoutRepo{},
 		stubCartService{},
 		stubNotificationsService{},
 		repo,
@@ -784,6 +800,7 @@ func TestAgentAssignedOrderDetailRequiresAgentRole(t *testing.T) {
 		stubLicensesService{},
 		stubProductService{},
 		stubCheckoutService{},
+		stubCheckoutRepo{},
 		stubCartService{},
 		stubNotificationsService{},
 		repo,
@@ -826,6 +843,7 @@ func TestAgentPickupRequiresAgentRole(t *testing.T) {
 		stubLicensesService{},
 		stubProductService{},
 		stubCheckoutService{},
+		stubCheckoutRepo{},
 		stubCartService{},
 		stubNotificationsService{},
 		repo,
@@ -883,6 +901,7 @@ func TestAgentDeliverRequiresAgentRole(t *testing.T) {
 		stubLicensesService{},
 		stubProductService{},
 		stubCheckoutService{},
+		stubCheckoutRepo{},
 		stubCartService{},
 		stubNotificationsService{},
 		repo,

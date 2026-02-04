@@ -54,6 +54,7 @@ func (r *repository) FindVendorOrdersByCheckoutGroup(ctx context.Context, checko
 	err := r.db.WithContext(ctx).
 		Preload("Items").
 		Preload("PaymentIntent").
+		Preload("Assignments").
 		Where("checkout_group_id = ?", checkoutGroupID).
 		Order("created_at ASC").
 		Find(&orders).Error

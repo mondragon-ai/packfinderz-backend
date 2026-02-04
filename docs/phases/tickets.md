@@ -272,15 +272,14 @@
 * **Phase 6 — Checkout Completion: Payment Intents + Retry Safety + Outbox Exactly-Once-ish**
   **Goal:** Close the remaining checkout core so retries are safe and downstream systems receive canonical events.
 
-  * [ ] Ticket [PF-234]: Create one payment_intent per vendor order inside checkout transaction
-  * [ ] Ticket [PF-235]: Set payment intent amount from `vendor_orders.total_cents` & Set payment intent `payment_method` from checkout-confirmed `payment_method`
-  * [ ] Ticket [PF-236]: Add repo helper to fetch full checkout result by checkout_group_id
+  * [x] Ticket [PF-234]: Create one payment_intent per vendor order inside checkout transaction
+  * [x] Ticket [PF-235]: Set payment intent amount from `vendor_orders.total_cents` & Set payment intent `payment_method` from checkout-confirmed `payment_method`
+  * [x] Ticket [PF-236]: Add repo helper to fetch full checkout result by checkout_group_id & endpoint
 
   * [ ] Ticket [PF-237]: Define/extend outbox payload for Notifications checkout-converted event & Emit Notifications outbox event in same transaction as vendor order creation
   * [ ] Ticket [PF-238]: Define/extend outbox payload for Analytics checkout-converted event (cart totals + attribution `ad_tokens`) & Emit Analytics outbox event in same transaction as cart conversion
 
-  * [ ] Ticket [PF-239]: Prevent duplicate vendor orders on retry (uniqueness anchored on checkout_group_id+vendor_store_id and/or cart_id)
-  * [ ] Ticket [PF-240]: Prevent duplicate outbox rows on retry for same conversion anchor
+  * [ ] Ticket [PF-239] - [PF-240]: Prevent duplicate vendor orders on retry (uniqueness anchored on checkout_group_id+vendor_store_id and/or cart_id) & Prevent duplicate outbox rows on retry for same conversion anchor
 
   * [ ] Ticket [PF-241]: Add outbox payload versioning rules for these events
   * [ ] Ticket [PF-242]: Add checkout regression tests (idempotent retry, expired/already converted behavior, exactly two outbox events)
@@ -288,8 +287,8 @@
 * **Phase 7 — Orders + Fulfillment + Cash Collection Completion**
   **Goal:** Finish the operational lifecycle for vendors/agents and cash settlement.
 
-  * [ ] Ticket [PF-246]: Implement vendor fulfill endpoint (`POST /api/v1/vendor/orders/{orderId}/fulfill`) idempotently
-  * [ ] Ticket [PF-247]: Transition fulfilled orders into hold/ready-for-dispatch semantics when all items in the order are no longer pending & then Emit outbox event `order_ready_for_dispatch` on fulfillment
+  * [ ] Ticket [PF-246]: Implement vendor fulfill endpoint (`POST /api/v1/vendor/orders/{orderId}/fulfill`) idempotently (all line items must be non-pending to move state -> partial fulfilled)
+  * [ ] Ticket [PF-247]: Transition fulfilled orders into hold/ready-for-dispatch semantics when all items in the order are no longer pending & then Emit outbox event `order_ready_for_dispatch` on fulfillment for admin and agents (one dispatch for both)
 
   * [ ] Ticket [PF-249]: Implement agent cash-collected endpoint (`POST /api/v1/agent/orders/{orderId}/cash-collected`) & Append `ledger_events(cash_collected)` during cash-collected flow
   * [ ] Ticket [PF-251]: Set `payment_intents.status=settled` + `cash_collected_at` & Emit outbox event `cash_collected` & update the order states too.
