@@ -47,6 +47,15 @@ type OrderCanceledEvent struct {
 	Reason          string    `json:"reason,omitempty"`
 }
 
+// CashCollectedEvent captures the payload emitted once an agent collects cash.
+type CashCollectedEvent struct {
+	OrderID         uuid.UUID `json:"order_id"`
+	BuyerStoreID    uuid.UUID `json:"buyer_store_id"`
+	VendorStoreID   uuid.UUID `json:"vendor_store_id"`
+	AmountCents     int       `json:"amount_cents"`
+	CashCollectedAt time.Time `json:"cash_collected_at"`
+}
+
 // NotificationRequestedEvent tells downstream systems to alert a vendor.
 type NotificationRequestedEvent struct {
 	OrderID         uuid.UUID `json:"order_id"`

@@ -2451,7 +2451,7 @@ Creation/cancellation requests require an `Idempotency-Key` and must provide `st
 
 * `POST /api/v1/agent/orders/{orderId}/cash-collected`
 
-  * Appends a single `LedgerEvent(cash_collected)` entry (payment-settled logic fires in PF-245) and ignores repeats.
+  * Agent role + `Idempotency` guard; `internal/orders.Service.AgentCashCollected` (PF-245) marks `payment_intents.status=settled`, stamps `cash_collected_at`, zeros `balance_due_cents`, records the assignment’s `cash_pickup_time`, emits the `cash_collected` outbox event, and appends exactly one `LedgerEvent(cash_collected)` row before short-circuiting subsequent calls so downstream systems (analytics, admin dashboards) see the canonical cash-collection moment.
   * **Idempotent:** YES (required)
   * Success: `200`
   * Errors: `401, 403, 404, 409`

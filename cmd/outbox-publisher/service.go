@@ -321,7 +321,7 @@ func (s *Service) publishResolved(ctx context.Context, event models.OutboxEvent,
 	if err := s.publishToTopic(ctx, event, resolved, resolved.Descriptor.Topic); err != nil {
 		return err
 	}
-	if event.EventType == enums.EventCheckoutConverted {
+	if event.EventType == enums.EventCheckoutConverted || event.EventType == enums.EventCashCollected {
 		analyticsTopic := strings.TrimSpace(s.cfg.PubSub.AnalyticsTopic)
 		if analyticsTopic != "" && analyticsTopic != resolved.Descriptor.Topic {
 			if err := s.publishToTopic(ctx, event, resolved, analyticsTopic); err != nil {

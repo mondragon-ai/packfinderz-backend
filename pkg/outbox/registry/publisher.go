@@ -94,6 +94,12 @@ func NewEventRegistry(cfg config.PubSubConfig) (*EventRegistry, error) {
 			PayloadFactory: func() interface{} { return &payloads.OrderCanceledEvent{} },
 		},
 		{
+			EventType:      enums.EventCashCollected,
+			AggregateType:  enums.AggregateVendorOrder,
+			Topic:          ordersTopic,
+			PayloadFactory: func() interface{} { return &payloads.CashCollectedEvent{} },
+		},
+		{
 			EventType:      enums.EventOrderPendingNudge,
 			AggregateType:  enums.AggregateVendorOrder,
 			Topic:          ordersTopic,
