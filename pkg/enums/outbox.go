@@ -60,6 +60,8 @@ const (
 	EventMediaUploaded         OutboxEventType = "media_uploaded"
 	EventPaymentSettled        OutboxEventType = "payment_settled"
 	EventCashCollected         OutboxEventType = "cash_collected"
+	EventPaymentFailed         OutboxEventType = "payment_failed"
+	EventPaymentRejected       OutboxEventType = "payment_rejected"
 	EventVendorPayoutRecorded  OutboxEventType = "vendor_payout_recorded"
 	EventNotificationRequested OutboxEventType = "notification_requested"
 	EventOrderExpired          OutboxEventType = "order_expired"
@@ -89,6 +91,8 @@ var validOutboxEventTypes = []OutboxEventType{
 	EventMediaUploaded,
 	EventPaymentSettled,
 	EventCashCollected,
+	EventPaymentFailed,
+	EventPaymentRejected,
 	EventVendorPayoutRecorded,
 	EventNotificationRequested,
 	EventOrderExpired,

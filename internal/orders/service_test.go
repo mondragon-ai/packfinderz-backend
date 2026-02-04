@@ -1310,6 +1310,19 @@ func TestAgentCashCollectedFailsWhenOrderNotReady(t *testing.T) {
 	if status, ok := repo.paymentUpdates["status"].(enums.PaymentStatus); !ok || status != enums.PaymentStatusFailed {
 		t.Fatalf("unexpected payment status %v", repo.paymentUpdates["status"])
 	}
+	if !outbox.called {
+		t.Fatal("expected outbox emit on failure")
+	}
+	if outbox.event.EventType != enums.EventPaymentFailed {
+		t.Fatalf("unexpected event type %s", outbox.event.EventType)
+	}
+	payload, ok := outbox.event.Data.(payloads.PaymentStatusEvent)
+	if !ok {
+		t.Fatalf("unexpected payload %T", outbox.event.Data)
+	}
+	if payload.FailureReason == nil || !strings.Contains(*payload.FailureReason, "order total") {
+		t.Fatalf("unexpected payload reason %v", payload.FailureReason)
+	}
 	if reason, ok := repo.paymentUpdates["failure_reason"].(string); !ok || reason == "" {
 		t.Fatalf("expected failure reason, got %v", repo.paymentUpdates["failure_reason"])
 	}
@@ -1318,6 +1331,19 @@ func TestAgentCashCollectedFailsWhenOrderNotReady(t *testing.T) {
 	}
 	if status, ok := repo.orderUpdates["status"].(enums.VendorOrderStatus); !ok || status != enums.VendorOrderStatusHold {
 		t.Fatalf("unexpected order status %v", repo.orderUpdates["status"])
+	}
+	if !outbox.called {
+		t.Fatal("expected outbox emit on failure")
+	}
+	if outbox.event.EventType != enums.EventPaymentFailed {
+		t.Fatalf("unexpected event type %s", outbox.event.EventType)
+	}
+	payload, ok = outbox.event.Data.(payloads.PaymentStatusEvent)
+	if !ok {
+		t.Fatalf("unexpected payload %T", outbox.event.Data)
+	}
+	if payload.FailureReason == nil || *payload.FailureReason == "" {
+		t.Fatalf("expected failure reason in payload")
 	}
 }
 

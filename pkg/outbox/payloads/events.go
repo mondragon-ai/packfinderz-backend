@@ -56,6 +56,13 @@ type CashCollectedEvent struct {
 	CashCollectedAt time.Time `json:"cash_collected_at"`
 }
 
+// PaymentStatusEvent is emitted when a payment intent enters a terminal status.
+type PaymentStatusEvent struct {
+	OrderID         uuid.UUID `json:"order_id"`
+	PaymentIntentID uuid.UUID `json:"payment_intent_id"`
+	FailureReason   *string   `json:"failure_reason,omitempty"`
+}
+
 // NotificationRequestedEvent tells downstream systems to alert a vendor.
 type NotificationRequestedEvent struct {
 	OrderID         uuid.UUID `json:"order_id"`
