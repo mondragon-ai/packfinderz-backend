@@ -142,6 +142,18 @@ func (r *Repository) Exists(ctx context.Context, eventType enums.OutboxEventType
 	return count > 0, err
 }
 
+// ExistsTx checks for an existing event using the provided transaction.
+func (r *Repository) ExistsTx(tx *gorm.DB, eventType enums.OutboxEventType, aggregateType enums.OutboxAggregateType, aggregateID uuid.UUID) (bool, error) {
+	if tx == nil {
+		return false, errors.New("transaction required")
+	}
+	var count int64
+	err := tx.Model(&models.OutboxEvent{}).
+		Where("event_type = ? AND aggregate_type = ? AND aggregate_id = ?", eventType, aggregateType, aggregateID).
+		Count(&count).Error
+	return count > 0, err
+}
+
 func (r *Repository) DeletePublishedBefore(ctx context.Context, tx *gorm.DB, cutoff time.Time, minAttemptCount int) (int64, error) {
 	db := r.db
 	if tx != nil {

@@ -18,6 +18,7 @@ type Repository interface {
 	CreateOrderLineItems(ctx context.Context, items []models.OrderLineItem) error
 	CreatePaymentIntent(ctx context.Context, intent *models.PaymentIntent) (*models.PaymentIntent, error)
 	FindVendorOrdersByCheckoutGroup(ctx context.Context, checkoutGroupID uuid.UUID) ([]models.VendorOrder, error)
+	FindVendorOrderByCheckoutGroupAndVendor(ctx context.Context, checkoutGroupID, vendorStoreID uuid.UUID) (*models.VendorOrder, error)
 	FindOrderLineItemsByOrder(ctx context.Context, orderID uuid.UUID) ([]models.OrderLineItem, error)
 	FindOrderLineItem(ctx context.Context, lineItemID uuid.UUID) (*models.OrderLineItem, error)
 	FindPaymentIntentByOrder(ctx context.Context, orderID uuid.UUID) (*models.PaymentIntent, error)

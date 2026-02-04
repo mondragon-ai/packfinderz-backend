@@ -11,6 +11,7 @@ import (
 	"github.com/angelmondragon/packfinderz-backend/internal/checkout/reservation"
 	"github.com/angelmondragon/packfinderz-backend/internal/orders"
 	"github.com/angelmondragon/packfinderz-backend/internal/stores"
+	dbpkg "github.com/angelmondragon/packfinderz-backend/pkg/db"
 	"github.com/angelmondragon/packfinderz-backend/pkg/db/models"
 	"github.com/angelmondragon/packfinderz-backend/pkg/enums"
 	pkgerrors "github.com/angelmondragon/packfinderz-backend/pkg/errors"
@@ -35,6 +36,7 @@ type reservationRunner interface {
 
 type outboxPublisher interface {
 	Emit(ctx context.Context, tx *gorm.DB, event outbox.DomainEvent) error
+	EmitIfNotExists(ctx context.Context, tx *gorm.DB, event outbox.DomainEvent) error
 }
 
 type reservationEngine struct{}
@@ -215,6 +217,15 @@ func (s *service) Execute(ctx context.Context, buyerStoreID, cartID uuid.UUID, i
 
 		vendorGroupSnapshots = append([]models.CartVendorGroup(nil), record.VendorGroups...)
 
+		existingOrders, err := ordersRepo.FindVendorOrdersByCheckoutGroup(ctx, *checkoutGroupID)
+		if err != nil {
+			return err
+		}
+		existingOrdersByVendor := make(map[uuid.UUID]*models.VendorOrder, len(existingOrders))
+		for i := range existingOrders {
+			existingOrdersByVendor[existingOrders[i].VendorStoreID] = &existingOrders[i]
+		}
+
 		for vendorID, items := range grouped {
 			if _, err := s.loadVendorStore(ctx, vendorID, buyerState, vendorCache); err != nil {
 				return err
@@ -225,62 +236,78 @@ func (s *service) Execute(ctx context.Context, buyerStoreID, cartID uuid.UUID, i
 				return pkgerrors.New(pkgerrors.CodeInternal, fmt.Sprintf("missing vendor group for vendor %s", vendorID))
 			}
 			orderTotals := computeVendorOrderTotals(items, reservationMap)
-			order := &models.VendorOrder{
-				CartID:            record.ID,
-				CheckoutGroupID:   *checkoutGroupID,
-				BuyerStoreID:      buyerStoreID,
-				VendorStoreID:     vendorID,
-				Currency:          record.Currency,
-				ShippingAddress:   appliedShippingAddress,
-				SubtotalCents:     orderTotals.SubtotalCents,
-				DiscountsCents:    orderTotals.DiscountsCents,
-				TaxCents:          0,
-				TransportFeeCents: 0,
-				PaymentMethod:     appliedPaymentMethod,
-				TotalCents:        orderTotals.TotalCents,
-				BalanceDueCents:   orderTotals.TotalCents,
-				Warnings:          cartGroup.Warnings,
-				Promo:             cartGroup.Promo,
-				ShippingLine:      appliedShippingLine,
-			}
-			createdOrder, err := ordersRepo.CreateVendorOrder(ctx, order)
-			if err != nil {
-				return err
-			}
 
-			lineItems := make([]models.OrderLineItem, 0, len(items))
-			anyReserved := orderTotals.HasReserved
-			for _, item := range items {
-				product, err := s.loadProduct(ctx, item.ProductID, productCache)
+			var createdOrder *models.VendorOrder
+			if existingOrder, ok := existingOrdersByVendor[vendorID]; ok {
+				createdOrder = existingOrder
+			} else {
+				newOrder := &models.VendorOrder{
+					CartID:            record.ID,
+					CheckoutGroupID:   *checkoutGroupID,
+					BuyerStoreID:      buyerStoreID,
+					VendorStoreID:     vendorID,
+					Currency:          record.Currency,
+					ShippingAddress:   appliedShippingAddress,
+					SubtotalCents:     orderTotals.SubtotalCents,
+					DiscountsCents:    orderTotals.DiscountsCents,
+					TaxCents:          0,
+					TransportFeeCents: 0,
+					PaymentMethod:     appliedPaymentMethod,
+					TotalCents:        orderTotals.TotalCents,
+					BalanceDueCents:   orderTotals.TotalCents,
+					Warnings:          cartGroup.Warnings,
+					Promo:             cartGroup.Promo,
+					ShippingLine:      appliedShippingLine,
+				}
+				createdOrder, err = ordersRepo.CreateVendorOrder(ctx, newOrder)
 				if err != nil {
-					return err
+					if dbpkg.IsUniqueViolation(err, "ux_vendor_orders_group_vendor") {
+						createdOrder, err = ordersRepo.FindVendorOrderByCheckoutGroupAndVendor(ctx, *checkoutGroupID, vendorID)
+					}
+					if err != nil {
+						return err
+					}
 				}
-				result := reservationMap[item.ID]
-				lineItems = append(lineItems, buildLineItem(createdOrder.ID, item, product, result))
 			}
 
-			if err := ordersRepo.CreateOrderLineItems(ctx, lineItems); err != nil {
-				return err
-			}
-			if !anyReserved {
-				updates := map[string]any{
-					"status":            enums.VendorOrderStatusRejected,
-					"balance_due_cents": 0,
+			if len(createdOrder.Items) == 0 {
+				lineItems := make([]models.OrderLineItem, 0, len(items))
+				anyReserved := orderTotals.HasReserved
+				for _, item := range items {
+					product, err := s.loadProduct(ctx, item.ProductID, productCache)
+					if err != nil {
+						return err
+					}
+					result := reservationMap[item.ID]
+					lineItems = append(lineItems, buildLineItem(createdOrder.ID, item, product, result))
 				}
-				if err := ordersRepo.UpdateVendorOrder(ctx, createdOrder.ID, updates); err != nil {
+
+				if err := ordersRepo.CreateOrderLineItems(ctx, lineItems); err != nil {
 					return err
 				}
-				createdOrder.Status = enums.VendorOrderStatusRejected
-				createdOrder.BalanceDueCents = 0
+				if !anyReserved {
+					updates := map[string]any{
+						"status":            enums.VendorOrderStatusRejected,
+						"balance_due_cents": 0,
+					}
+					if err := ordersRepo.UpdateVendorOrder(ctx, createdOrder.ID, updates); err != nil {
+						return err
+					}
+					createdOrder.Status = enums.VendorOrderStatusRejected
+					createdOrder.BalanceDueCents = 0
+				}
 			}
-			intent := &models.PaymentIntent{
-				OrderID:     createdOrder.ID,
-				Method:      appliedPaymentMethod,
-				Status:      intentStatus,
-				AmountCents: orderTotals.TotalCents,
-			}
-			if _, err := ordersRepo.CreatePaymentIntent(ctx, intent); err != nil {
-				return err
+
+			if createdOrder.PaymentIntent == nil {
+				intent := &models.PaymentIntent{
+					OrderID:     createdOrder.ID,
+					Method:      appliedPaymentMethod,
+					Status:      intentStatus,
+					AmountCents: orderTotals.TotalCents,
+				}
+				if _, err := ordersRepo.CreatePaymentIntent(ctx, intent); err != nil {
+					return err
+				}
 			}
 			vendorOrderIDs = append(vendorOrderIDs, createdOrder.ID)
 			vendorStoreIDs[createdOrder.VendorStoreID] = struct{}{}
@@ -357,7 +384,7 @@ func (s *service) emitOrderCreatedEvent(ctx context.Context, tx *gorm.DB, checko
 		},
 		Version: 1,
 	}
-	return s.outbox.Emit(ctx, tx, event)
+	return s.outbox.EmitIfNotExists(ctx, tx, event)
 }
 
 func (s *service) emitCheckoutConvertedEvent(
@@ -395,7 +422,7 @@ func (s *service) emitCheckoutConvertedEvent(
 			Analytics:       analytics,
 		},
 	}
-	return s.outbox.Emit(ctx, tx, event)
+	return s.outbox.EmitIfNotExists(ctx, tx, event)
 }
 
 func buildCheckoutConvertedAnalyticsEvent(cart *models.CartRecord, vendorOrders []models.VendorOrder) payloads.CheckoutConvertedAnalyticsEvent {

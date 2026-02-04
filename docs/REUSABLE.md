@@ -59,6 +59,10 @@ GORM + Postgres client.
 * Context-aware `Exec` / `Raw`
 * `WithTx(fn)` → auto rollback on error/panic
 
+**Helpers**
+
+* `IsUniqueViolation(err, constraintName)` inspects Postgres duplicate-key errors (optionally scoped to `constraintName`) so services like checkout/outbox can detect retries that should reuse existing aggregates instead of blowing up.
+
 ---
 
 ### `migrate`
