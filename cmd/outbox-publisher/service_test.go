@@ -82,6 +82,58 @@ func TestServiceProcessBatchContinuesAfterFailure(t *testing.T) {
 	}
 }
 
+func TestPublishResolvedAlsoWritesAnalyticsTopic(t *testing.T) {
+	pub := &fakePublisher{
+		results: []publishResult{
+			fakePublishResult{},
+			fakePublishResult{},
+		},
+	}
+	event := models.OutboxEvent{
+		ID:            uuid.New(),
+		EventType:     enums.EventCheckoutConverted,
+		AggregateType: enums.AggregateCheckoutGroup,
+		AggregateID:   uuid.New(),
+		Payload:       mustEnvelopePayload(t, "converted"),
+	}
+	repo := &fakeRepo{events: []models.OutboxEvent{event}}
+	resolved := &registry.ResolvedEvent{
+		Descriptor: registry.EventDescriptor{
+			Topic:         "notification-topic",
+			AggregateType: enums.AggregateCheckoutGroup,
+		},
+		Envelope: outbox.PayloadEnvelope{
+			EventID:    event.ID.String(),
+			OccurredAt: time.Now(),
+		},
+		Payload: &payloads.CheckoutConvertedEvent{},
+	}
+	registry := &fakeRegistry{resolved: resolved}
+	dlqRepo := &fakeDLQRepo{}
+	service := newTestService(t, repo, pub, registry, dlqRepo, nil)
+	service.cfg.PubSub.AnalyticsTopic = "analytics-topic"
+	service.publisherFactory = func(topic string) publisher {
+		if topic != "notification-topic" && topic != "analytics-topic" {
+			t.Fatalf("unexpected topic %q", topic)
+		}
+		return pub
+	}
+
+	processed, err := service.processBatch(context.Background())
+	if err != nil {
+		t.Fatalf("process batch returned error: %v", err)
+	}
+	if !processed {
+		t.Fatalf("expected batch to report processed")
+	}
+	if len(pub.results) != 0 {
+		t.Fatalf("expected all publish results consumed, got %d", len(pub.results))
+	}
+	if len(repo.published) != 1 {
+		t.Fatalf("expected published row recorded once, got %d", len(repo.published))
+	}
+}
+
 func TestServiceProcessBatchWritesDLQOnNonRetryable(t *testing.T) {
 	event := models.OutboxEvent{
 		ID:            uuid.New(),

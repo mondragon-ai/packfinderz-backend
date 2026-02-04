@@ -281,68 +281,122 @@
 
   * [ ] Ticket [PF-239] - [PF-240]: Prevent duplicate vendor orders on retry (uniqueness anchored on checkout_group_id+vendor_store_id and/or cart_id) & Prevent duplicate outbox rows on retry for same conversion anchor
 
-  * [ ] Ticket [PF-241]: Add outbox payload versioning rules for these events
-  * [ ] Ticket [PF-242]: Add checkout regression tests (idempotent retry, expired/already converted behavior, exactly two outbox events)
+  * [ ] Ticket [PF-XXX]: Add outbox payload versioning rules for these events
+  * [ ] Ticket [PF-XXX]: Add checkout regression tests (idempotent retry, expired/already converted behavior, exactly two outbox events)
 
 * **Phase 7 — Orders + Fulfillment + Cash Collection Completion**
   **Goal:** Finish the operational lifecycle for vendors/agents and cash settlement.
 
-  * [ ] Ticket [PF-246]: Implement vendor fulfill endpoint (`POST /api/v1/vendor/orders/{orderId}/fulfill`) idempotently (all line items must be non-pending to move state -> partial fulfilled)
-  * [ ] Ticket [PF-247]: Transition fulfilled orders into hold/ready-for-dispatch semantics when all items in the order are no longer pending & then Emit outbox event `order_ready_for_dispatch` on fulfillment for admin and agents (one dispatch for both)
+  * [ ] Ticket [PF-XXX]: Implement vendor fulfill endpoint (`POST /api/v1/vendor/orders/{orderId}/fulfill`) idempotently (all line items must be non-pending to move state -> partial fulfilled)
+  * [ ] Ticket [PF-XXX]: Transition fulfilled orders into hold/ready-for-dispatch semantics when all items in the order are no longer pending & then Emit outbox event `order_ready_for_dispatch` on fulfillment for admin and agents (one dispatch for both)
 
-  * [ ] Ticket [PF-249]: Implement agent cash-collected endpoint (`POST /api/v1/agent/orders/{orderId}/cash-collected`) & Append `ledger_events(cash_collected)` during cash-collected flow
-  * [ ] Ticket [PF-251]: Set `payment_intents.status=settled` + `cash_collected_at` & Emit outbox event `cash_collected` & update the order states too.
+  * [ ] Ticket [PF-XXX]: Implement agent cash-collected endpoint (`POST /api/v1/agent/orders/{orderId}/cash-collected`) & Append `ledger_events(cash_collected)` during cash-collected flow
+  * [ ] Ticket [PF-XXX]: Set `payment_intents.status=settled` + `cash_collected_at` & Emit outbox event `cash_collected` & update the order states too.
 
 * **Phase 8 — Attachment Wiring for Core Domains**
   **Goal:** Make attachments usable across MVP surfaces and keep delete semantics correct.
 
-  * [ ] Ticket [PF-253]: Wire license ↔ media attachments
-  * [ ] Ticket [PF-254]: Wire product ↔ media attachments (gallery + COA)
-  * [ ] Ticket [PF-255]: Wire store ↔ media attachments (logo/banner)
-  * [ ] Ticket [PF-256]: Wire user ↔ media attachments (avatar)
+  * [ ] Ticket [PF-XXX]: Wire license ↔ media attachments
+  * [ ] Ticket [PF-XXX]: Wire product ↔ media attachments (gallery + COA)
+  * [ ] Ticket [PF-XXX]: Wire store ↔ media attachments (logo/banner)
+  * [ ] Ticket [PF-XXX]: Wire user ↔ media attachments (avatar)
 
 * **Phase 9 — Analytics MVP Completion (Admin View + Test Coverage)**
   **Goal:** Provide global analytics and lock ingestion/query correctness.
 
-  * [ ] Ticket [PF-257]: Implement admin analytics endpoint (`GET /api/v1/admin/analytics`) for global KPIs
-  * [ ] Ticket [PF-258]: Add unit tests for marketplace mapping logic
-  * [ ] Ticket [PF-259]: Add unit tests for analytics SQL builders
-  * [ ] Ticket [PF-260]: Add integration test harness (handler → BQ writer)
+  * [ ] Ticket [PF-XXX]: Implement admin analytics endpoint (`GET /api/v1/admin/analytics`) for global KPIs
+  * [ ] Ticket [PF-XXX]: Add unit tests for marketplace mapping logic
+  * [ ] Ticket [PF-XXX]: Add unit tests for analytics SQL builders
+  * [ ] Ticket [PF-XXX]: Add integration test harness (handler → BQ writer)
 
 * **Phase 10 — DLQ + Ops Runbooks (Minimum Viable)**
   **Goal:** Make failures recoverable and observable by an operator.
 
-  * [ ] Ticket [PF-261]: Document and implement DLQ retry policy + MAX_ATTEMPTS conventions (minimal hooks)
-  * [ ] Ticket [PF-262]: Create DLQ replay tooling/runbook (safe requeue + idempotency expectations)
+  * [ ] Ticket [PF-XXX]: Document and implement DLQ retry policy + MAX_ATTEMPTS conventions (minimal hooks)
+  * [ ] Ticket [PF-XXX]: Create DLQ replay tooling/runbook (safe requeue + idempotency expectations)
 
-* **Phase 11 — Integration Test Harness (End-to-End Happy Path)**
+
+* **Phase 11 — Subscription Finalization**
+  **Goal:** 
+
+> Subscription Plan Catalog (Multi-Plan, Config-Driven) Support 2 monthly + 2 annual plans (annual = monthly-equivalent with % discount), and make plan changes safe without code rewrites.
+
+  * [ ] Ticket [PF-XXX]: Define canonical “plan catalog” shape (PlanID, name, interval, price_cents, discount_percent, stripe_price_id, is_active, sort_order)
+  * [ ] Ticket [PF-XXX]: Implement config loader for plan catalog (env/JSON) with schema validation + startup fail-fast on invalid config
+  * [ ] Ticket [PF-XXX]: Add persistence strategy for plan catalog (decision + wiring): **config-only** vs **DB-backed mirror** (pick one and implement)
+  * [ ] Ticket [PF-XXX]: Add `subscriptions.plan_id` (and/or `stripe_price_id`) and store the chosen plan at purchase time
+  * [ ] Ticket [PF-XXX]: Implement plan resolution helper (given plan_id → returns Stripe price id + normalized billing interval metadata)
+  * [ ] Ticket [PF-XXX]: Add endpoint to list available subscription plans (`GET /api/v1/subscriptions/plans`) store-scoped and filtered by `is_active`
+
+> Subscription API & Service Refactor (Plan-Aware) Make create/cancel/get subscription endpoints handle any number of plans without special-casing.
+
+  * [ ] Ticket [PF-XXX]: Update subscription create DTO to accept `plan_id` only (remove Stripe IDs from request contract)
+  * [ ] Ticket [PF-XXX]: Update subscription service to resolve plan via catalog and pass only server-resolved Stripe identifiers to Stripe client
+  * [ ] Ticket [PF-XXX]: Implement subscription “change plan” behavior decision (MVP: disallow vs allow). If allow: add endpoint + service flow.
+  * [ ] Ticket [PF-XXX]: Update subscription repo queries/indexes to support plan_id + store_id lookup patterns cleanly
+  * [ ] Ticket [PF-XXX]: Add migration/index to enforce “one active subscription per store” (or explicitly allow multiple if intended; pick and enforce)
+
+> Payment Method Sourcing (DB-First, No Client Pass-Through) Pull payment method from DB using `activeStoreId`; never accept StripeCustomerID / StripePaymentMethodID from request.
+
+  * [ ] Ticket [PF-XXX]: Update `payment_methods` table usage to support “default payment method on file” per store (fields + index if missing)
+  * [ ] Ticket [PF-XXX]: Implement repo helper: fetch StripeCustomerID + default StripePaymentMethodID by `store_id` (active store)
+  * [ ] Ticket [PF-XXX]: Remove these fields from create-subscription request handling:
+
+  * `payload.StripeCustomerID`
+  * `payload.StripePaymentMethodID`
+  * [ ] Ticket [PF-XXX]: Update subscription create flow to:
+
+  * load store billing identity (customer id)
+  * load default payment method id
+  * fail with typed error if missing/invalid
+  * [ ] Ticket [PF-XXX]: Add endpoint to “set default payment method” (if not already present) using existing Stripe customer/payment method objects
+
+> Edge Cases & Failure Modes (PM Missing/Invalid/Expired) Robust behavior when billing data is missing, stale, or rejected by Stripe.
+
+  * [ ] Ticket [PF-XXX]: Define error taxonomy for billing failures (no PM on file, invalid PM, customer missing, Stripe hard decline, Stripe transient)
+  * [ ] Ticket [PF-XXX]: Implement “no default PM on file” handling (clear response + next-step messaging)
+  * [ ] Ticket [PF-XXX]: Implement “payment method invalid” handling (detect via Stripe error codes; mark PM as invalid in DB if appropriate)
+  * [ ] Ticket [PF-XXX]: Add retry-safe idempotency behavior for create subscription when Stripe returns ambiguous/transient errors
+  * [ ] Ticket [PF-XXX]: Add webhook-driven reconciliation rule: if Stripe says payment method detached/expired → update local payment_methods state
+
+> Webhooks & State Sync Hardening (Plans + Billing Identity) Ensure `stores.subscription_active` and subscription rows remain correct across plan changes, cancellations, and Stripe-side updates.
+
+  * [ ] Ticket [PF-XXX]: Extend webhook consumer mapping to persist: plan_id/stripe_price_id, interval, current_period_end, cancel_at_period_end, status
+  * [ ] Ticket [PF-XXX]: Implement “catalog mismatch” guard: webhook arrives with unknown stripe_price_id → log + DLQ (don’t silently corrupt state)
+  * [ ] Ticket [PF-XXX]: Add reconciliation job: periodically re-fetch subscription from Stripe for “recently failing/updated” records (minimal MVP cadence)
+
+> Tests & Integration Coverage (Billing Contracts Locked) Prevent regressions while you add plan variants and DB-sourced payment methods.
+
+  * [ ] Ticket [PF-XXX]: Unit tests: plan catalog parsing/validation (missing fields, duplicate ids, invalid discounts)
+  * [ ] Ticket [PF-XXX]: Unit tests: plan resolution helper (plan_id → stripe price id; annual discount logic invariants)
+  * [ ] Ticket [PF-XXX]: Unit tests: subscription create service uses DB PM and rejects request-supplied Stripe IDs
+  * [ ] Ticket [PF-XXX]: Unit tests: edge cases (no PM, invalid PM, customer missing)
+  * [ ] Ticket [PF-XXX]: Integration script: create store → attach payment method → create monthly → cancel → create annual (happy path)
+
+> Ops Guardrails (Minimum Viable) Make billing debuggable in production without “SSH and pray”.
+
+  * [ ] Ticket [PF-XXX]: Add structured logs for billing actions (store_id, subscription_id, plan_id, stripe ids redacted, idempotency key)
+  * [ ] Ticket [PF-XXX]: Add metrics counters for billing outcomes (created/canceled/failed + reason buckets)
+  * [ ] Ticket [PF-XXX]: Add admin-only endpoint to view store billing identity summary (customer exists, default PM exists, last charge outcome)
+
+* **Phase 12 — Integration Test Harness (End-to-End Happy Path)**
   **Goal:** Deterministic scripts that validate the full MVP pipeline on real deployments.
 
   * [x] Ticket [PF-232]: Implement scripted register/login flows (buyer + vendor) and token store/header injection helpers (happy/failure paths)
-  * [x] Ticket [PF-233]: Implement scripted to build and create new products (happy/failure paths)
-  * [ ] Ticket [PF-266]: Add static media fixtures (`fixtures/media/*`) including image/video/PDF
-  * [ ] Ticket [PF-267]: Script media create/upload/poll until `uploaded`
-  * [ ] Ticket [PF-268]: Script create license + admin approve/reject
-  * [ ] Ticket [PF-269]: Script create product + set inventory
-  * [ ] Ticket [PF-270]: Script full happy-path: product → cart → checkout → agent deliver → payout
+  * [x] Ticket [PF-233]: Implement scripted to build and create new products + set inventory (happy/failure paths)
+  * [ ] Ticket [PF-XXX]: Implement Script media create presigned URL & upload (via files from our `fixtures/media/*` folder) including image/video/PDF (`product`, `license_doc`, `coa`) & polling until uplaoded (GCS PUT) is possible (happy/failure paths)
+  * [ ] Ticket [PF-XXX]: Implement Script create license from `license_doc` media uplaoded (happy/failure paths) + admin login -> approve/reject (happy/failure paths)
+  * [ ] Ticket [PF-XXX]: Implement Script cart → checkout → orders (happy/failure paths)
+  * [ ] Ticket [PF-XXX]: Implement Script orders → vendor approve/reject + fulfill/reject line item(s) + emit agent dispatch order state change (happy/failure paths)
+  * [ ] Ticket [PF-XXX]: Implement Script orders → agent deliver pickup + drop off + cash collected → payout (happy/failure paths) 
+  * [ ] Ticket [PF-XXX]: Implement Script orders → Vendor/Buyer cancel order (happy/failure paths) 
+  * [ ] Ticket [PF-XXX]: Implement Script orders → Expire order + nudge vendor + expire order  & release inventory (happy/failure paths) 
 
 ---
 
 ## Stage 3 — Post-MVP Nice-to-have
 
-* **Phase 1 — Analytics Ads Extensions (Without Full Ads Engine)**
-  **Goal:** Prepare ad analytics plumbing and attribution utilities without requiring ads for MVP.
-
-  * [ ] Ticket [PF-271]: Support inserts into `ad_event_facts`
-  * [ ] Ticket [PF-272]: Implement attribution token decode utilities for analytics
-  * [ ] Ticket [PF-273]: Implement deterministic token selection strategy (last-applicable)
-  * [ ] Ticket [PF-274]: Attribute store-level ads to full order revenue
-  * [ ] Ticket [PF-275]: Attribute product-level ads to matching line-item revenue
-  * [ ] Ticket [PF-276]: Emit `ad_event_facts` rows with `type=conversion`
-  * [ ] Ticket [PF-277]: Implement ad analytics query service (spend/impressions/clicks/ROAS/time series)
-  * [ ] Ticket [PF-278]: Implement ad analytics API endpoints + response shaping + advertiser ownership enforcement
-
-* **Phase 2 — Media Processing Worker (Compression + OCR)**
+* **Phase 1 — Media Processing Worker (Compression + OCR)**
   **Goal:** Automated derived assets and OCR pipeline (beyond core upload/delete).
 
   * [ ] Ticket [PF-279]: Create `cmd/media-worker` binary
@@ -353,15 +407,16 @@
   * [ ] Ticket [PF-284]: Update media row with derived artifacts
   * [ ] Ticket [PF-285]: Emit `media_processed` outbox event
 
-* **Phase 3 — Notifications: Email Pipeline**
+* **Phase 2 — Notifications: Email Pipeline**
   **Goal:** Send email notifications via adapter interface (SendGrid later).
 
+  * [ ] Ticket [PF-286]: Set up sendgrid client and wire up to notifications pubsub consumer
   * [ ] Ticket [PF-286]: Define notification email templates
   * [ ] Ticket [PF-287]: Define email sender interface
-  * [ ] Ticket [PF-288]: Implement stub email sender (log-only)
+  * [ ] Ticket [PF-288]: Impliment 
   * [ ] Ticket [PF-289]: Implement SendGrid adapter (future swap)
 
-* **Phase 4 — COA → OpenAI Product Drafts**
+* **Phase 3 — COA → OpenAI Product Drafts**
   **Goal:** Parse COA PDFs into structured product drafts.
 
   * [ ] Ticket [PF-290]: Implement OpenAI client bootstrap
@@ -369,14 +424,14 @@
   * [ ] Ticket [PF-292]: Implement product draft JSON generator from parsed COA
   * [ ] Ticket [PF-293]: Persist product draft + status
 
-* **Phase 5 — Checkout Refactor Safety Locks (Docs/Flags)**
+* **Phase 4 — Checkout Refactor Safety Locks (Docs/Flags)**
   **Goal:** Formalize sequencing and guardrails for future checkout iterations.
 
   * [ ] Ticket [PF-294]: Write `CHECKOUT_REFACTOR.md` sequencing locks
   * [ ] Ticket [PF-295]: Add feature flag/config guard for selecting checkout flow entrypoint (if parallel flows exist)
   * [ ] Ticket [PF-296]: Commit grep checklist for all references to `checkout_groups` and `AttributedAdClickID`
 
-* **Phase 6 — Optional Admin/Vendor Finance UX**
+* **Phase 5 — Optional Admin/Vendor Finance UX**
   **Goal:** Convenience endpoints that don’t affect authoritative finance state.
 
   * [ ] Ticket [PF-297]: Implement optional vendor “confirm paid” endpoint (audited; non-authoritative)
@@ -432,7 +487,19 @@
   * [ ] Ticket [PF-341]: Add load shedding (candidate limit + optional short-lived caching)
   * [ ] Ticket [PF-342]: Add integration tests for serve→impression→click→cart token persist→checkout attribution→rollup→usage_charges
 
-* **Phase 2 — Ops, Observability, Hardening**
+* **Phase 2 — Analytics Ads Extensions (Without Full Ads Engine)**
+  **Goal:** Prepare ad analytics plumbing and attribution utilities without requiring ads for MVP.
+
+  * [ ] Ticket [PF-271]: Support inserts into `ad_event_facts`
+  * [ ] Ticket [PF-272]: Implement attribution token decode utilities for analytics
+  * [ ] Ticket [PF-273]: Implement deterministic token selection strategy (last-applicable)
+  * [ ] Ticket [PF-274]: Attribute store-level ads to full order revenue
+  * [ ] Ticket [PF-275]: Attribute product-level ads to matching line-item revenue
+  * [ ] Ticket [PF-276]: Emit `ad_event_facts` rows with `type=conversion`
+  * [ ] Ticket [PF-277]: Implement ad analytics query service (spend/impressions/clicks/ROAS/time series)
+  * [ ] Ticket [PF-278]: Implement ad analytics API endpoints + response shaping + advertiser ownership enforcement
+
+* **Phase 3 — Ops, Observability, Hardening**
   **Goal:** Operational safety improvements beyond MVP.
 
   * [ ] Ticket [PF-343]: Implement worker metrics and DLQ visibility views/queries
