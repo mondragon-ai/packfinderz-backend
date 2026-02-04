@@ -115,6 +115,7 @@ CREATE TABLE IF NOT EXISTS payment_intents (
   amount_cents INTEGER NOT NULL,
   cash_collected_at DATETIME,
   vendor_paid_at DATETIME,
+  failure_reason TEXT,
   created_at DATETIME,
   updated_at DATETIME
 );`

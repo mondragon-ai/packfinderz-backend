@@ -2,6 +2,7 @@ package orders
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -1043,7 +1044,8 @@ func TestAgentCashCollectedAppendsLedgerEvent(t *testing.T) {
 	vendorID := uuid.New()
 	detail := &OrderDetail{
 		Order: &VendorOrderSummary{
-			Status: enums.VendorOrderStatusDelivered,
+			Status:     enums.VendorOrderStatusDelivered,
+			TotalCents: 1234,
 		},
 		BuyerStore: OrderStoreSummary{ID: buyerID},
 		VendorStore: OrderStoreSummary{
@@ -1136,7 +1138,8 @@ func TestAgentCashCollectedIdempotent(t *testing.T) {
 	vendorID := uuid.New()
 	detail := &OrderDetail{
 		Order: &VendorOrderSummary{
-			Status: enums.VendorOrderStatusDelivered,
+			Status:     enums.VendorOrderStatusDelivered,
+			TotalCents: 2000,
 		},
 		BuyerStore: OrderStoreSummary{ID: buyerID},
 		VendorStore: OrderStoreSummary{
@@ -1186,6 +1189,192 @@ func TestAgentCashCollectedIdempotent(t *testing.T) {
 	}
 }
 
+func TestAgentCashCollectedRejectsTerminalPaymentStatuses(t *testing.T) {
+	orderID := uuid.New()
+	agentID := uuid.New()
+	buyerID := uuid.New()
+	vendorID := uuid.New()
+	statuses := []enums.PaymentStatus{
+		enums.PaymentStatusSettled,
+		enums.PaymentStatusPaid,
+		enums.PaymentStatusFailed,
+		enums.PaymentStatusRejected,
+	}
+	for _, status := range statuses {
+		detail := &OrderDetail{
+			Order: &VendorOrderSummary{
+				Status: enums.VendorOrderStatusReadyForDispatch,
+			},
+			BuyerStore: OrderStoreSummary{ID: buyerID},
+			VendorStore: OrderStoreSummary{
+				ID: vendorID,
+			},
+			ActiveAssignment: &OrderAssignmentSummary{
+				AgentUserID: agentID,
+				AssignedAt:  time.Now().UTC(),
+			},
+			PaymentIntent: &PaymentIntentDetail{
+				AmountCents: 1000,
+				Status:      string(status),
+			},
+		}
+		repo := &stubOrdersRepo{
+			order: &models.VendorOrder{ID: orderID},
+			findOrderDetail: func(ctx context.Context, id uuid.UUID) (*OrderDetail, error) {
+				return detail, nil
+			},
+		}
+		outbox := &stubOutboxPublisher{}
+		ledgerCalls := 0
+		ledger := newStubLedgerService(func(ctx context.Context, input ledger.RecordLedgerEventInput) (*models.LedgerEvent, error) {
+			ledgerCalls++
+			return &models.LedgerEvent{ID: uuid.New()}, nil
+		}, func(ctx context.Context, orderID uuid.UUID, eventType enums.LedgerEventType) (bool, error) {
+			return false, nil
+		})
+		svc, _ := NewService(repo, stubTxRunner{}, outbox, &stubInventoryReleaser{}, &stubInventoryReserver{}, ledger)
+		err := svc.AgentCashCollected(context.Background(), AgentCashCollectedInput{
+			OrderID:     orderID,
+			AgentUserID: agentID,
+		})
+		if err == nil {
+			t.Fatalf("expected error for status %s", status)
+		}
+		typed := pkgerrors.As(err)
+		if typed == nil || typed.Code() != pkgerrors.CodeStateConflict {
+			t.Fatalf("unexpected error for status %s: %v", status, err)
+		}
+		if outbox.called {
+			t.Fatalf("expected no outbox emit for status %s", status)
+		}
+		if ledgerCalls != 0 {
+			t.Fatalf("expected ledger not called for status %s, got %d", status, ledgerCalls)
+		}
+		if repo.paymentUpdates != nil {
+			t.Fatalf("expected no payment updates for status %s", status)
+		}
+		if repo.orderUpdates != nil {
+			t.Fatalf("expected no order updates for status %s", status)
+		}
+	}
+}
+
+func TestAgentCashCollectedFailsWhenOrderNotReady(t *testing.T) {
+	orderID := uuid.New()
+	agentID := uuid.New()
+	buyerID := uuid.New()
+	vendorID := uuid.New()
+	detail := &OrderDetail{
+		Order: &VendorOrderSummary{
+			Status: enums.VendorOrderStatusAccepted,
+		},
+		BuyerStore: OrderStoreSummary{ID: buyerID},
+		VendorStore: OrderStoreSummary{
+			ID: vendorID,
+		},
+		ActiveAssignment: &OrderAssignmentSummary{
+			AgentUserID: agentID,
+			AssignedAt:  time.Now().UTC(),
+		},
+		PaymentIntent: &PaymentIntentDetail{
+			AmountCents: 100,
+			Status:      string(enums.PaymentStatusPending),
+		},
+	}
+	repo := &stubOrdersRepo{
+		order: &models.VendorOrder{ID: orderID},
+		findOrderDetail: func(ctx context.Context, id uuid.UUID) (*OrderDetail, error) {
+			return detail, nil
+		},
+	}
+	outbox := &stubOutboxPublisher{}
+	ledger := newStubLedgerService(func(ctx context.Context, input ledger.RecordLedgerEventInput) (*models.LedgerEvent, error) {
+		return &models.LedgerEvent{ID: uuid.New()}, nil
+	}, func(ctx context.Context, orderID uuid.UUID, eventType enums.LedgerEventType) (bool, error) {
+		return false, nil
+	})
+	svc, _ := NewService(repo, stubTxRunner{}, outbox, &stubInventoryReleaser{}, &stubInventoryReserver{}, ledger)
+	err := svc.AgentCashCollected(context.Background(), AgentCashCollectedInput{
+		OrderID:     orderID,
+		AgentUserID: agentID,
+	})
+	if err == nil {
+		t.Fatal("expected failure when order not ready")
+	}
+	if outbox.called {
+		t.Fatal("expected no outbox emit on failure")
+	}
+	if repo.paymentUpdates == nil {
+		t.Fatal("expected payment updates")
+	}
+	if status, ok := repo.paymentUpdates["status"].(enums.PaymentStatus); !ok || status != enums.PaymentStatusFailed {
+		t.Fatalf("unexpected payment status %v", repo.paymentUpdates["status"])
+	}
+	if reason, ok := repo.paymentUpdates["failure_reason"].(string); !ok || reason == "" {
+		t.Fatalf("expected failure reason, got %v", repo.paymentUpdates["failure_reason"])
+	}
+	if repo.orderUpdates == nil {
+		t.Fatal("expected order update")
+	}
+	if status, ok := repo.orderUpdates["status"].(enums.VendorOrderStatus); !ok || status != enums.VendorOrderStatusHold {
+		t.Fatalf("unexpected order status %v", repo.orderUpdates["status"])
+	}
+}
+
+func TestAgentCashCollectedFailsOnAmountMismatch(t *testing.T) {
+	orderID := uuid.New()
+	agentID := uuid.New()
+	buyerID := uuid.New()
+	vendorID := uuid.New()
+	detail := &OrderDetail{
+		Order: &VendorOrderSummary{
+			Status:     enums.VendorOrderStatusReadyForDispatch,
+			TotalCents: 100,
+		},
+		BuyerStore: OrderStoreSummary{ID: buyerID},
+		VendorStore: OrderStoreSummary{
+			ID: vendorID,
+		},
+		ActiveAssignment: &OrderAssignmentSummary{
+			AgentUserID: agentID,
+			AssignedAt:  time.Now().UTC(),
+		},
+		PaymentIntent: &PaymentIntentDetail{
+			AmountCents: 150,
+			Status:      string(enums.PaymentStatusPending),
+		},
+	}
+	repo := &stubOrdersRepo{
+		order: &models.VendorOrder{ID: orderID},
+		findOrderDetail: func(ctx context.Context, id uuid.UUID) (*OrderDetail, error) {
+			return detail, nil
+		},
+	}
+	outbox := &stubOutboxPublisher{}
+	ledger := newStubLedgerService(func(ctx context.Context, input ledger.RecordLedgerEventInput) (*models.LedgerEvent, error) {
+		return &models.LedgerEvent{ID: uuid.New()}, nil
+	}, func(ctx context.Context, orderID uuid.UUID, eventType enums.LedgerEventType) (bool, error) {
+		return false, nil
+	})
+	svc, _ := NewService(repo, stubTxRunner{}, outbox, &stubInventoryReleaser{}, &stubInventoryReserver{}, ledger)
+	err := svc.AgentCashCollected(context.Background(), AgentCashCollectedInput{
+		OrderID:     orderID,
+		AgentUserID: agentID,
+	})
+	if err == nil {
+		t.Fatal("expected failure on amount mismatch")
+	}
+	if repo.paymentUpdates == nil {
+		t.Fatal("expected payment updates")
+	}
+	if reason, ok := repo.paymentUpdates["failure_reason"].(string); !ok || !strings.Contains(reason, "order total") {
+		t.Fatalf("unexpected failure reason %v", repo.paymentUpdates["failure_reason"])
+	}
+	if status, ok := repo.paymentUpdates["status"].(enums.PaymentStatus); !ok || status != enums.PaymentStatusFailed {
+		t.Fatalf("unexpected payment status %v", repo.paymentUpdates["status"])
+	}
+}
+
 func TestAgentCashCollectedRecordsAssignmentCashPickupTime(t *testing.T) {
 	orderID := uuid.New()
 	agentID := uuid.New()
@@ -1193,7 +1382,8 @@ func TestAgentCashCollectedRecordsAssignmentCashPickupTime(t *testing.T) {
 	vendorID := uuid.New()
 	detail := &OrderDetail{
 		Order: &VendorOrderSummary{
-			Status: enums.VendorOrderStatusDelivered,
+			Status:     enums.VendorOrderStatusDelivered,
+			TotalCents: 500,
 		},
 		BuyerStore: OrderStoreSummary{ID: buyerID},
 		VendorStore: OrderStoreSummary{

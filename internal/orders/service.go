@@ -786,8 +786,19 @@ func (s *service) AgentCashCollected(ctx context.Context, input AgentCashCollect
 		if detail.BuyerStore.ID == uuid.Nil || detail.VendorStore.ID == uuid.Nil {
 			return pkgerrors.New(pkgerrors.CodeDependency, "order stores missing")
 		}
+		if detail.Order.Status != enums.VendorOrderStatusReadyForDispatch && detail.Order.Status != enums.VendorOrderStatusInTransit && detail.Order.Status != enums.VendorOrderStatusDelivered {
+			reason := fmt.Sprintf("order status %s not ready for cash collection", detail.Order.Status)
+			return s.failCashCollection(ctx, repo, input.OrderID, reason)
+		}
 		if detail.PaymentIntent == nil {
 			return pkgerrors.New(pkgerrors.CodeDependency, "payment intent missing")
+		}
+		status := detail.PaymentIntent.Status
+		if status == string(enums.PaymentStatusSettled) ||
+			status == string(enums.PaymentStatusPaid) ||
+			status == string(enums.PaymentStatusFailed) ||
+			status == string(enums.PaymentStatusRejected) {
+			return pkgerrors.New(pkgerrors.CodeStateConflict, "payment already finalized")
 		}
 
 		has, err := s.ledger.HasEvent(ctx, input.OrderID, enums.LedgerEventTypeCashCollected)
@@ -800,6 +811,10 @@ func (s *service) AgentCashCollected(ctx context.Context, input AgentCashCollect
 
 		amount := detail.Order.TotalCents
 		if detail.PaymentIntent.AmountCents > 0 {
+			if detail.Order.TotalCents != detail.PaymentIntent.AmountCents {
+				reason := fmt.Sprintf("order total %d differs from payment intent %d", detail.Order.TotalCents, detail.PaymentIntent.AmountCents)
+				return s.failCashCollection(ctx, repo, input.OrderID, reason)
+			}
 			amount = detail.PaymentIntent.AmountCents
 		}
 
@@ -872,6 +887,25 @@ func (s *service) AgentCashCollected(ctx context.Context, input AgentCashCollect
 
 		return nil
 	})
+}
+
+func (s *service) failCashCollection(ctx context.Context, repo Repository, orderID uuid.UUID, reason string) error {
+	paymentUpdates := map[string]any{
+		"status":         enums.PaymentStatusFailed,
+		"failure_reason": reason,
+	}
+	if err := repo.UpdatePaymentIntent(ctx, orderID, paymentUpdates); err != nil {
+		return pkgerrors.Wrap(pkgerrors.CodeDependency, err, "mark payment intent failed")
+	}
+
+	orderUpdates := map[string]any{
+		"status": enums.VendorOrderStatusHold,
+	}
+	if err := repo.UpdateVendorOrder(ctx, orderID, orderUpdates); err != nil {
+		return pkgerrors.Wrap(pkgerrors.CodeDependency, err, "hold order after cash collection failure")
+	}
+
+	return pkgerrors.New(pkgerrors.CodeStateConflict, reason)
 }
 
 func mapDecisionToStatus(decision enums.VendorOrderDecision) (enums.VendorOrderStatus, error) {
