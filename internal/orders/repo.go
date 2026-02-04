@@ -513,7 +513,7 @@ func (r *repository) ListUnassignedHoldOrders(ctx context.Context, params pagina
 		Joins("JOIN stores bs ON bs.id = vo.buyer_store_id").
 		Joins("JOIN stores vs ON vs.id = vo.vendor_store_id").
 		Joins("LEFT JOIN order_assignments oa ON oa.order_id = vo.id AND oa.active = true").
-		Where("vo.status = ?", enums.VendorOrderStatusHold).
+		Where("vo.status = ?", enums.VendorOrderStatusReadyForDispatch).
 		Where("oa.order_id IS NULL")
 
 	if cursor != nil {

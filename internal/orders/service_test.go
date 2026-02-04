@@ -626,7 +626,7 @@ func TestLineItemDecisionFulfillEmitsEvent(t *testing.T) {
 	if !outbox.called {
 		t.Fatal("expected outbox event")
 	}
-	event, ok := outbox.event.Data.(payloads.OrderFulfilledEvent)
+	event, ok := outbox.event.Data.(payloads.OrderReadyForDispatchEvent)
 	if !ok {
 		t.Fatalf("unexpected event payload %T", outbox.event.Data)
 	}
@@ -636,7 +636,10 @@ func TestLineItemDecisionFulfillEmitsEvent(t *testing.T) {
 	if event.ResolvedLineItemID != lineID {
 		t.Fatalf("unexpected resolved line item %s", event.ResolvedLineItemID)
 	}
-	if repo.order.Status != enums.VendorOrderStatusHold {
+	if len(event.VendorStoreIDs) != 1 || event.VendorStoreIDs[0] != storeID {
+		t.Fatalf("unexpected vendor store ids %v", event.VendorStoreIDs)
+	}
+	if repo.order.Status != enums.VendorOrderStatusReadyForDispatch {
 		t.Fatalf("unexpected order status %s", repo.order.Status)
 	}
 	if repo.order.FulfillmentStatus != enums.VendorOrderFulfillmentStatusFulfilled {
@@ -707,7 +710,7 @@ func TestLineItemDecisionRejectReleasesInventory(t *testing.T) {
 	if !outbox.called {
 		t.Fatal("expected outbox event")
 	}
-	event, ok := outbox.event.Data.(payloads.OrderFulfilledEvent)
+	event, ok := outbox.event.Data.(payloads.OrderReadyForDispatchEvent)
 	if !ok {
 		t.Fatalf("unexpected event payload %T", outbox.event.Data)
 	}
@@ -716,6 +719,9 @@ func TestLineItemDecisionRejectReleasesInventory(t *testing.T) {
 	}
 	if event.ResolvedLineItemID != lineID {
 		t.Fatalf("unexpected resolved line item id %s", event.ResolvedLineItemID)
+	}
+	if len(event.VendorStoreIDs) != 1 || event.VendorStoreIDs[0] != storeID {
+		t.Fatalf("unexpected vendor store ids %v", event.VendorStoreIDs)
 	}
 	if repo.order.SubtotalCents != 0 || repo.order.TotalCents != 0 || repo.order.BalanceDueCents != 0 {
 		t.Fatalf("unexpected order totals %+v", repo.order)
@@ -737,7 +743,7 @@ func TestAgentPickupSuccess(t *testing.T) {
 	assignID := uuid.New()
 	detail := &OrderDetail{
 		Order: &VendorOrderSummary{
-			Status:         enums.VendorOrderStatusHold,
+			Status:         enums.VendorOrderStatusReadyForDispatch,
 			ShippingStatus: enums.VendorOrderShippingStatusPending,
 		},
 		ActiveAssignment: &OrderAssignmentSummary{
@@ -784,7 +790,7 @@ func TestAgentPickupForbiddenWhenNotAssigned(t *testing.T) {
 	orderID := uuid.New()
 	detail := &OrderDetail{
 		Order: &VendorOrderSummary{
-			Status: enums.VendorOrderStatusHold,
+			Status: enums.VendorOrderStatusReadyForDispatch,
 		},
 		ActiveAssignment: &OrderAssignmentSummary{
 			ID:          uuid.New(),

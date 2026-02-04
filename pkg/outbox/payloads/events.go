@@ -24,12 +24,13 @@ type OrderDecisionEvent struct {
 	Status          enums.VendorOrderStatus   `json:"status"`
 }
 
-// OrderFulfilledEvent surfaces the aggregated fields when fulfillment completes.
-type OrderFulfilledEvent struct {
+// OrderReadyForDispatchEvent mirrors the payload emitted once all line items resolve.
+type OrderReadyForDispatchEvent struct {
 	OrderID            uuid.UUID                          `json:"order_id"`
 	CheckoutGroupID    uuid.UUID                          `json:"checkout_group_id"`
 	BuyerStoreID       uuid.UUID                          `json:"buyer_store_id"`
 	VendorStoreID      uuid.UUID                          `json:"vendor_store_id"`
+	VendorStoreIDs     []uuid.UUID                        `json:"vendor_store_ids"`
 	FulfillmentStatus  enums.VendorOrderFulfillmentStatus `json:"fulfillment_status"`
 	ShippingStatus     enums.VendorOrderShippingStatus    `json:"shipping_status"`
 	RejectedItemCount  int                                `json:"rejected_item_count"`

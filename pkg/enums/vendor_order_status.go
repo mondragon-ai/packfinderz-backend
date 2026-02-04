@@ -11,6 +11,7 @@ const (
 	VendorOrderStatusPartiallyAccepted VendorOrderStatus = "partially_accepted"
 	VendorOrderStatusRejected          VendorOrderStatus = "rejected"
 	VendorOrderStatusFulfilled         VendorOrderStatus = "fulfilled"
+	VendorOrderStatusReadyForDispatch  VendorOrderStatus = "ready_for_dispatch"
 	VendorOrderStatusHold              VendorOrderStatus = "hold"
 	VendorOrderStatusHoldForPickup     VendorOrderStatus = "hold_for_pickup"
 	VendorOrderStatusInTransit         VendorOrderStatus = "in_transit"
@@ -26,6 +27,7 @@ var validVendorOrderStatuses = []VendorOrderStatus{
 	VendorOrderStatusPartiallyAccepted,
 	VendorOrderStatusRejected,
 	VendorOrderStatusFulfilled,
+	VendorOrderStatusReadyForDispatch,
 	VendorOrderStatusHold,
 	VendorOrderStatusHoldForPickup,
 	VendorOrderStatusInTransit,

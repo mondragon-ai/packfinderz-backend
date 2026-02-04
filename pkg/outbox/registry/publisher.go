@@ -82,10 +82,10 @@ func NewEventRegistry(cfg config.PubSubConfig) (*EventRegistry, error) {
 			PayloadFactory: func() interface{} { return &payloads.OrderDecisionEvent{} },
 		},
 		{
-			EventType:      enums.EventOrderFulfilled,
+			EventType:      enums.EventOrderReadyForDispatch,
 			AggregateType:  enums.AggregateVendorOrder,
 			Topic:          ordersTopic,
-			PayloadFactory: func() interface{} { return &payloads.OrderFulfilledEvent{} },
+			PayloadFactory: func() interface{} { return &payloads.OrderReadyForDispatchEvent{} },
 		},
 		{
 			EventType:      enums.EventOrderCanceled,
