@@ -3381,6 +3381,7 @@ Notes:
 * `entity_type`/`entity_id` describe the consuming entity (product, license, store, ad, order, etc.), with the polymorphic semantics enforced at the application layer.
 * Multiple rows per `media_id` are allowed so a single `media` row can appear in many attachments.
 * Attachment reconciliation flows use `internal/media.NewAttachmentReconciler` to diff old vs new media IDs within a transaction so all creations/removals follow the lifecycle rules.
+* Store branding relies on the same helper: `entity_type='store_logo'` and `entity_type='store_banner'` now represent the committed logo/banner usage so every update/clear writes a single attachment per slot inside the store transaction, enabling future cleanup workers to unlink the previous asset before persisting the next one.
 * Product gallery media (`product_media`) plus a single `coa_media_id` reference now call the reconciler with `entity_type='product_gallery'` and `entity_type='product_coa'` inside their create/update transactions so the `media_attachments` table always mirrors whatever gallery/COA media IDs the product currently exposes.
 * Lifecycle rules (protected attachments, deletion preconditions, and clean-up ordering) are documented in `docs/media_attachments_lifecycle.md`, and the service layer enforces them via `pkg/db/models/media_attachment.go`.
 

@@ -300,9 +300,10 @@ Re-running the migration is safe because the statements use `CREATE EXTENSION IF
 * Outbox events
 * Audit logs
 * Google Cloud Storage (pkg/storage/gcs) verified via `/health/ready`
-* Media metadata (`media` + `media_attachments`, which tie `entity_type`/`entity_id` to `store_id` and cache `gcs_key` so usage lookups stay tenant-scoped)
+  * Media metadata (`media` + `media_attachments`, which tie `entity_type`/`entity_id` to `store_id` and cache `gcs_key` so usage lookups stay tenant-scoped)
   * License uploads now persist a `media_attachments` row (`entity_type='license'`) so the referenced `media_kind=license_doc` asset stays protected while the license exists.
   * Product gallery media plus the single COA reference (`products.coa_media_id`) now call the canonical `internal/media.AttachmentReconciler` during create/update transactions (`entity_type='product_gallery'` / `product_coa`) so their attachments mirror the latest media IDs without cross-store leaks.
+  * Store branding (logo/banner) calls the same reconciler with `entity_type='store_logo'` and `entity_type='store_banner'` so each store keeps exactly one attachment per usage and updates run inside the store transaction.
   * Attachment reconciliation happens through `internal/media.NewAttachmentReconciler`, which diffs usages inside a transaction and follows the lifecycle rules described in `docs/media_attachments_lifecycle.md`.
   * Lifecycle rules (protected attachments, deletion preconditions, and cleanup ordering) are detailed in `docs/media_attachments_lifecycle.md`.
   * `DELETE /api/v1/media/{mediaId}` loads `media_attachments`, rejects the request whenever a `license` or `ad` attachment exists, and deletes the GCS object once the guard passes so the delete-media worker sees the corresponding `OBJECT_DELETE` event.

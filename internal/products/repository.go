@@ -55,7 +55,7 @@ LEFT JOIN LATERAL (
   SELECT ma.media_id AS logo_media_id,
          ma.gcs_key AS logo_gcs_key
   FROM media_attachments ma
-  WHERE ma.entity_type = 'store' AND ma.entity_id = s.id
+  WHERE ma.entity_type = 'store_logo' AND ma.entity_id = s.id
   ORDER BY ma.created_at DESC
   LIMIT 1
 ) logo ON true

@@ -27,6 +27,8 @@ type StoreDTO struct {
 	Social               *types.Social        `json:"social,omitempty"`
 	BannerURL            *string              `json:"banner_url,omitempty"`
 	LogoURL              *string              `json:"logo_url,omitempty"`
+	BannerMediaID        *uuid.UUID           `json:"banner_media_id,omitempty"`
+	LogoMediaID          *uuid.UUID           `json:"logo_media_id,omitempty"`
 	Ratings              map[string]int       `json:"ratings,omitempty"`
 	Categories           []string             `json:"categories,omitempty"`
 	OwnerID              uuid.UUID            `json:"owner"`
@@ -91,6 +93,12 @@ func FromModel(m *models.Store) *StoreDTO {
 		logo := *m.LogoURL
 		dto.LogoURL = &logo
 	}
+	if m.BannerMediaID != nil {
+		dto.BannerMediaID = cloneUUIDPtr(m.BannerMediaID)
+	}
+	if m.LogoMediaID != nil {
+		dto.LogoMediaID = cloneUUIDPtr(m.LogoMediaID)
+	}
 	if len(m.Ratings) > 0 {
 		dto.Ratings = make(map[string]int, len(m.Ratings))
 		for k, v := range m.Ratings {
@@ -137,4 +145,12 @@ func (c CreateStoreDTO) ToModel() *models.Store {
 	}
 
 	return model
+}
+
+func cloneUUIDPtr(id *uuid.UUID) *uuid.UUID {
+	if id == nil {
+		return nil
+	}
+	cpy := *id
+	return &cpy
 }

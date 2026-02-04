@@ -27,6 +27,8 @@ type Store struct {
 	Social               *types.Social        `gorm:"column:social;type:social_t"`
 	BannerURL            *string              `gorm:"column:banner_url"`
 	LogoURL              *string              `gorm:"column:logo_url"`
+	BannerMediaID        *uuid.UUID           `gorm:"column:banner_media_id"`
+	LogoMediaID          *uuid.UUID           `gorm:"column:logo_media_id"`
 	Ratings              types.Ratings        `gorm:"column:ratings;type:jsonb"`
 	Categories           pq.StringArray       `gorm:"column:categories;type:text[]"`
 	OwnerID              uuid.UUID            `gorm:"column:owner;type:uuid;not null"`
