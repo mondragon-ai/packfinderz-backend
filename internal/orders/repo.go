@@ -795,6 +795,7 @@ func buildPaymentIntentDetail(intent *models.PaymentIntent) *PaymentIntentDetail
 		AmountCents:     intent.AmountCents,
 		CashCollectedAt: intent.CashCollectedAt,
 		VendorPaidAt:    intent.VendorPaidAt,
+		FailureReason:   intent.FailureReason,
 	}
 }
 

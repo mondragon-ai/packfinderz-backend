@@ -154,6 +154,7 @@ type PaymentIntentDetail struct {
 	AmountCents     int        `json:"amount_cents"`
 	CashCollectedAt *time.Time `json:"cash_collected_at,omitempty"`
 	VendorPaidAt    *time.Time `json:"vendor_paid_at,omitempty"`
+	FailureReason   *string    `json:"failure_reason,omitempty"`
 }
 
 // OrderDetail bundles an order with its related preloads for detail rendering.

@@ -17,6 +17,7 @@ type PaymentIntent struct {
 	AmountCents     int                 `gorm:"column:amount_cents;not null"`
 	CashCollectedAt *time.Time          `gorm:"column:cash_collected_at"`
 	VendorPaidAt    *time.Time          `gorm:"column:vendor_paid_at"`
+	FailureReason   *string             `gorm:"column:failure_reason"`
 	CreatedAt       time.Time           `gorm:"column:created_at;autoCreateTime"`
 	UpdatedAt       time.Time           `gorm:"column:updated_at;autoUpdateTime"`
 }
