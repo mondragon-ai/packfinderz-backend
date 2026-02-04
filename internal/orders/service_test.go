@@ -306,7 +306,7 @@ func (s *stubInventoryReserver) Reserve(ctx context.Context, tx *gorm.DB, reques
 type stubTxRunner struct{}
 
 func (stubTxRunner) WithTx(ctx context.Context, fn func(tx *gorm.DB) error) error {
-	return fn(nil)
+	return fn(&gorm.DB{})
 }
 
 func TestVendorDecision(t *testing.T) {
@@ -1301,27 +1301,8 @@ func TestAgentCashCollectedFailsWhenOrderNotReady(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected failure when order not ready")
 	}
-	if outbox.called {
-		t.Fatal("expected no outbox emit on failure")
-	}
 	if repo.paymentUpdates == nil {
 		t.Fatal("expected payment updates")
-	}
-	if status, ok := repo.paymentUpdates["status"].(enums.PaymentStatus); !ok || status != enums.PaymentStatusFailed {
-		t.Fatalf("unexpected payment status %v", repo.paymentUpdates["status"])
-	}
-	if !outbox.called {
-		t.Fatal("expected outbox emit on failure")
-	}
-	if outbox.event.EventType != enums.EventPaymentFailed {
-		t.Fatalf("unexpected event type %s", outbox.event.EventType)
-	}
-	payload, ok := outbox.event.Data.(payloads.PaymentStatusEvent)
-	if !ok {
-		t.Fatalf("unexpected payload %T", outbox.event.Data)
-	}
-	if payload.FailureReason == nil || !strings.Contains(*payload.FailureReason, "order total") {
-		t.Fatalf("unexpected payload reason %v", payload.FailureReason)
 	}
 	if reason, ok := repo.paymentUpdates["failure_reason"].(string); !ok || reason == "" {
 		t.Fatalf("expected failure reason, got %v", repo.paymentUpdates["failure_reason"])
@@ -1338,12 +1319,15 @@ func TestAgentCashCollectedFailsWhenOrderNotReady(t *testing.T) {
 	if outbox.event.EventType != enums.EventPaymentFailed {
 		t.Fatalf("unexpected event type %s", outbox.event.EventType)
 	}
-	payload, ok = outbox.event.Data.(payloads.PaymentStatusEvent)
+	payload, ok := outbox.event.Data.(payloads.PaymentStatusEvent)
 	if !ok {
 		t.Fatalf("unexpected payload %T", outbox.event.Data)
 	}
 	if payload.FailureReason == nil || *payload.FailureReason == "" {
 		t.Fatalf("expected failure reason in payload")
+	}
+	if !strings.Contains(*payload.FailureReason, "not ready for cash collection") {
+		t.Fatalf("unexpected payload reason %v", payload.FailureReason)
 	}
 }
 

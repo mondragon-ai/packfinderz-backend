@@ -165,6 +165,8 @@ func main() {
 		cfg.GCS.DownloadURLExpiry,
 	)
 	requireResource(ctx, logg, "media service", err)
+	attachmentReconciler, err := media.NewAttachmentReconciler(mediaAttachmentRepo, mediaRepo)
+	requireResource(ctx, logg, "attachment reconciler", err)
 
 	productRepo := products.NewRepository(dbClient.DB())
 	productService, err := products.NewService(productRepo, dbClient, storeRepo, membershipsRepo, mediaRepo)
@@ -212,8 +214,9 @@ func main() {
 
 	licenseService, err := licenses.NewService(
 		licenses.NewRepository(dbClient.DB()),
-		media.NewRepository(dbClient.DB()),
+		mediaRepo,
 		membershipsRepo,
+		attachmentReconciler,
 		gcsClient,
 		cfg.GCS.BucketName,
 		cfg.GCS.DownloadURLExpiry,

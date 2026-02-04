@@ -295,15 +295,15 @@
   * [x] Ticket [PF-247]: Prevent duplicate cash collection on already settled or paid orders
   * [x] Ticket [PF-248]: Mark payment intent as failed when cash collection validation fails
   * [ ] Ticket [PF-249]: Support rejected payment state for future ACH or admin-declined settlements
-  * [ ] Ticket [PF-250]: Emit payment_failed or payment_rejected outbox events for downstream consumers
+  * [x] Ticket [PF-250]: Emit payment_failed or payment_rejected outbox events for downstream consumers
 
 * **Phase 8 — Attachment Wiring for Core Domains**
   **Goal:** Make attachments usable across MVP surfaces and keep delete semantics correct.
 
-  * [ ] Ticket [PF-XXX]: Wire license ↔ media attachments
-  * [ ] Ticket [PF-XXX]: Wire product ↔ media attachments (gallery + COA)
-  * [ ] Ticket [PF-XXX]: Wire store ↔ media attachments (logo/banner)
-  * [ ] Ticket [PF-XXX]: Wire user ↔ media attachments (avatar)
+  * [ ] Ticket [PF-251]: Wire license ↔ media attachments
+  * [ ] Ticket [PF-252]: Wire product ↔ media attachments (gallery + COA)
+  * [ ] Ticket [PF-253]: Wire store ↔ media attachments (logo/banner)
+  * [ ] Ticket [PF-254]: Wire user ↔ media attachments (avatar)
 
 * **Phase 9 — Analytics MVP Completion (Admin View + Test Coverage)**
   **Goal:** Provide global analytics and lock ingestion/query correctness.
@@ -421,12 +421,104 @@
   * [ ] Ticket [PF-289]: Implement SendGrid adapter (future swap)
 
 * **Phase 3 — COA → OpenAI Product Drafts**
-  **Goal:** Parse COA PDFs into structured product drafts.
+  **Goal:** Parse COA PDFs into structured product draftsmusing document AI & open toproduct product JSOn draft to return to client to be confirmed.
 
-  * [ ] Ticket [PF-290]: Implement OpenAI client bootstrap
-  * [ ] Ticket [PF-291]: Implement COA OCR → structured parser
-  * [ ] Ticket [PF-292]: Implement product draft JSON generator from parsed COA
-  * [ ] Ticket [PF-293]: Persist product draft + status
+> Document Ingestion Infrastructure: Establish file intake + event-driven processing foundation.
+
+* [ ] Ticket: Create GCS buckets/folders for `licenses/` and `coas/`
+* [ ] Ticket: Define upload conventions (path structure, naming, metadata)
+* [ ] Ticket: Implement upload endpoint for license images
+* [ ] Ticket: Implement upload endpoint for COA PDFs
+* [ ] Ticket: Attach store_id / product_id metadata to uploaded objects
+* [ ] Ticket: Configure GCS finalize trigger (or Pub/Sub notification)
+* [ ] Ticket: Provision Pub/Sub topic for document processing
+* [ ] Ticket: Deploy Cloud Run worker scaffold for document pipeline
+* [ ] Ticket: Wire GCS → Pub/Sub → Cloud Run flow
+* [ ] Ticket: Add IAM permissions for GCS + Pub/Sub + Document AI
+
+> Document AI Client + Raw OCR Extraction: Convert uploaded files into canonical OCR text + structural output.
+
+* [ ] Ticket: Bootstrap Document AI client in backend
+* [ ] Ticket: Configure License OCR processor
+* [ ] Ticket: Configure COA Layout/Form processor
+* [ ] Ticket: Implement License OCR invocation from worker
+* [ ] Ticket: Implement COA OCR invocation from worker
+* [ ] Ticket: Normalize Document AI responses into internal struct
+* [ ] Ticket: Persist `raw_text.txt` per document
+* [ ] Ticket: Persist `docai_response.json` per document
+* [ ] Ticket: Store document processing status (pending / ocr_complete / failed)
+* [ ] Ticket: Add retry + dead-letter handling for OCR failures
+
+> OpenAI Client + Structured Extraction Layer: Convert OCR output into normalized domain JSON.
+
+* [ ] Ticket: Implement OpenAI client bootstrap
+* [ ] Ticket: Define LicenseExtraction DTO (fields + evidence + confidence)
+* [ ] Ticket: Define COAExtraction DTO (tables + metadata + evidence)
+* [ ] Ticket: Implement License raw_text → OpenAI normalization
+* [ ] Ticket: Implement COA raw_text + tables → OpenAI normalization
+* [ ] Ticket: Enforce strict JSON schema validation on OpenAI responses
+* [ ] Ticket: Implement retry + correction loop for malformed responses
+* [ ] Ticket: Persist `license_extracted.json`
+* [ ] Ticket: Persist `coa_extracted.json`
+* [ ] Ticket: Add extraction status states (parsed / failed / needs_review)
+
+> Validation + Audit Trail: Ensure extracted data is verifiable and compliance-safe.
+
+* [ ] Ticket: Implement license field validators (dates, license format, state)
+* [ ] Ticket: Implement COA validators (units, totals, required fields)
+* [ ] Ticket: Attach evidence snippets per extracted field
+* [ ] Ticket: Compute confidence scores per document
+* [ ] Ticket: Persist validation errors
+* [ ] Ticket: Add low-confidence flagging
+* [ ] Ticket: Create audit tables for OCR + OpenAI outputs
+* [ ] Ticket: Store original file references for traceability
+
+> Review Workflow (Minimal): Allow human intervention for edge cases.
+
+* [ ] Ticket: Add `needs_review` document state
+* [ ] Ticket: Implement API to fetch failed/low-confidence docs
+* [ ] Ticket: Implement API to submit manual corrections
+* [ ] Ticket: Persist reviewer overrides
+* [ ] Ticket: Merge overrides into canonical extracted record
+
+> License Domain Integration: Attach validated licenses to Stores.
+
+* [ ] Ticket: Create License model + migrations
+* [ ] Ticket: Map LicenseExtraction → License entity
+* [ ] Ticket: Persist license against store_id
+* [ ] Ticket: Implement license status logic (active / expired / invalid)
+* [ ] Ticket: Block downstream flows on invalid license
+* [ ] Ticket: Expose store license API
+
+> COA Domain Integration: Persist COA results and prepare for product generation.
+
+* [ ] Ticket: Create COA model + migrations
+* [ ] Ticket: Store normalized COA data per product
+* [ ] Ticket: Store cannabinoid / terpene / contaminant tables
+* [ ] Ticket: Attach COA to product_id
+* [ ] Ticket: Expose COA fetch API
+
+> COA → OpenAI Product Drafts (Extended Phase): Parse COA PDFs into structured product drafts.
+
+* [ ] Ticket [PF-290]: Implement OpenAI client bootstrap (shared with extraction if not already)
+* [ ] Ticket [PF-291]: Implement COA OCR → structured parser
+* [ ] Ticket [PF-292]: Define ProductDraft DTO (name, potency, batch, lab, etc.)
+* [ ] Ticket: Map COAExtraction → ProductDraft prompt input
+* [ ] Ticket [PF-292]: Implement product draft JSON generator from parsed COA
+* [ ] Ticket: Validate ProductDraft schema
+* [ ] Ticket [PF-293]: Persist product draft + status (draft / ready / rejected)
+* [ ] Ticket: Attach draft to product pipeline
+* [ ] Ticket: Expose API to fetch generated drafts
+* [ ] Ticket: Allow manual edits before publish
+
+> Observability + Ops: Make the pipeline debuggable in production.
+
+* [ ] Ticket: Add structured logging to each pipeline stage
+* [ ] Ticket: Emit metrics (documents processed, failures, retries)
+* [ ] Ticket: Add tracing across GCS → DocAI → OpenAI
+* [ ] Ticket: Create dashboard for document pipeline health
+* [ ] Ticket: Add alerting on OCR / extraction failure rates
+
 
 * **Phase 4 — Checkout Refactor Safety Locks (Docs/Flags)**
   **Goal:** Formalize sequencing and guardrails for future checkout iterations.
@@ -439,6 +531,62 @@
   **Goal:** Convenience endpoints that don’t affect authoritative finance state.
 
   * [ ] Ticket [PF-297]: Implement optional vendor “confirm paid” endpoint (audited; non-authoritative)
+
+* **Phase 6 — Google Maps & Autocompelte suggestions & lat / long**
+
+  > Scope + Wiring Plan: Lock in the minimal API contract + placement in your repo so implementation doesn’t thrash.
+
+  * [ ] Ticket: Decide domain location + package boundaries (`internal/address`, `api/controllers/address` vs keeping in `api/controllers`), and document it in a short `internal/address/README.md`
+  * [ ] Ticket: Define public API contract for address autocomplete: query params, request/response JSON, error shapes, and session token handling expectations
+  * [ ] Ticket: Add config keys to `config.Config` (`GoogleMaps.APIKey`) and env var mapping (`GOOGLE_MAPS_API_KEY`), including local/dev defaults behavior
+  * [ ] Ticket: Add service interface definition (Suggest/Resolve) and DTO types (`AddressSuggestion`, `AddressResolveRequest/Response`) in the chosen package(s)
+
+  >  Google Places Client (Low-level HTTP): Implement the Google REST client that can autocomplete and resolve a Place into your `Address` DTO.
+
+  * [ ] Ticket: Implement `GooglePlacesClient` constructor and shared HTTP client config (timeouts, headers, base URLs)
+  * [ ] Ticket: Implement Places Autocomplete (New) client method (POST `places:autocomplete`) returning normalized `[]AddressSuggestion`
+  * [ ] Ticket: Implement Place Details (New) client method (GET `places/{placeId}` with `X-Goog-FieldMask`) returning raw details payload
+  * [ ] Ticket: Implement mapper `mapAddressComponents → Address` to produce your `Address` struct (line1/line2/city/state/postal/country)
+  * [ ] Ticket: Add error handling for non-2xx responses (parse body to string, return typed error that includes status code)
+
+  > Address Service Layer: Wrap the Google client in a small internal service with stable method signatures for controllers.
+
+  * [ ] Ticket: Create `internal/address/service.go` implementing `Suggest(ctx, query, sessionToken)` and `Resolve(ctx, placeID, sessionToken)`
+  * [ ] Ticket: Add input sanitation rules in service (trim, min length guard, optional US-only restriction)
+  * [ ] Ticket: Add optional knobs (in code constants or config) for `regionCode`, `includedRegionCodes`, `includedPrimaryTypes`, `languageCode`
+
+  > Public API Controllers: Expose endpoints usable during registration (no auth) with correct JSON I/O.
+
+  * [ ] Ticket: Implement controller `PublicAddressSuggest` (GET) reading `q` + `session_token`, returning `{suggestions, session_token}`
+  * [ ] Ticket: Implement controller `PublicAddressResolve` (POST) reading `{place_id, session_token}`, returning `{address}`
+  * [ ] Ticket: Standardize controller error responses (400 vs 502) and logging fields (query length, place_id, google status code)
+  * [ ] Ticket: Add request timeouts in handlers (context deadlines consistent with your patterns)
+
+  > Router + Dependency Injection: Wire endpoints into your existing router and composition root cleanly.
+
+  * [ ] Ticket: Add new routes under `/api/public/address/*` in router
+  * [ ] Ticket: Add `addressService` dependency to `NewRouter(...)` signature and wire through call sites
+  * [ ] Ticket: Instantiate `GooglePlacesClient` and `address.Service` in your composition root using `cfg.GoogleMaps.APIKey`
+  * [ ] Ticket: Add startup validation/health hint (optional log warning if API key missing in non-prod)
+
+  > Rate Limiting + Abuse Controls: Prevent API key burn and scraping while keeping UX responsive.
+
+  * [ ] Ticket: Add rate limit middleware or policy for `/api/public/address/*` (separate from auth rate policies)
+  * [ ] Ticket: Add minimum query length guard (`len(q) >= 3`) and empty-response behavior for short queries
+  * [ ] Ticket: Add basic request validation constraints (max query length; max body size for resolve)
+
+  > Tests + Local Verification: Ensure the feature is reliable and doesn’t regress.
+
+  * [ ] Ticket: Unit test `mapAddressComponents` mapping logic with representative component sets (street_number/route/locality/state/postal/country/subpremise)
+  * [ ] Ticket: Unit test service Suggest/Resolve using an injected HTTP client transport stub (fake Google responses)
+  * [ ] Ticket: Controller tests for both endpoints (400 validation, 200 success, 502 upstream failure)
+  * [ ] Ticket: Add a minimal manual test script (curl examples) for suggest + resolve and expected shapes
+
+  > Integration Notes for Frontend (Non-code or small docs): Make frontend usage deterministic for registration flows.
+
+  * [ ] Ticket: Document the frontend session-token lifecycle + debounce expectations (generate token on focus; reuse for suggest; send with resolve; discard after selection)
+  * [ ] Ticket: Document how resolved `Address` is intended to populate the registration DTO fields and be submitted as-is
+
 
 ---
 

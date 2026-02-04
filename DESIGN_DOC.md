@@ -105,6 +105,7 @@ Future (ACH):
 * Licenses:
 
   * Vendors may have multiple; buyers usually one.
+  * Each upload now writes a `media_attachments` row (`entity_type='license'`) inside the same transaction as the `licenses` row so the referenced `media_kind=license_doc` asset stays protected until the license is deleted.
 * Store status:
 
   * `pending_verification → verified | rejected → expired | suspended`
