@@ -786,6 +786,9 @@ func (s *service) AgentCashCollected(ctx context.Context, input AgentCashCollect
 		if detail.BuyerStore.ID == uuid.Nil || detail.VendorStore.ID == uuid.Nil {
 			return pkgerrors.New(pkgerrors.CodeDependency, "order stores missing")
 		}
+		if detail.PaymentIntent == nil {
+			return pkgerrors.New(pkgerrors.CodeDependency, "payment intent missing")
+		}
 
 		has, err := s.ledger.HasEvent(ctx, input.OrderID, enums.LedgerEventTypeCashCollected)
 		if err != nil {
@@ -796,8 +799,63 @@ func (s *service) AgentCashCollected(ctx context.Context, input AgentCashCollect
 		}
 
 		amount := detail.Order.TotalCents
-		if detail.PaymentIntent != nil && detail.PaymentIntent.AmountCents > 0 {
+		if detail.PaymentIntent.AmountCents > 0 {
 			amount = detail.PaymentIntent.AmountCents
+		}
+
+		now := time.Now().UTC()
+		collectionTime := now
+		paymentUpdates := map[string]any{
+			"status": enums.PaymentStatusSettled,
+		}
+		if detail.PaymentIntent.CashCollectedAt != nil {
+			collectionTime = detail.PaymentIntent.CashCollectedAt.UTC()
+		} else {
+			paymentUpdates["cash_collected_at"] = now
+		}
+
+		if err := repo.UpdatePaymentIntent(ctx, input.OrderID, paymentUpdates); err != nil {
+			return pkgerrors.Wrap(pkgerrors.CodeDependency, err, "update payment intent")
+		}
+
+		orderUpdates := map[string]any{
+			"balance_due_cents": 0,
+		}
+		if len(orderUpdates) > 0 {
+			if err := repo.UpdateVendorOrder(ctx, input.OrderID, orderUpdates); err != nil {
+				return pkgerrors.Wrap(pkgerrors.CodeDependency, err, "update order state")
+			}
+		}
+
+		if detail.ActiveAssignment != nil {
+			assignUpdates := map[string]any{}
+			if detail.ActiveAssignment.CashPickupTime == nil {
+				assignUpdates["cash_pickup_time"] = now
+			}
+			if len(assignUpdates) > 0 {
+				if err := repo.UpdateOrderAssignment(ctx, detail.ActiveAssignment.ID, assignUpdates); err != nil {
+					return pkgerrors.Wrap(pkgerrors.CodeDependency, err, "update assignment")
+				}
+			}
+		}
+
+		event := outbox.DomainEvent{
+			EventType:     enums.EventCashCollected,
+			AggregateType: enums.AggregateVendorOrder,
+			AggregateID:   input.OrderID,
+			Version:       1,
+			Actor:         buildActor(input.AgentUserID, uuid.Nil, string(enums.MemberRoleAgent)),
+			Data: payloads.CashCollectedEvent{
+				OrderID:         input.OrderID,
+				BuyerStoreID:    detail.BuyerStore.ID,
+				VendorStoreID:   detail.VendorStore.ID,
+				AmountCents:     amount,
+				CashCollectedAt: collectionTime,
+			},
+			OccurredAt: collectionTime,
+		}
+		if err := s.outbox.Emit(ctx, tx, event); err != nil {
+			return pkgerrors.Wrap(pkgerrors.CodeDependency, err, "emit cash collected event")
 		}
 
 		ledgerInput := ledger.RecordLedgerEventInput{

@@ -1079,7 +1079,8 @@ func TestAgentCashCollectedAppendsLedgerEvent(t *testing.T) {
 	}, func(ctx context.Context, orderID uuid.UUID, eventType enums.LedgerEventType) (bool, error) {
 		return false, nil
 	})
-	svc, _ := NewService(repo, stubTxRunner{}, &stubOutboxPublisher{}, &stubInventoryReleaser{}, &stubInventoryReserver{}, ledger)
+	outbox := &stubOutboxPublisher{}
+	svc, _ := NewService(repo, stubTxRunner{}, outbox, &stubInventoryReleaser{}, &stubInventoryReserver{}, ledger)
 	if err := svc.AgentCashCollected(context.Background(), AgentCashCollectedInput{
 		OrderID:     orderID,
 		AgentUserID: agentID,
@@ -1088,6 +1089,43 @@ func TestAgentCashCollectedAppendsLedgerEvent(t *testing.T) {
 	}
 	if ledgerCalls != 1 {
 		t.Fatalf("expected ledger to be called once, got %d", ledgerCalls)
+	}
+	if !outbox.called {
+		t.Fatalf("expected outbox to be emitted")
+	}
+	if outbox.event.EventType != enums.EventCashCollected {
+		t.Fatalf("unexpected event type %s", outbox.event.EventType)
+	}
+	payload, ok := outbox.event.Data.(payloads.CashCollectedEvent)
+	if !ok {
+		t.Fatalf("unexpected event payload %T", outbox.event.Data)
+	}
+	if payload.AmountCents != 1234 {
+		t.Fatalf("unexpected event amount %d", payload.AmountCents)
+	}
+	if payload.BuyerStoreID != buyerID {
+		t.Fatalf("unexpected buyer store %s", payload.BuyerStoreID)
+	}
+	if payload.VendorStoreID != vendorID {
+		t.Fatalf("unexpected vendor store %s", payload.VendorStoreID)
+	}
+	if payload.CashCollectedAt.IsZero() {
+		t.Fatalf("expected cash collected timestamp")
+	}
+	if repo.paymentUpdates == nil {
+		t.Fatalf("expected payment intent updates")
+	}
+	if status, ok := repo.paymentUpdates["status"].(enums.PaymentStatus); !ok || status != enums.PaymentStatusSettled {
+		t.Fatalf("unexpected payment status %v", repo.paymentUpdates["status"])
+	}
+	if _, ok := repo.paymentUpdates["cash_collected_at"]; !ok {
+		t.Fatalf("cash_collected_at should be set")
+	}
+	if repo.orderUpdates == nil {
+		t.Fatalf("expected order updates")
+	}
+	if balance, ok := repo.orderUpdates["balance_due_cents"].(int); !ok || balance != 0 {
+		t.Fatalf("expected balance_due_cents=0, got %v", repo.orderUpdates["balance_due_cents"])
 	}
 }
 
@@ -1145,6 +1183,60 @@ func TestAgentCashCollectedIdempotent(t *testing.T) {
 	}
 	if hasCalls < 2 {
 		t.Fatalf("expected hasEvent to run twice, got %d", hasCalls)
+	}
+}
+
+func TestAgentCashCollectedRecordsAssignmentCashPickupTime(t *testing.T) {
+	orderID := uuid.New()
+	agentID := uuid.New()
+	buyerID := uuid.New()
+	vendorID := uuid.New()
+	detail := &OrderDetail{
+		Order: &VendorOrderSummary{
+			Status: enums.VendorOrderStatusDelivered,
+		},
+		BuyerStore: OrderStoreSummary{ID: buyerID},
+		VendorStore: OrderStoreSummary{
+			ID: vendorID,
+		},
+		ActiveAssignment: &OrderAssignmentSummary{
+			ID:          uuid.New(),
+			AgentUserID: agentID,
+			AssignedAt:  time.Now().UTC(),
+		},
+		PaymentIntent: &PaymentIntentDetail{
+			AmountCents: 500,
+		},
+	}
+	var recordedUpdates map[string]any
+	repo := &stubOrdersRepo{
+		order: &models.VendorOrder{ID: orderID},
+		findOrderDetail: func(ctx context.Context, id uuid.UUID) (*OrderDetail, error) {
+			return detail, nil
+		},
+		updateAssignment: func(ctx context.Context, assignmentID uuid.UUID, updates map[string]any) error {
+			recordedUpdates = updates
+			return nil
+		},
+	}
+	ledger := newStubLedgerService(func(ctx context.Context, input ledger.RecordLedgerEventInput) (*models.LedgerEvent, error) {
+		return &models.LedgerEvent{ID: uuid.New()}, nil
+	}, func(ctx context.Context, orderID uuid.UUID, eventType enums.LedgerEventType) (bool, error) {
+		return false, nil
+	})
+	outbox := &stubOutboxPublisher{}
+	svc, _ := NewService(repo, stubTxRunner{}, outbox, &stubInventoryReleaser{}, &stubInventoryReserver{}, ledger)
+	if err := svc.AgentCashCollected(context.Background(), AgentCashCollectedInput{
+		OrderID:     orderID,
+		AgentUserID: agentID,
+	}); err != nil {
+		t.Fatalf("expected success got %v", err)
+	}
+	if recordedUpdates == nil {
+		t.Fatalf("expected assignment updates")
+	}
+	if ts, ok := recordedUpdates["cash_pickup_time"].(time.Time); !ok || ts.IsZero() {
+		t.Fatalf("expected cash_pickup_time timestamp, got %v", recordedUpdates["cash_pickup_time"])
 	}
 }
 
