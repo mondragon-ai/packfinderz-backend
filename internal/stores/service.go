@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/angelmondragon/packfinderz-backend/internal/media"
 	"github.com/angelmondragon/packfinderz-backend/internal/memberships"
 	"github.com/angelmondragon/packfinderz-backend/internal/users"
 	"github.com/angelmondragon/packfinderz-backend/pkg/config"
@@ -22,6 +23,8 @@ import (
 type storeRepository interface {
 	FindByID(ctx context.Context, id uuid.UUID) (*models.Store, error)
 	Update(ctx context.Context, store *models.Store) error
+	FindByIDWithTx(tx *gorm.DB, id uuid.UUID) (*models.Store, error)
+	UpdateWithTx(tx *gorm.DB, store *models.Store) error
 }
 
 type membershipsRepository interface {
@@ -48,43 +51,69 @@ type Service interface {
 	RemoveUser(ctx context.Context, actorID, storeID, targetUserID uuid.UUID) error
 }
 
+type txRunner interface {
+	WithTx(ctx context.Context, fn func(tx *gorm.DB) error) error
+}
+
+// ServiceParams groups the dependencies for the store service.
+type ServiceParams struct {
+	Repo                 storeRepository
+	Memberships          membershipsRepository
+	Users                usersRepository
+	PasswordCfg          config.PasswordConfig
+	TransactionRunner    txRunner
+	AttachmentReconciler media.AttachmentReconciler
+}
+
 type service struct {
-	repo        storeRepository
-	memberships membershipsRepository
-	users       usersRepository
-	passwordCfg config.PasswordConfig
+	repo                 storeRepository
+	memberships          membershipsRepository
+	users                usersRepository
+	passwordCfg          config.PasswordConfig
+	tx                   txRunner
+	attachmentReconciler media.AttachmentReconciler
 }
 
 // NewService builds a store service with the provided repositories.
-func NewService(repo storeRepository, memberships membershipsRepository, usersRepo usersRepository, passwordCfg config.PasswordConfig) (Service, error) {
-	if repo == nil {
+func NewService(params ServiceParams) (Service, error) {
+	if params.Repo == nil {
 		return nil, fmt.Errorf("store repository required")
 	}
-	if memberships == nil {
+	if params.Memberships == nil {
 		return nil, fmt.Errorf("memberships repository required")
 	}
-	if usersRepo == nil {
+	if params.Users == nil {
 		return nil, fmt.Errorf("users repository required")
 	}
+	if params.TransactionRunner == nil {
+		return nil, fmt.Errorf("transaction runner required")
+	}
+	if params.AttachmentReconciler == nil {
+		return nil, fmt.Errorf("attachment reconciler required")
+	}
 	return &service{
-		repo:        repo,
-		memberships: memberships,
-		users:       usersRepo,
-		passwordCfg: passwordCfg,
+		repo:                 params.Repo,
+		memberships:          params.Memberships,
+		users:                params.Users,
+		passwordCfg:          params.PasswordCfg,
+		tx:                   params.TransactionRunner,
+		attachmentReconciler: params.AttachmentReconciler,
 	}, nil
 }
 
 // UpdateStoreInput captures the allowed store fields for mutation.
 type UpdateStoreInput struct {
-	CompanyName *string
-	Description *string
-	Phone       *string
-	Email       *string
-	Social      *types.Social
-	BannerURL   *string
-	LogoURL     *string
-	Ratings     *map[string]int
-	Categories  *[]string
+	CompanyName   *string
+	Description   *string
+	Phone         *string
+	Email         *string
+	Social        *types.Social
+	BannerURL     *string
+	LogoURL       *string
+	BannerMediaID types.NullableUUID
+	LogoMediaID   types.NullableUUID
+	Ratings       *map[string]int
+	Categories    *[]string
 }
 
 // InviteUserInput captures the data required to invite a store user.
@@ -170,50 +199,74 @@ func (s *service) Update(ctx context.Context, userID, storeID uuid.UUID, input U
 		return nil, pkgerrors.New(pkgerrors.CodeForbidden, "insufficient store role")
 	}
 
-	store, err := s.repo.FindByID(ctx, storeID)
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, pkgerrors.New(pkgerrors.CodeNotFound, "store not found")
+	var updated *models.Store
+	if err := s.tx.WithTx(ctx, func(tx *gorm.DB) error {
+		store, err := s.repo.FindByIDWithTx(tx, storeID)
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return pkgerrors.New(pkgerrors.CodeNotFound, "store not found")
+			}
+			return pkgerrors.Wrap(pkgerrors.CodeDependency, err, "load store")
 		}
-		return nil, pkgerrors.Wrap(pkgerrors.CodeDependency, err, "load store")
-	}
 
-	if input.CompanyName != nil {
-		store.CompanyName = *input.CompanyName
-	}
-	if input.Description != nil {
-		store.Description = cloneStringPtr(input.Description)
-	}
-	if input.Phone != nil {
-		store.Phone = cloneStringPtr(input.Phone)
-	}
-	if input.Email != nil {
-		store.Email = cloneStringPtr(input.Email)
-	}
-	if input.Social != nil {
-		store.Social = cloneSocial(input.Social)
-	}
-	if input.BannerURL != nil {
-		store.BannerURL = cloneStringPtr(input.BannerURL)
-	}
-	if input.LogoURL != nil {
-		store.LogoURL = cloneStringPtr(input.LogoURL)
-	}
-	if input.Ratings != nil {
-		if *input.Ratings == nil {
-			store.Ratings = nil
-		} else {
-			store.Ratings = cloneRatings(*input.Ratings)
+		oldLogo := store.LogoMediaID
+		oldBanner := store.BannerMediaID
+
+		if input.CompanyName != nil {
+			store.CompanyName = *input.CompanyName
 		}
-	}
-	if input.Categories != nil {
-		store.Categories = cloneCategories(*input.Categories)
-	}
+		if input.Description != nil {
+			store.Description = cloneStringPtr(input.Description)
+		}
+		if input.Phone != nil {
+			store.Phone = cloneStringPtr(input.Phone)
+		}
+		if input.Email != nil {
+			store.Email = cloneStringPtr(input.Email)
+		}
+		if input.Social != nil {
+			store.Social = cloneSocial(input.Social)
+		}
+		if input.BannerURL != nil {
+			store.BannerURL = cloneStringPtr(input.BannerURL)
+		}
+		if input.LogoURL != nil {
+			store.LogoURL = cloneStringPtr(input.LogoURL)
+		}
+		if input.LogoMediaID.Valid {
+			store.LogoMediaID = copyUUIDPtr(input.LogoMediaID.Value)
+		}
+		if input.BannerMediaID.Valid {
+			store.BannerMediaID = copyUUIDPtr(input.BannerMediaID.Value)
+		}
+		if input.Ratings != nil {
+			if *input.Ratings == nil {
+				store.Ratings = nil
+			} else {
+				store.Ratings = cloneRatings(*input.Ratings)
+			}
+		}
+		if input.Categories != nil {
+			store.Categories = cloneCategories(*input.Categories)
+		}
 
-	if err := s.repo.Update(ctx, store); err != nil {
-		return nil, pkgerrors.Wrap(pkgerrors.CodeDependency, err, "update store")
+		if err := s.reconcileAttachment(ctx, tx, models.AttachmentEntityStoreLogo, store.ID, store.ID, oldLogo, store.LogoMediaID); err != nil {
+			return err
+		}
+		if err := s.reconcileAttachment(ctx, tx, models.AttachmentEntityStoreBanner, store.ID, store.ID, oldBanner, store.BannerMediaID); err != nil {
+			return err
+		}
+
+		if err := s.repo.UpdateWithTx(tx, store); err != nil {
+			return pkgerrors.Wrap(pkgerrors.CodeDependency, err, "update store")
+		}
+
+		updated = store
+		return nil
+	}); err != nil {
+		return nil, err
 	}
-	return FromModel(store), nil
+	return FromModel(updated), nil
 }
 
 func (s *service) ListUsers(ctx context.Context, userID, storeID uuid.UUID) ([]memberships.StoreUserDTO, error) {
@@ -366,4 +419,23 @@ func cloneCategories(value []string) pq.StringArray {
 	res := make(pq.StringArray, len(value))
 	copy(res, value)
 	return res
+}
+
+func copyUUIDPtr(id *uuid.UUID) *uuid.UUID {
+	if id == nil {
+		return nil
+	}
+	cpy := *id
+	return &cpy
+}
+
+func uuidSlice(id *uuid.UUID) []uuid.UUID {
+	if id == nil {
+		return nil
+	}
+	return []uuid.UUID{*id}
+}
+
+func (s *service) reconcileAttachment(ctx context.Context, tx *gorm.DB, entityType string, entityID, storeID uuid.UUID, oldID, newID *uuid.UUID) error {
+	return s.attachmentReconciler.Reconcile(ctx, tx, entityType, entityID, storeID, uuidSlice(oldID), uuidSlice(newID))
 }

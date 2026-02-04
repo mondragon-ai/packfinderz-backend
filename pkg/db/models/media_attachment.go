@@ -26,4 +26,6 @@ const (
 	AttachmentEntityAd             = "ad"
 	AttachmentEntityProductGallery = "product_gallery"
 	AttachmentEntityProductCOA     = "product_coa"
+	AttachmentEntityStoreLogo      = "store_logo"
+	AttachmentEntityStoreBanner    = "store_banner"
 )

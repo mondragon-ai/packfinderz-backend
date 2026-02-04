@@ -50,28 +50,32 @@ func StoreProfile(svc stores.Service, logg *logger.Logger) http.HandlerFunc {
 
 // StoreUpdateRequest contains the payload for updating store fields.
 type storeUpdateRequest struct {
-	CompanyName *string         `json:"company_name,omitempty" validate:"omitempty,min=1"`
-	Description *string         `json:"description,omitempty"`
-	Phone       *string         `json:"phone,omitempty"`
-	Email       *string         `json:"email,omitempty" validate:"omitempty,email"`
-	Social      *types.Social   `json:"social,omitempty"`
-	BannerURL   *string         `json:"banner_url,omitempty"`
-	LogoURL     *string         `json:"logo_url,omitempty"`
-	Ratings     *map[string]int `json:"ratings,omitempty"`
-	Categories  *[]string       `json:"categories,omitempty"`
+	CompanyName   *string            `json:"company_name,omitempty" validate:"omitempty,min=1"`
+	Description   *string            `json:"description,omitempty"`
+	Phone         *string            `json:"phone,omitempty"`
+	Email         *string            `json:"email,omitempty" validate:"omitempty,email"`
+	Social        *types.Social      `json:"social,omitempty"`
+	BannerURL     *string            `json:"banner_url,omitempty"`
+	LogoURL       *string            `json:"logo_url,omitempty"`
+	BannerMediaID types.NullableUUID `json:"banner_media_id,omitempty"`
+	LogoMediaID   types.NullableUUID `json:"logo_media_id,omitempty"`
+	Ratings       *map[string]int    `json:"ratings,omitempty"`
+	Categories    *[]string          `json:"categories,omitempty"`
 }
 
 func (r storeUpdateRequest) toInput() stores.UpdateStoreInput {
 	return stores.UpdateStoreInput{
-		CompanyName: r.CompanyName,
-		Description: r.Description,
-		Phone:       r.Phone,
-		Email:       r.Email,
-		Social:      r.Social,
-		BannerURL:   r.BannerURL,
-		LogoURL:     r.LogoURL,
-		Ratings:     r.Ratings,
-		Categories:  r.Categories,
+		CompanyName:   r.CompanyName,
+		Description:   r.Description,
+		Phone:         r.Phone,
+		Email:         r.Email,
+		Social:        r.Social,
+		BannerURL:     r.BannerURL,
+		LogoURL:       r.LogoURL,
+		BannerMediaID: r.BannerMediaID,
+		LogoMediaID:   r.LogoMediaID,
+		Ratings:       r.Ratings,
+		Categories:    r.Categories,
 	}
 }
 

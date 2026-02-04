@@ -301,8 +301,8 @@
   **Goal:** Make attachments usable across MVP surfaces and keep delete semantics correct.
 
   * [x] Ticket [PF-251]: Wire license ↔ media attachments
-  * [ ] Ticket [PF-252]: Wire product ↔ media attachments (gallery + COA)
-  * [ ] Ticket [PF-253]: Wire store ↔ media attachments (logo/banner)
+  * [x] Ticket [PF-252]: Wire product ↔ media attachments (gallery + COA)
+  * [x] Ticket [PF-253]: Wire store ↔ media attachments (logo/banner)
   * [ ] Ticket [PF-254]: Wire user ↔ media attachments (avatar)
 
 * **Phase 9 — Analytics MVP Completion (Admin View + Test Coverage)**
@@ -319,130 +319,23 @@
   * [ ] Ticket [PF-XXX]: Document and implement DLQ retry policy + MAX_ATTEMPTS conventions (minimal hooks)
   * [ ] Ticket [PF-XXX]: Create DLQ replay tooling/runbook (safe requeue + idempotency expectations)
 
+* **Phase 11 — Billing + Subscriptions + Square (Production-Ready)**
+  **Goal:** Replace Square stubs with real API integrations, add plan + card + subscription primitives, reconcile via webhooks, and implement nightly ad usage billing into `usage_charges`/`charges` with proper guards and logging.
 
-* **Phase 11 — Subscription Finalization**
-  **Goal:** 
+  * [ ] Ticket [PF-XXX]: Implement `pkg/square` wrapper (shared) with: auth/env config, idempotency key conventions, request/response logging w/ strict redaction, and unified error mapping
+  * [ ] Ticket [PF-XXX]: Replace `internal/subscriptions/square_client.go` stub with real Square-backed client behind an interface (keep stub only for tests); refactor `internal/subscriptions.Service` to use `pkg/square` wrapper
+  * [ ] Ticket [PF-XXX]: Add Goose migration(s) + model updates to persist Square identifiers required for billing flows (at minimum `stores.square_customer_id`; optionally store-level billing state for past_due/disabled_ads) and wire into store repo helpers
+  * [ ] Ticket [PF-XXX]: Refactor/extend `subscriptions` persistence to enforce **0..1 subscription per store** (unique `store_id`) and add missing subscription linkage fields (`billing_plan_id`, `square_customer_id`, `square_card_id`, lifecycle timestamps) while preserving existing data where possible
+  * [ ] Ticket [PF-XXX]: Implement Square customer creation flow: service helper + endpoint (admin/internal) AND integrate into `POST /api/v1/auth/register` (idempotent create-or-fetch; compensation strategy for partial failures)
+  * [ ] Ticket [PF-XXX]: Implement card-on-file flow end-to-end: Next.js Square Web Payments SDK tokenization → backend endpoint to create/store card in Square (Cards API) → upsert `payment_methods` row (last4/brand/exp/status) with a clear “one active/default card per store” policy (migration if needed)
+  * [ ] Ticket [PF-XXX]: Add `billing_plans` table + GORM model + repo/service (local source-of-truth for plans with Square mapping IDs, interval/price/trial, status, is_default, and UI metadata JSON) + indexes (`status`, `is_default`, `square_*`)
+  * [ ] Ticket [PF-XXX]: Implement BillingPlan APIs: admin CRUD (create/update/disable) + vendor read-only list/get of active plans; explicitly support “Square plan created via dashboard first” with stored IDs (Square Catalog create optional/explicit, not assumed)
+  * [ ] Ticket [PF-XXX]: Implement vendor subscription lifecycle endpoints using stored customer+card+plan mapping: create (requires active card + selected plan), get current, cancel, pause, resume; persist state transitions and keep `store.SubscriptionActive` aligned
+  * [ ] Ticket [PF-XXX]: Harden Square webhook reconciliation: expand `subscription.*` + relevant `invoice.*` handling, keep Redis idempotency guard, fix brittle `store_id` metadata dependency (fallback lookup by `square_subscription_id`), and make status mapping forward-compatible (no hard-fail on new statuses)
+  * [ ] Ticket [PF-XXX]: Make `charges` real: implement Square payment creation for ad usage billing and persist outcomes into `charges` + `usage_charges` with consistent typing/status enums and pagination support via existing `/vendor/billing/charges`
+  * [ ] Ticket [PF-XXX]: Implement nightly ad usage billing worker job (inside existing worker binary): roll up per-store ad spend from your counters, charge via Square using card-on-file, write `usage_charges` rows, and apply failure policy (mark past_due/disable ads/retry hooks)
+  * [ ] Ticket [PF-XXX]: Add billing permissions + security guards: admin-only plan management; vendor role restrictions for card + subscription actions; enforce PII redaction rules in logs for all billing payloads (API + worker + webhook paths)
 
-> Subscription Plan Catalog (Multi-Plan, Config-Driven) Support 2 monthly + 2 annual plans (annual = monthly-equivalent with % discount), and make plan changes safe without code rewrites.
-
-  * [ ] Ticket [PF-XXX]: Define canonical `billing_plan` shape (
-    ```ts
-    export type BillingInterval = "EVERY_30_DAYS" | "ANNUAL";
-    export type BillingCurrencyCode = "USD" | "BRL" | "EUR" | "GBP" | string;
-
-    export type PlanStatus = "active" | "deprecated" | "hidden";
-
-    export interface Money {
-      amount: string; // decimal as string to avoid float bugs ("9.99")
-      currencyCode: BillingCurrencyCode;
-    }
-
-    export interface Trial {
-      days: number; // 0 means no trial
-      requirePaymentMethod?: boolean; // some apps still want card on file even during trial
-      startOnActivation?: boolean; // usually true
-    }
-
-    export interface SubscriptionComponent {
-      interval: BillingInterval;
-      price: Money;
-      // Optional: metadata for UI / feature gating
-      features?: string[];
-    }
-
-    export interface BillingPlan {
-      id: string; // internal stable plan id, e.g. "starter_v1"
-      name: string; // merchant-facing
-      status: PlanStatus;
-
-      // Common toggles
-      test?: boolean; // Shopify test charges in dev stores
-      trial?: Trial;
-
-      // Components
-      subscription?: SubscriptionComponent;
-
-      // Plan selection / migration controls
-      isDefault?: boolean;
-      createdAt?: string; // ISO
-      updatedAt?: string; // ISO
-
-      // Used by embed/config UI
-      ui?: {
-        badge?: "popular" | "best_value" | "new";
-        description?: string;
-        bullets?: string[];
-      };
-    }
-    ```
-  ) + Goose migration and gorm model
-  * [ ] Ticket [PF-XXX]: Implement repo, helpers, mapping to fetch plans (via vendor), add plans (via admin). 
-  * [ ] Ticket [PF-XXX]: Add `subscriptions.plan_id` (and/or `price_id`) and store the chosen plan at purchase time
-  * [ ] Ticket [PF-XXX]: Implement plan resolution helper (given plan_id → returns Square price id + normalized billing interval metadata)
-  * [ ] Ticket [PF-XXX]: Add endpoint to list available subscription plans (`GET /api/v1/subscriptions/plans`) store-scoped and filtered by `is_active`
-  * [ ] Ticket [PF-XXX]: Add endpoint to create a plan available subscription plan (`POST /api/v1/admin/subscriptions/plans`) & an other endpoint to delete a plan given a plan ID
-
-> Subscription API & Service Refactor (Plan-Aware) Make create/cancel/get subscription endpoints handle any number of plans without special-casing.
-
-  * [ ] Ticket [PF-XXX]: Update subscription service to resolve plan via catalog and pass only server-resolved Square identifiers to Square client
-  * [ ] Ticket [PF-XXX]: Update subscription repo queries/indexes to support plan_id + store_id lookup patterns cleanly
-  * [ ] Ticket [PF-XXX]: Add migration/index to enforce “one active subscription per store”
-
-> Payment Method Sourcing (DB-First, No Client Pass-Through) Pull payment method from DB using `activeStoreId`; never accept SquareCustomerID / SquarePaymentMethodID from request.
-
-  * [ ] Ticket [PF-XXX]: Update `payment_methods` table usage to support “default payment method on file” per store (fields + index if missing)
-  * [ ] Ticket [PF-XXX]: Implement repo helper: fetch SquareCustomerID + default SquarePaymentMethodID by `store_id` (active store)
-  * [ ] Ticket [PF-XXX]: Remove these fields from create-subscription request handling:
-
-  * `payload.SquareCustomerID`
-  * `payload.SquarePaymentMethodID`
-  * [ ] Ticket [PF-XXX]: Update subscription create flow to:
-
-  * load store billing identity (customer id)
-  * load default payment method id
-  * fail with typed error if missing/invalid
-  * [ ] Ticket [PF-XXX]: Add endpoint to “set default payment method” (if not already present) using existing Square customer/payment method objects
-
-> Edge Cases & Failure Modes (PM Missing/Invalid/Expired) Robust behavior when billing data is missing, stale, or rejected by Square.
-
-  * [ ] Ticket [PF-XXX]: Define error taxonomy for billing failures (no PM on file, invalid PM, customer missing, Square hard decline, Square transient)
-  * [ ] Ticket [PF-XXX]: Implement “no default PM on file” handling (clear response + next-step messaging)
-  * [ ] Ticket [PF-XXX]: Implement “payment method invalid” handling (detect via Square error codes; mark PM as invalid in DB if appropriate)
-  * [ ] Ticket [PF-XXX]: Add retry-safe idempotency behavior for create subscription when Square returns ambiguous/transient errors
-  * [ ] Ticket [PF-XXX]: Add webhook-driven reconciliation rule: if Square says payment method detached/expired → update local payment_methods state
-
-> Webhooks & State Sync Hardening (Plans + Billing Identity) Ensure `stores.subscription_active` and subscription rows remain correct across plan changes, cancellations, and Square-side updates.
-
-  * [ ] Ticket [PF-XXX]: Extend webhook consumer mapping to persist: plan_id/Square_price_id, interval, current_period_end, cancel_at_period_end, status
-  * [ ] Ticket [PF-XXX]: Implement “catalog mismatch” guard: webhook arrives with unknown Square_price_id → log + DLQ (don’t silently corrupt state)
-  * [ ] Ticket [PF-XXX]: Add reconciliation job: periodically re-fetch subscription from Square for “recently failing/updated” records (minimal MVP cadence)
-
-> Tests & Integration Coverage (Billing Contracts Locked) Prevent regressions while you add plan variants and DB-sourced payment methods.
-
-  * [ ] Ticket [PF-XXX]: Unit tests: plan catalog parsing/validation (missing fields, duplicate ids, invalid discounts)
-  * [ ] Ticket [PF-XXX]: Unit tests: plan resolution helper (plan_id → Square price id; annual discount logic invariants)
-  * [ ] Ticket [PF-XXX]: Unit tests: subscription create service uses DB PM and rejects request-supplied Square IDs
-  * [ ] Ticket [PF-XXX]: Unit tests: edge cases (no PM, invalid PM, customer missing)
-  * [ ] Ticket [PF-XXX]: Integration script: create store → attach payment method → create monthly → cancel → create annual (happy path)
-
-> Ops Guardrails (Minimum Viable) Make billing debuggable in production without “SSH and pray”.
-
-  * [ ] Ticket [PF-XXX]: Add structured logs for billing actions (store_id, subscription_id, plan_id, Square ids redacted, idempotency key)
-  * [ ] Ticket [PF-XXX]: Add metrics counters for billing outcomes (created/canceled/failed + reason buckets)
-  * [ ] Ticket [PF-XXX]: Add admin-only endpoint to view store billing identity summary (customer exists, default PM exists, last charge outcome)
-
-* **Phase 12 — Integration Test Harness (End-to-End Happy Path)**
-  **Goal:** Deterministic scripts that validate the full MVP pipeline on real deployments.
-
-  * [x] Ticket [PF-232]: Implement scripted register/login flows (buyer + vendor) and token store/header injection helpers (happy/failure paths)
-  * [x] Ticket [PF-233]: Implement scripted to build and create new products + set inventory (happy/failure paths)
-  * [ ] Ticket [PF-XXX]: Implement Script media create presigned URL & upload (via files from our `fixtures/media/*` folder) including image/video/PDF (`product`, `license_doc`, `coa`) & polling until uplaoded (GCS PUT) is possible (happy/failure paths)
-  * [ ] Ticket [PF-XXX]: Implement Script create license from `license_doc` media uplaoded (happy/failure paths) + admin login -> approve/reject (happy/failure paths)
-  * [ ] Ticket [PF-XXX]: Implement Script cart → checkout → orders (happy/failure paths)
-  * [ ] Ticket [PF-XXX]: Implement Script orders → vendor approve/reject + fulfill/reject line item(s) + emit agent dispatch order state change (happy/failure paths)
-  * [ ] Ticket [PF-XXX]: Implement Script orders → agent deliver pickup + drop off + cash collected → payout (happy/failure paths) 
-  * [ ] Ticket [PF-XXX]: Implement Script orders → Vendor/Buyer cancel order (happy/failure paths) 
-  * [ ] Ticket [PF-XXX]: Implement Script orders → Expire order + nudge vendor + expire order  & release inventory (happy/failure paths) 
 
 ---
 

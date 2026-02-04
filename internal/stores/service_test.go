@@ -18,19 +18,48 @@ import (
 )
 
 func newStoreService(repo storeRepository, members stubMembershipsRepo, usersRepo usersRepository) (Service, error) {
-	return NewService(repo, members, usersRepo, config.PasswordConfig{})
+	svc, _, err := newStoreServiceWithAttachmentStub(repo, members, usersRepo, nil)
+	return svc, err
+}
+
+func newStoreServiceWithAttachmentStub(repo storeRepository, members stubMembershipsRepo, usersRepo usersRepository, reconciler *stubAttachmentReconciler) (Service, *stubAttachmentReconciler, error) {
+	if reconciler == nil {
+		reconciler = &stubAttachmentReconciler{}
+	}
+	svc, err := NewService(ServiceParams{
+		Repo:                 repo,
+		Memberships:          members,
+		Users:                usersRepo,
+		PasswordCfg:          config.PasswordConfig{},
+		TransactionRunner:    stubTxRunner{},
+		AttachmentReconciler: reconciler,
+	})
+	return svc, reconciler, err
 }
 
 func TestNewServiceRequiresRepo(t *testing.T) {
-	_, err := NewService(nil, stubMembershipsRepo{}, &stubUsersRepo{}, config.PasswordConfig{})
+	_, err := NewService(ServiceParams{
+		Repo:                 nil,
+		Memberships:          stubMembershipsRepo{},
+		Users:                &stubUsersRepo{},
+		PasswordCfg:          config.PasswordConfig{},
+		TransactionRunner:    stubTxRunner{},
+		AttachmentReconciler: &stubAttachmentReconciler{},
+	})
 	if err == nil {
 		t.Fatal("expected error creating service without repo")
 	}
 }
 
 func TestNewServiceRequiresMembershipRepo(t *testing.T) {
-	repo := &stubStoreRepo{}
-	_, err := NewService(repo, nil, &stubUsersRepo{}, config.PasswordConfig{})
+	_, err := NewService(ServiceParams{
+		Repo:                 &stubStoreRepo{},
+		Memberships:          nil,
+		Users:                &stubUsersRepo{},
+		PasswordCfg:          config.PasswordConfig{},
+		TransactionRunner:    stubTxRunner{},
+		AttachmentReconciler: &stubAttachmentReconciler{},
+	})
 	if err == nil {
 		t.Fatal("expected error creating service without memberships repo")
 	}
@@ -97,7 +126,8 @@ func TestServiceGetByIDDependencyError(t *testing.T) {
 func TestServiceUpdateSuccess(t *testing.T) {
 	store := baseStore()
 	repo := &stubStoreRepo{store: store}
-	svc, err := newStoreService(repo, stubMembershipsRepo{allowed: true}, &stubUsersRepo{})
+	att := &stubAttachmentReconciler{}
+	svc, _, err := newStoreServiceWithAttachmentStub(repo, stubMembershipsRepo{allowed: true}, &stubUsersRepo{}, att)
 	if err != nil {
 		t.Fatalf("new service: %v", err)
 	}
@@ -106,12 +136,14 @@ func TestServiceUpdateSuccess(t *testing.T) {
 	newBanner := "http://banner"
 	newRatings := map[string]int{"quality": 5}
 	newCategories := []string{"flower", "edibles"}
+	logoID := uuid.New()
 	input := UpdateStoreInput{
 		CompanyName: stringPtr("Updated Store"),
 		Description: &newDescription,
 		BannerURL:   &newBanner,
 		Ratings:     &newRatings,
 		Categories:  &newCategories,
+		LogoMediaID: types.NullableUUID{Valid: true, Value: &logoID},
 	}
 
 	dto, err := svc.Update(context.Background(), uuid.New(), store.ID, input)
@@ -132,6 +164,26 @@ func TestServiceUpdateSuccess(t *testing.T) {
 	}
 	if len(dto.Categories) != 2 {
 		t.Fatalf("expected categories updated got %v", dto.Categories)
+	}
+	if len(att.calls) != 2 {
+		t.Fatalf("expected 2 attachment reconciliations got %d", len(att.calls))
+	}
+	logoCall := att.calls[0]
+	if logoCall.entityType != models.AttachmentEntityStoreLogo {
+		t.Fatalf("expected logo reconciler call got %s", logoCall.entityType)
+	}
+	if logoCall.storeID != store.ID {
+		t.Fatalf("expected store id %s got %s", store.ID, logoCall.storeID)
+	}
+	if len(logoCall.newIDs) != 1 || logoCall.newIDs[0] != logoID {
+		t.Fatalf("expected logo new id %s got %v", logoID, logoCall.newIDs)
+	}
+	bannerCall := att.calls[1]
+	if bannerCall.entityType != models.AttachmentEntityStoreBanner {
+		t.Fatalf("expected banner reconciler call got %s", bannerCall.entityType)
+	}
+	if len(bannerCall.newIDs) != 0 {
+		t.Fatalf("expected no banner changes got %v", bannerCall.newIDs)
 	}
 }
 
@@ -420,6 +472,14 @@ func (s *stubStoreRepo) Update(ctx context.Context, store *models.Store) error {
 	return nil
 }
 
+func (s *stubStoreRepo) FindByIDWithTx(tx *gorm.DB, id uuid.UUID) (*models.Store, error) {
+	return s.FindByID(context.Background(), id)
+}
+
+func (s *stubStoreRepo) UpdateWithTx(tx *gorm.DB, store *models.Store) error {
+	return s.Update(context.Background(), store)
+}
+
 type stubMembershipsRepo struct {
 	allowed            bool
 	err                error
@@ -531,3 +591,34 @@ func (s *stubUsersRepo) UpdatePasswordHash(ctx context.Context, id uuid.UUID, ha
 }
 
 func stringPtr(s string) *string { return &s }
+
+type stubTxRunner struct{}
+
+func (stubTxRunner) WithTx(ctx context.Context, fn func(tx *gorm.DB) error) error {
+	return fn(nil)
+}
+
+type stubAttachmentReconciler struct {
+	calls []attachmentCall
+	err   error
+}
+
+type attachmentCall struct {
+	entityType string
+	entityID   uuid.UUID
+	storeID    uuid.UUID
+	oldIDs     []uuid.UUID
+	newIDs     []uuid.UUID
+}
+
+func (s *stubAttachmentReconciler) Reconcile(ctx context.Context, tx *gorm.DB, entityType string, entityID, storeID uuid.UUID, oldIDs, newIDs []uuid.UUID) error {
+	call := attachmentCall{
+		entityType: entityType,
+		entityID:   entityID,
+		storeID:    storeID,
+		oldIDs:     append([]uuid.UUID{}, oldIDs...),
+		newIDs:     append([]uuid.UUID{}, newIDs...),
+	}
+	s.calls = append(s.calls, call)
+	return s.err
+}

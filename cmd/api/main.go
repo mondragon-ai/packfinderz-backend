@@ -97,6 +97,7 @@ func main() {
 
 	usersRepo := users.NewRepository(dbClient.DB())
 	membershipsRepo := memberships.NewRepository(dbClient.DB())
+	storeRepo := stores.NewRepository(dbClient.DB())
 	authService, err := auth.NewService(auth.ServiceParams{
 		UserRepo:        usersRepo,
 		MembershipsRepo: membershipsRepo,
@@ -122,10 +123,6 @@ func main() {
 		JWTConfig:       cfg.JWT,
 	})
 	requireResource(ctx, logg, "switch store service", err)
-
-	storeRepo := stores.NewRepository(dbClient.DB())
-	storeService, err := stores.NewService(storeRepo, membershipsRepo, usersRepo, cfg.Password)
-	requireResource(ctx, logg, "store service", err)
 
 	billingRepo := billing.NewRepository(dbClient.DB())
 	billingService, err := billing.NewService(billing.ServiceParams{
@@ -167,6 +164,15 @@ func main() {
 	requireResource(ctx, logg, "media service", err)
 	attachmentReconciler, err := media.NewAttachmentReconciler(mediaAttachmentRepo, mediaRepo)
 	requireResource(ctx, logg, "attachment reconciler", err)
+	storeService, err := stores.NewService(stores.ServiceParams{
+		Repo:                 storeRepo,
+		Memberships:          membershipsRepo,
+		Users:                usersRepo,
+		PasswordCfg:          cfg.Password,
+		TransactionRunner:    dbClient,
+		AttachmentReconciler: attachmentReconciler,
+	})
+	requireResource(ctx, logg, "store service", err)
 
 	productRepo := products.NewRepository(dbClient.DB())
 	productService, err := products.NewService(productRepo, dbClient, storeRepo, membershipsRepo, mediaRepo, attachmentReconciler)
