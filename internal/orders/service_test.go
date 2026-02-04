@@ -32,6 +32,11 @@ type stubOrdersRepo struct {
 	updatePaymentIntent  func(ctx context.Context, orderID uuid.UUID, updates map[string]any) error
 }
 
+// FindVendorOrderByCheckoutGroupAndVendor implements [Repository].
+func (s *stubOrdersRepo) FindVendorOrderByCheckoutGroupAndVendor(ctx context.Context, checkoutGroupID uuid.UUID, vendorStoreID uuid.UUID) (*models.VendorOrder, error) {
+	panic("unimplemented")
+}
+
 // FindPendingOrdersBefore implements [Repository].
 func (s *stubOrdersRepo) FindPendingOrdersBefore(ctx context.Context, cutoff time.Time) ([]models.VendorOrder, error) {
 	panic("unimplemented")

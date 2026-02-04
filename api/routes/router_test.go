@@ -256,6 +256,11 @@ type stubOrdersRepo struct {
 	detail        func(ctx context.Context, orderID uuid.UUID) (*ordersrepo.OrderDetail, error)
 }
 
+// FindVendorOrderByCheckoutGroupAndVendor implements [orders.Repository].
+func (s *stubOrdersRepo) FindVendorOrderByCheckoutGroupAndVendor(ctx context.Context, checkoutGroupID uuid.UUID, vendorStoreID uuid.UUID) (*models.VendorOrder, error) {
+	panic("unimplemented")
+}
+
 // FindPendingOrdersBefore implements [orders.Repository].
 func (s *stubOrdersRepo) FindPendingOrdersBefore(ctx context.Context, cutoff time.Time) ([]models.VendorOrder, error) {
 	panic("unimplemented")
