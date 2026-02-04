@@ -276,8 +276,8 @@
   * [x] Ticket [PF-235]: Set payment intent amount from `vendor_orders.total_cents` & Set payment intent `payment_method` from checkout-confirmed `payment_method`
   * [x] Ticket [PF-236]: Add repo helper to fetch full checkout result by checkout_group_id & endpoint
 
-  * [ ] Ticket [PF-237]: Define/extend outbox payload for Notifications checkout-converted event & Emit Notifications outbox event in same transaction as vendor order creation
-  * [ ] Ticket [PF-238]: Define/extend outbox payload for Analytics checkout-converted event (cart totals + attribution `ad_tokens`) & Emit Analytics outbox event in same transaction as cart conversion
+  * [x] Ticket [PF-237]: Define/extend outbox payload for Notifications checkout-converted event & Emit Notifications outbox event in same transaction as vendor order creation
+  * [x] Ticket [PF-238]: Define/extend outbox payload for Analytics checkout-converted event (cart totals + attribution `ad_tokens`) & Emit Analytics outbox event in same transaction as cart conversion
 
   * [ ] Ticket [PF-239] - [PF-240]: Prevent duplicate vendor orders on retry (uniqueness anchored on checkout_group_id+vendor_store_id and/or cart_id) & Prevent duplicate outbox rows on retry for same conversion anchor
 
