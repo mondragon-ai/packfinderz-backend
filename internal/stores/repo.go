@@ -15,6 +15,11 @@ type Repository struct {
 	db *gorm.DB
 }
 
+// SquareCustomerUpdater exposes the minimal contract for persisting Square IDs on a store.
+type SquareCustomerUpdater interface {
+	UpdateSquareCustomerID(ctx context.Context, storeID uuid.UUID, customerID *string) error
+}
+
 // NewRepository binds a GORM DB to store operations.
 func NewRepository(db *gorm.DB) *Repository {
 	return &Repository{db: db}

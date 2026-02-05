@@ -55,6 +55,7 @@ type CustomerCreateParams struct {
 	FamilyName     string
 	CompanyName    string
 	ReferenceID    string
+	Address        *sq.Address
 	Note           string
 	IdempotencyKey string
 }
@@ -80,6 +81,9 @@ func (p CustomerCreateParams) toSquareRequest(idempotencyKey string) *sq.CreateC
 	}
 	if trimmed := strings.TrimSpace(p.ReferenceID); trimmed != "" {
 		req.ReferenceID = ptrString(trimmed)
+	}
+	if p.Address != nil {
+		req.Address = p.Address
 	}
 	if trimmed := strings.TrimSpace(p.Note); trimmed != "" {
 		req.Note = ptrString(trimmed)
