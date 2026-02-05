@@ -31,6 +31,7 @@ CREATE TABLE IF NOT EXISTS stores (
   description TEXT,
   phone TEXT,
   email TEXT,
+  square_customer_id TEXT,
   kyc_status TEXT NOT NULL DEFAULT 'pending_verification',
   subscription_active INTEGER NOT NULL DEFAULT 0,
   delivery_radius_meters INTEGER NOT NULL DEFAULT 0,

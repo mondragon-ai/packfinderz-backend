@@ -2366,7 +2366,7 @@ Headers:
   * Errors: `401, 403`
   * Returns the single active subscription row (or `null` when the store is unsubscribed)
 
- Creation/cancellation requests require an `Idempotency-Key` and must provide `square_customer_id` + `square_payment_method_id`; the optional `price_id` payload field falls back to the configured `PACKFINDERZ_SQUARE_SUBSCRIPTION_PLAN_ID`. The domain service mirrors Square metadata (customer/payment_method IDs, statuses, period windows) into `subscriptions.metadata` and flips `stores.subscription_active` so vendor visibility stays gated.
+Creation/cancellation requests require an `Idempotency-Key` and must provide `square_customer_id` + `square_payment_method_id`; the optional `price_id` payload field falls back to the configured `PACKFINDERZ_SQUARE_SUBSCRIPTION_PLAN_ID`. The domain service mirrors Square metadata (customer/payment_method IDs, statuses, period windows) into `subscriptions.metadata` and flips `stores.subscription_active` so vendor visibility stays gated. The `subscriptions` table also enforces the 0..1-per-store invariant with a `UNIQUE(store_id)` index and explicitly persists `billing_plan_id`, `square_customer_id`, `square_card_id`, and `paused_at` for future plan/linkage tooling.
 
 **Billing history (charges only)**
 

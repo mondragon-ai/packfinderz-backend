@@ -12,10 +12,14 @@ import (
 // Subscription persists Square subscription state per store.
 type Subscription struct {
 	ID                   uuid.UUID                `gorm:"type:uuid;default:gen_random_uuid();primaryKey"`
-	StoreID              uuid.UUID                `gorm:"column:store_id;type:uuid;not null;index"`
+	StoreID              uuid.UUID                `gorm:"column:store_id;type:uuid;not null;uniqueIndex"`
+	BillingPlanID        *string                  `gorm:"column:billing_plan_id"`
 	SquareSubscriptionID string                   `gorm:"column:square_subscription_id;not null;unique"`
+	SquareCustomerID     *string                  `gorm:"column:square_customer_id"`
+	SquareCardID         *string                  `gorm:"column:square_card_id"`
 	Status               enums.SubscriptionStatus `gorm:"column:status;type:subscription_status;not null;default:'active'"`
 	PriceID              *string                  `gorm:"column:price_id"`
+	PausedAt             *time.Time               `gorm:"column:paused_at"`
 	CurrentPeriodStart   *time.Time               `gorm:"column:current_period_start"`
 	CurrentPeriodEnd     time.Time                `gorm:"column:current_period_end;not null"`
 	CancelAtPeriodEnd    bool                     `gorm:"column:cancel_at_period_end;not null;default:false"`

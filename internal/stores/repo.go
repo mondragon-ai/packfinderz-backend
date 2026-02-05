@@ -50,6 +50,29 @@ func (r *Repository) FindByOwner(ctx context.Context, ownerID uuid.UUID) ([]mode
 	return stores, nil
 }
 
+// SquareCustomerID returns the stored Square customer identifier for the given store.
+func (r *Repository) SquareCustomerID(ctx context.Context, storeID uuid.UUID) (*string, error) {
+	var store models.Store
+	if err := r.db.WithContext(ctx).
+		Select("square_customer_id").
+		Where("id = ?", storeID).
+		First(&store).Error; err != nil {
+		return nil, err
+	}
+	return store.SquareCustomerID, nil
+}
+
+// UpdateSquareCustomerID sets the Square customer identifier for the provided store.
+func (r *Repository) UpdateSquareCustomerID(ctx context.Context, storeID uuid.UUID, customerID *string) error {
+	if err := r.db.WithContext(ctx).
+		Model(&models.Store{}).
+		Where("id = ?", storeID).
+		Update("square_customer_id", customerID).Error; err != nil {
+		return err
+	}
+	return nil
+}
+
 // Update saves the provided store.
 func (r *Repository) Update(ctx context.Context, store *models.Store) error {
 	if store == nil {
