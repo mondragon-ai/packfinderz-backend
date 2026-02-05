@@ -23,6 +23,7 @@ import (
 	"github.com/angelmondragon/packfinderz-backend/internal/media"
 	"github.com/angelmondragon/packfinderz-backend/internal/notifications"
 	"github.com/angelmondragon/packfinderz-backend/internal/orders"
+	paymentsvc "github.com/angelmondragon/packfinderz-backend/internal/paymentmethods"
 	products "github.com/angelmondragon/packfinderz-backend/internal/products"
 	"github.com/angelmondragon/packfinderz-backend/internal/squarecustomers"
 	"github.com/angelmondragon/packfinderz-backend/internal/stores"
@@ -70,6 +71,7 @@ func NewRouter(
 	ordersRepo orders.Repository,
 	ordersSvc orders.Service,
 	subscriptionsService subscriptionsvc.Service,
+	paymentMethodService paymentsvc.Service,
 	billingService billingcontrollers.ChargesService,
 	squareClient *square.Client,
 	squareWebhookService *squarewebhook.Service,
@@ -143,6 +145,7 @@ func NewRouter(
 				r.Patch("/products/{productId}", controllers.VendorUpdateProduct(productService, logg))
 				r.Delete("/products/{productId}", controllers.VendorDeleteProduct(productService, logg))
 				r.Get("/billing/charges", billingcontrollers.VendorBillingCharges(billingService, logg))
+				r.Post("/payment-methods/cc", billingcontrollers.VendorPaymentMethodCreate(paymentMethodService, logg))
 				r.Post("/orders/{orderId}/decision", ordercontrollers.VendorOrderDecision(ordersSvc, logg))
 				r.Post("/orders/{orderId}/line-items/decision", ordercontrollers.VendorLineItemDecision(ordersSvc, logg))
 				r.Route("/subscriptions", func(r chi.Router) {

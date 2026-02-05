@@ -22,6 +22,7 @@ type PaymentMethod struct {
 	CardExpYear           *int                    `gorm:"column:card_exp_year"`
 	BillingDetails        json.RawMessage         `gorm:"column:billing_details;type:jsonb"`
 	Metadata              json.RawMessage         `gorm:"column:metadata;type:jsonb"`
+	IsDefault             bool                    `gorm:"column:is_default;not null;default:false"`
 	CreatedAt             time.Time               `gorm:"column:created_at;autoCreateTime"`
 	UpdatedAt             time.Time               `gorm:"column:updated_at;autoUpdateTime"`
 }
