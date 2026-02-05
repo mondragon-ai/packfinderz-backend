@@ -120,7 +120,8 @@ LIST OF ITEMS NEEDED TO BE DONE or refactored based on the current state of squa
 * **[Auth/Registration] Integrate Square customer creation into store registration**
 
   * Goose migration needed for store object to store the square meta data needed like `square_customer_id`
-  * On store creation (`POST /api/v1/auth/register`): create Square customer (idempotent) and store `square_customer_id` 
+  * On store creation (`POST /api/v1/auth/register`): create Square customer (idempotent) and store `square_customer_id`
+  * Provide `POST /api/admin/v1/square/customers` so internal tooling can recreate or fetch the Square customer outside of onboarding
   * Ensure rollback/compensation behavior if store creation fails after Square customer creation
 
 * **[DB/Migrations] Add `billing_plans` table (Goose migration)**

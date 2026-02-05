@@ -24,6 +24,7 @@ import (
 	"github.com/angelmondragon/packfinderz-backend/internal/notifications"
 	"github.com/angelmondragon/packfinderz-backend/internal/orders"
 	products "github.com/angelmondragon/packfinderz-backend/internal/products"
+	"github.com/angelmondragon/packfinderz-backend/internal/squarecustomers"
 	"github.com/angelmondragon/packfinderz-backend/internal/stores"
 	subscriptionsvc "github.com/angelmondragon/packfinderz-backend/internal/subscriptions"
 	squarewebhook "github.com/angelmondragon/packfinderz-backend/internal/webhooks/square"
@@ -57,6 +58,8 @@ func NewRouter(
 	adminRegisterService auth.AdminRegisterService,
 	switchService auth.SwitchStoreService,
 	storeService stores.Service,
+	storeRepo stores.SquareCustomerUpdater,
+	squareCustomerService squarecustomers.Service,
 	mediaService media.Service,
 	licenseService licenses.Service,
 	productService products.Service,
@@ -214,6 +217,11 @@ func NewRouter(
 		r.Use(middleware.Idempotency(redisClient, logg))
 		r.Use(middleware.RateLimit())
 		r.Get("/ping", controllers.AdminPing())
+		r.Route("/v1/square/customers", func(r chi.Router) {
+			if squareCustomerService != nil && storeRepo != nil {
+				r.Post("/", controllers.AdminSquareCustomerEnsure(squareCustomerService, storeRepo, logg))
+			}
+		})
 		r.Route("/v1/licenses", func(r chi.Router) {
 			r.Post("/{licenseId}/verify", controllers.AdminLicenseVerify(licenseService, logg))
 		})

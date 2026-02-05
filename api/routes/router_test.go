@@ -20,6 +20,7 @@ import (
 	"github.com/angelmondragon/packfinderz-backend/internal/notifications"
 	ordersrepo "github.com/angelmondragon/packfinderz-backend/internal/orders"
 	product "github.com/angelmondragon/packfinderz-backend/internal/products"
+	"github.com/angelmondragon/packfinderz-backend/internal/squarecustomers"
 	"github.com/angelmondragon/packfinderz-backend/internal/stores"
 	subscriptionsvc "github.com/angelmondragon/packfinderz-backend/internal/subscriptions"
 	"github.com/angelmondragon/packfinderz-backend/internal/users"
@@ -124,6 +125,18 @@ func (s stubStoreService) ListUsers(ctx context.Context, userID uuid.UUID, store
 // RemoveUser implements [stores.Service].
 func (s stubStoreService) RemoveUser(ctx context.Context, actorID uuid.UUID, storeID uuid.UUID, targetUserID uuid.UUID) error {
 	panic("unimplemented")
+}
+
+type stubSquareCustomerUpdater struct{}
+
+func (stubSquareCustomerUpdater) UpdateSquareCustomerID(ctx context.Context, storeID uuid.UUID, customerID *string) error {
+	return nil
+}
+
+type stubSquareCustomerService struct{}
+
+func (stubSquareCustomerService) EnsureCustomer(ctx context.Context, input squarecustomers.Input) (string, error) {
+	return "stub-customer", nil
 }
 
 // Update implements [stores.Service].
@@ -471,6 +484,8 @@ func newTestRouter(cfg *config.Config) http.Handler {
 		stubAdminRegisterService{},
 		stubSwitchService{}, // auth.SwitchStoreService
 		stubStoreService{},
+		stubSquareCustomerUpdater{},
+		stubSquareCustomerService{},
 		stubMediaService{},
 		stubLicensesService{},
 		stubProductService{},
@@ -738,6 +753,8 @@ func TestAgentAssignedOrdersRequiresAgentRole(t *testing.T) {
 		stubAdminRegisterService{},
 		stubSwitchService{},
 		stubStoreService{},
+		stubSquareCustomerUpdater{},
+		stubSquareCustomerService{},
 		stubMediaService{},
 		stubLicensesService{},
 		stubProductService{},
@@ -805,6 +822,8 @@ func TestAgentAssignedOrderDetailRequiresAgentRole(t *testing.T) {
 		stubAdminRegisterService{},
 		stubSwitchService{},
 		stubStoreService{},
+		stubSquareCustomerUpdater{},
+		stubSquareCustomerService{},
 		stubMediaService{},
 		stubLicensesService{},
 		stubProductService{},
@@ -848,6 +867,8 @@ func TestAgentPickupRequiresAgentRole(t *testing.T) {
 		stubAdminRegisterService{},
 		stubSwitchService{},
 		stubStoreService{},
+		stubSquareCustomerUpdater{},
+		stubSquareCustomerService{},
 		stubMediaService{},
 		stubLicensesService{},
 		stubProductService{},
@@ -906,6 +927,8 @@ func TestAgentDeliverRequiresAgentRole(t *testing.T) {
 		stubAdminRegisterService{},
 		stubSwitchService{},
 		stubStoreService{},
+		stubSquareCustomerUpdater{},
+		stubSquareCustomerService{},
 		stubMediaService{},
 		stubLicensesService{},
 		stubProductService{},

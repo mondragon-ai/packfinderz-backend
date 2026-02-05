@@ -19,6 +19,7 @@ import (
 	"github.com/angelmondragon/packfinderz-backend/internal/notifications"
 	"github.com/angelmondragon/packfinderz-backend/internal/orders"
 	products "github.com/angelmondragon/packfinderz-backend/internal/products"
+	"github.com/angelmondragon/packfinderz-backend/internal/squarecustomers"
 	"github.com/angelmondragon/packfinderz-backend/internal/stores"
 	"github.com/angelmondragon/packfinderz-backend/internal/subscriptions"
 	"github.com/angelmondragon/packfinderz-backend/internal/users"
@@ -53,6 +54,8 @@ func main() {
 
 	squareClient, err := square.NewClient(context.Background(), cfg.Square, logg)
 	requireResource(ctx, logg, "square client", err)
+
+	squareCustomerService := squarecustomers.NewService(squareClient)
 
 	squareSubsClient := subscriptions.NewSquareClient(squareClient, cfg.Square.LocationID)
 
@@ -109,8 +112,9 @@ func main() {
 	requireResource(ctx, logg, "auth service", err)
 
 	registerService, err := auth.NewRegisterService(auth.RegisterServiceParams{
-		DB:             dbClient,
-		PasswordConfig: cfg.Password,
+		DB:                    dbClient,
+		PasswordConfig:        cfg.Password,
+		SquareCustomerService: squareCustomerService,
 	})
 	requireResource(ctx, logg, "register service", err)
 	adminRegisterService, err := auth.NewAdminRegisterService(auth.AdminRegisterServiceParams{
@@ -266,6 +270,8 @@ func main() {
 			adminRegisterService,
 			switchService,
 			storeService,
+			storeRepo,
+			squareCustomerService,
 			mediaService,
 			licenseService,
 			productService,

@@ -2,8 +2,10 @@ package auth
 
 import (
 	"context"
+	"strings"
 	"testing"
 
+	"github.com/angelmondragon/packfinderz-backend/internal/squarecustomers"
 	"github.com/angelmondragon/packfinderz-backend/internal/stores"
 	"github.com/angelmondragon/packfinderz-backend/internal/users"
 	"github.com/angelmondragon/packfinderz-backend/pkg/config"
@@ -61,7 +63,10 @@ func (s *stubUserRepository) Create(ctx context.Context, dto users.CreateUserDTO
 }
 
 type stubStoreRepository struct {
-	created *pkgmodels.Store
+	created           *pkgmodels.Store
+	savedID           uuid.UUID
+	updateErr         error
+	updatedCustomerID *string
 }
 
 func (s *stubStoreRepository) Create(ctx context.Context, dto stores.CreateStoreDTO) (*pkgmodels.Store, error) {
@@ -69,6 +74,15 @@ func (s *stubStoreRepository) Create(ctx context.Context, dto stores.CreateStore
 	store.ID = uuid.New()
 	s.created = store
 	return store, nil
+}
+
+func (s *stubStoreRepository) UpdateSquareCustomerID(ctx context.Context, storeID uuid.UUID, customerID *string) error {
+	if s.updateErr != nil {
+		return s.updateErr
+	}
+	s.savedID = storeID
+	s.updatedCustomerID = customerID
+	return nil
 }
 
 type stubMembershipRepository struct {
@@ -102,6 +116,7 @@ type registerTestSetup struct {
 	userRepo   *stubUserRepository
 	storeRepo  *stubStoreRepository
 	memberRepo *stubMembershipRepository
+	squareSvc  *stubSquareCustomerService
 }
 
 func newRegisterTestSetup(t *testing.T) *registerTestSetup {
@@ -109,6 +124,7 @@ func newRegisterTestSetup(t *testing.T) *registerTestSetup {
 	userRepo := newStubUserRepository()
 	storeRepo := &stubStoreRepository{}
 	memberRepo := &stubMembershipRepository{}
+	squareSvc := &stubSquareCustomerService{customerID: "cust-001"}
 	svc, err := NewRegisterService(RegisterServiceParams{
 		TxRunner: stubTxRunner{},
 		UserRepoFactory: func(tx *gorm.DB) registerUserRepository {
@@ -120,7 +136,8 @@ func newRegisterTestSetup(t *testing.T) *registerTestSetup {
 		MembershipRepoFactory: func(tx *gorm.DB) registerMembershipRepository {
 			return memberRepo
 		},
-		PasswordConfig: config.PasswordConfig{},
+		PasswordConfig:        config.PasswordConfig{},
+		SquareCustomerService: squareSvc,
 	})
 	if err != nil {
 		t.Fatalf("new register service: %v", err)
@@ -130,6 +147,7 @@ func newRegisterTestSetup(t *testing.T) *registerTestSetup {
 		userRepo:   userRepo,
 		storeRepo:  storeRepo,
 		memberRepo: memberRepo,
+		squareSvc:  squareSvc,
 	}
 }
 
@@ -174,6 +192,12 @@ func TestRegisterCreatesStoreForNewUser(t *testing.T) {
 	if setup.memberRepo.calledWith.userID != setup.userRepo.created.ID {
 		t.Fatalf("membership not linked to created user")
 	}
+	if setup.storeRepo.updatedCustomerID == nil || *setup.storeRepo.updatedCustomerID != "cust-001" {
+		t.Fatalf("expected square customer id persisted")
+	}
+	if setup.squareSvc.input.Email != "new@example.com" {
+		t.Fatalf("expected square service called with email, got %s", setup.squareSvc.input.Email)
+	}
 }
 
 func TestRegisterCreatesStoreForExistingUser(t *testing.T) {
@@ -212,4 +236,24 @@ func TestRegisterCreatesStoreForExistingUser(t *testing.T) {
 	if setup.memberRepo.calledWith.userID != user.ID {
 		t.Fatalf("membership not linked to existing user")
 	}
+	if setup.storeRepo.updatedCustomerID == nil || *setup.storeRepo.updatedCustomerID != "cust-001" {
+		t.Fatalf("expected square customer id persisted")
+	}
+}
+
+type stubSquareCustomerService struct {
+	input      squarecustomers.Input
+	customerID string
+	err        error
+}
+
+func (s *stubSquareCustomerService) EnsureCustomer(ctx context.Context, input squarecustomers.Input) (string, error) {
+	s.input = input
+	if s.err != nil {
+		return "", s.err
+	}
+	if strings.TrimSpace(s.customerID) == "" {
+		return "stub-customer", nil
+	}
+	return s.customerID, nil
 }

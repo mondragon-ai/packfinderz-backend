@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/angelmondragon/packfinderz-backend/internal/memberships"
+	"github.com/angelmondragon/packfinderz-backend/internal/squarecustomers"
 	"github.com/angelmondragon/packfinderz-backend/internal/stores"
 	"github.com/angelmondragon/packfinderz-backend/internal/users"
 	"github.com/angelmondragon/packfinderz-backend/pkg/config"
@@ -47,6 +48,7 @@ type RegisterServiceParams struct {
 	StoreRepoFactory      registerStoreRepoFactory
 	MembershipRepoFactory registerMembershipRepoFactory
 	PasswordConfig        config.PasswordConfig
+	SquareCustomerService squarecustomers.Service
 }
 
 type txRunner interface {
@@ -60,6 +62,7 @@ type registerUserRepository interface {
 
 type registerStoreRepository interface {
 	Create(ctx context.Context, dto stores.CreateStoreDTO) (*pkgmodels.Store, error)
+	UpdateSquareCustomerID(ctx context.Context, storeID uuid.UUID, customerID *string) error
 }
 
 type registerMembershipRepository interface {
@@ -76,6 +79,7 @@ type registerService struct {
 	userFactory       registerUserRepoFactory
 	storeFactory      registerStoreRepoFactory
 	membershipFactory registerMembershipRepoFactory
+	squareCustomers   squarecustomers.Service
 }
 
 // NewRegisterService builds a registration service with the provided dependencies.
@@ -102,12 +106,16 @@ func NewRegisterService(params RegisterServiceParams) (RegisterService, error) {
 			return memberships.NewRepository(tx)
 		}
 	}
+	if params.SquareCustomerService == nil {
+		return nil, pkgerrors.New(pkgerrors.CodeInternal, "square customer service required")
+	}
 	return &registerService{
 		txRunner:          runner,
 		passwordCfg:       params.PasswordConfig,
 		userFactory:       params.UserRepoFactory,
 		storeFactory:      params.StoreRepoFactory,
 		membershipFactory: params.MembershipRepoFactory,
+		squareCustomers:   params.SquareCustomerService,
 	}, nil
 }
 
@@ -173,6 +181,21 @@ func (s *registerService) Register(ctx context.Context, req RegisterRequest) err
 		})
 		if err != nil {
 			return pkgerrors.Wrap(pkgerrors.CodeInternal, err, "create store")
+		}
+
+		customerID, err := s.squareCustomers.EnsureCustomer(ctx, squarecustomers.Input{
+			FirstName:   req.FirstName,
+			LastName:    req.LastName,
+			Email:       email,
+			Phone:       req.Phone,
+			CompanyName: req.CompanyName,
+			Address:     req.Address,
+		})
+		if err != nil {
+			return err
+		}
+		if err := storeRepo.UpdateSquareCustomerID(ctx, store.ID, &customerID); err != nil {
+			return pkgerrors.Wrap(pkgerrors.CodeInternal, err, "persist square customer id")
 		}
 
 		if _, err := membershipRepo.CreateMembership(
