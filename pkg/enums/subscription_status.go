@@ -13,6 +13,7 @@ const (
 	SubscriptionStatusIncomplete        SubscriptionStatus = "incomplete"
 	SubscriptionStatusIncompleteExpired SubscriptionStatus = "incomplete_expired"
 	SubscriptionStatusUnpaid            SubscriptionStatus = "unpaid"
+	SubscriptionStatusPaused            SubscriptionStatus = "paused"
 )
 
 var validSubscriptionStatuses = []SubscriptionStatus{
@@ -23,6 +24,7 @@ var validSubscriptionStatuses = []SubscriptionStatus{
 	SubscriptionStatusIncomplete,
 	SubscriptionStatusIncompleteExpired,
 	SubscriptionStatusUnpaid,
+	SubscriptionStatusPaused,
 }
 
 // String implements fmt.Stringer.

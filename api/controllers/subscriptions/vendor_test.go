@@ -91,6 +91,78 @@ func TestVendorSubscriptionCancelRejectsNonVendor(t *testing.T) {
 	}
 }
 
+func TestVendorSubscriptionPauseRejectsNonVendor(t *testing.T) {
+	handler := VendorSubscriptionPause(&stubSubscriptionsService{}, logger.New(logger.Options{ServiceName: "test"}))
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/vendor/subscriptions/pause", nil)
+	ctx := req.Context()
+	ctx = middleware.WithStoreID(ctx, uuid.NewString())
+	ctx = middleware.WithStoreType(ctx, enums.StoreTypeBuyer)
+	req = req.WithContext(ctx)
+
+	resp := httptest.NewRecorder()
+	handler.ServeHTTP(resp, req)
+	if resp.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 for non-vendor pause, got %d", resp.Code)
+	}
+}
+
+func TestVendorSubscriptionPauseInvokesService(t *testing.T) {
+	service := &stubSubscriptionsService{}
+	handler := VendorSubscriptionPause(service, logger.New(logger.Options{ServiceName: "test"}))
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/vendor/subscriptions/pause", nil)
+	ctx := req.Context()
+	ctx = middleware.WithStoreID(ctx, uuid.NewString())
+	ctx = middleware.WithStoreType(ctx, enums.StoreTypeVendor)
+	req = req.WithContext(ctx)
+
+	resp := httptest.NewRecorder()
+	handler.ServeHTTP(resp, req)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.Code)
+	}
+	if !service.calledPause {
+		t.Fatal("expected pause service called")
+	}
+}
+
+func TestVendorSubscriptionResumeRejectsNonVendor(t *testing.T) {
+	handler := VendorSubscriptionResume(&stubSubscriptionsService{}, logger.New(logger.Options{ServiceName: "test"}))
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/vendor/subscriptions/resume", nil)
+	ctx := req.Context()
+	ctx = middleware.WithStoreID(ctx, uuid.NewString())
+	ctx = middleware.WithStoreType(ctx, enums.StoreTypeBuyer)
+	req = req.WithContext(ctx)
+
+	resp := httptest.NewRecorder()
+	handler.ServeHTTP(resp, req)
+	if resp.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 for non-vendor resume, got %d", resp.Code)
+	}
+}
+
+func TestVendorSubscriptionResumeInvokesService(t *testing.T) {
+	service := &stubSubscriptionsService{}
+	handler := VendorSubscriptionResume(service, logger.New(logger.Options{ServiceName: "test"}))
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/vendor/subscriptions/resume", nil)
+	ctx := req.Context()
+	ctx = middleware.WithStoreID(ctx, uuid.NewString())
+	ctx = middleware.WithStoreType(ctx, enums.StoreTypeVendor)
+	req = req.WithContext(ctx)
+
+	resp := httptest.NewRecorder()
+	handler.ServeHTTP(resp, req)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.Code)
+	}
+	if !service.calledResume {
+		t.Fatal("expected resume service called")
+	}
+}
+
 func TestVendorSubscriptionFetchReturnsNull(t *testing.T) {
 	handler := VendorSubscriptionFetch(&stubSubscriptionsService{}, logger.New(logger.Options{ServiceName: "test"}))
 
@@ -114,6 +186,8 @@ type stubSubscriptionsService struct {
 	calledCreate bool
 	response     *models.Subscription
 	err          error
+	calledPause  bool
+	calledResume bool
 }
 
 func (s *stubSubscriptionsService) Create(ctx context.Context, storeID uuid.UUID, input subsvc.CreateSubscriptionInput) (*models.Subscription, bool, error) {
@@ -122,6 +196,16 @@ func (s *stubSubscriptionsService) Create(ctx context.Context, storeID uuid.UUID
 }
 
 func (s *stubSubscriptionsService) Cancel(ctx context.Context, storeID uuid.UUID) error {
+	return s.err
+}
+
+func (s *stubSubscriptionsService) Pause(ctx context.Context, storeID uuid.UUID) error {
+	s.calledPause = true
+	return s.err
+}
+
+func (s *stubSubscriptionsService) Resume(ctx context.Context, storeID uuid.UUID) error {
+	s.calledResume = true
 	return s.err
 }
 

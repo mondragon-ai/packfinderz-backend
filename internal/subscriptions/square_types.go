@@ -34,3 +34,11 @@ type SquareSubscriptionParams struct {
 }
 
 type SquareSubscriptionCancelParams struct{}
+
+type SquareSubscriptionPauseParams struct {
+	PriceID string
+}
+
+type SquareSubscriptionResumeParams struct {
+	PriceID string
+}

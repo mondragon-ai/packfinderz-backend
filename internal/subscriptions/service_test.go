@@ -3,6 +3,7 @@ package subscriptions
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/angelmondragon/packfinderz-backend/internal/billing"
 	"github.com/angelmondragon/packfinderz-backend/pkg/db/models"
@@ -152,6 +153,107 @@ func TestServiceCancelsSubscription(t *testing.T) {
 	}
 }
 
+func TestServicePausesSubscription(t *testing.T) {
+	storeID := uuid.New()
+	store := &models.Store{SubscriptionActive: true}
+	existing := &models.Subscription{
+		ID:                   uuid.New(),
+		StoreID:              storeID,
+		Status:               enums.SubscriptionStatusActive,
+		SquareSubscriptionID: "sub-pause",
+	}
+	billingRepo := &stubBillingRepo{existing: existing}
+	squareClient := &stubSquareSubscriptionClient{
+		pauseResp: &SquareSubscription{
+			ID:     "sub-pause",
+			Status: "PAUSED",
+			Metadata: map[string]string{
+				"store_id": storeID.String(),
+			},
+		},
+	}
+	svc, err := NewService(ServiceParams{
+		BillingRepo:       billingRepo,
+		StoreRepo:         &stubStoreRepo{store: store},
+		SquareClient:      squareClient,
+		DefaultPriceID:    "price-default",
+		TransactionRunner: &stubTxRunner{},
+	})
+	if err != nil {
+		t.Fatalf("setup failed: %v", err)
+	}
+
+	if err := svc.Pause(context.Background(), storeID); err != nil {
+		t.Fatalf("pause failed: %v", err)
+	}
+	if len(billingRepo.updated) == 0 {
+		t.Fatalf("expected subscription update")
+	}
+	if billingRepo.updated[0].Status != enums.SubscriptionStatusPaused {
+		t.Fatalf("expected paused status, got %s", billingRepo.updated[0].Status)
+	}
+	if squareClient.calledPause == false {
+		t.Fatalf("square pause not invoked")
+	}
+	if store.SubscriptionActive {
+		t.Fatalf("expected store flag false after pause")
+	}
+	if billingRepo.updated[0].PausedAt == nil {
+		t.Fatalf("expected paused timestamp set")
+	}
+}
+
+func TestServiceResumesSubscription(t *testing.T) {
+	storeID := uuid.New()
+	store := &models.Store{SubscriptionActive: false}
+	existing := &models.Subscription{
+		ID:                   uuid.New(),
+		StoreID:              storeID,
+		Status:               enums.SubscriptionStatusPaused,
+		SquareSubscriptionID: "sub-resume",
+		PausedAt:             ptrTime(time.Now()),
+	}
+	billingRepo := &stubBillingRepo{existing: existing}
+	squareClient := &stubSquareSubscriptionClient{
+		resumeResp: &SquareSubscription{
+			ID:     "sub-resume",
+			Status: "ACTIVE",
+			Metadata: map[string]string{
+				"store_id": storeID.String(),
+			},
+		},
+	}
+	svc, err := NewService(ServiceParams{
+		BillingRepo:       billingRepo,
+		StoreRepo:         &stubStoreRepo{store: store},
+		SquareClient:      squareClient,
+		DefaultPriceID:    "price-default",
+		TransactionRunner: &stubTxRunner{},
+	})
+	if err != nil {
+		t.Fatalf("setup failed: %v", err)
+	}
+
+	if err := svc.Resume(context.Background(), storeID); err != nil {
+		t.Fatalf("resume failed: %v", err)
+	}
+	if len(billingRepo.updated) == 0 {
+		t.Fatalf("expected subscription update")
+	}
+	if billingRepo.updated[0].Status != enums.SubscriptionStatusActive {
+		t.Fatalf("expected active status, got %s", billingRepo.updated[0].Status)
+	}
+	if squareClient.calledResume == false {
+		t.Fatalf("square resume not invoked")
+	}
+	if !store.SubscriptionActive {
+		t.Fatalf("expected store flag true after resume")
+	}
+	if billingRepo.updated[0].PausedAt != nil {
+		t.Fatalf("expected paused timestamp cleared")
+	}
+}
+
 type stubBillingRepo struct {
 	existing *models.Subscription
 	created  []*models.Subscription
@@ -259,4 +361,8 @@ type stubTxRunner struct{}
 
 func (s *stubTxRunner) WithTx(ctx context.Context, fn func(tx *gorm.DB) error) error {
 	return fn(nil)
+}
+
+func ptrTime(t time.Time) *time.Time {
+	return &t
 }

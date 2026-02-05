@@ -2368,6 +2368,11 @@ Headers:
   * Errors: `401, 403`
   * Returns the single active subscription row (or `null` when the store is unsubscribed)
 
+* `POST /api/v1/vendor/subscriptions/pause` and `/api/v1/vendor/subscriptions/resume`
+
+  * Pause adds a `PAUSED` action via Square, persists the status, and sets `stores.subscription_active=false` so vendor visibility is disabled; resume flips back to `ACTIVE`/`trialing`, clears `PausedAt`, and re-activates the store flag.
+  * Both endpoints return `200` on success and `401/403` for unauthorized stores.
+
 Creation/cancellation requests require an `Idempotency-Key` and must provide `square_customer_id` + `square_payment_method_id`; the optional `price_id` payload field falls back to the configured `PACKFINDERZ_SQUARE_SUBSCRIPTION_PLAN_ID`. The domain service mirrors Square metadata (customer/payment_method IDs, statuses, period windows) into `subscriptions.metadata` and flips `stores.subscription_active` so vendor visibility stays gated. The `subscriptions` table also enforces the 0..1-per-store invariant with a `UNIQUE(store_id)` index and explicitly persists `billing_plan_id`, `square_customer_id`, `square_card_id`, and `paused_at` for future plan/linkage tooling.
 
 Registration now calls the shared Square customer helper so onboarding persists `stores.square_customer_id` using the owner/store metadata, and the new internal admin endpoint (`POST /api/admin/v1/square/customers`) lets ops recreate or fetch the customer record when needed without touching production payment flows.

@@ -156,6 +156,8 @@ func NewRouter(
 				r.Route("/subscriptions", func(r chi.Router) {
 					r.Post("/", subscriptionControllers.VendorSubscriptionCreate(subscriptionsService, logg))
 					r.Post("/cancel", subscriptionControllers.VendorSubscriptionCancel(subscriptionsService, logg))
+					r.Post("/pause", subscriptionControllers.VendorSubscriptionPause(subscriptionsService, logg))
+					r.Post("/resume", subscriptionControllers.VendorSubscriptionResume(subscriptionsService, logg))
 					r.Get("/", subscriptionControllers.VendorSubscriptionFetch(subscriptionsService, logg))
 				})
 			})
