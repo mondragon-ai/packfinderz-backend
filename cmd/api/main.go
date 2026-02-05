@@ -293,6 +293,7 @@ func main() {
 			subscriptionsService,
 			paymentMethodService,
 			billingService,
+			billingService,
 			squareClient,
 			squareWebhookService,
 			squareWebhookGuard,

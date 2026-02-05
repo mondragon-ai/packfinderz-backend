@@ -422,6 +422,12 @@ The GitHub Actions workflow (`.github/workflows/ci.yml`) runs gofmt, `golangci-l
 
 * `GET /api/v1/vendor/billing/charges` – vendor-only endpoint that streams the local `charges` rows in cursor order. Requires the vendor store context, accepts optional `limit` (positive integer, default 25, max 100), `cursor` (`created_at|id` base64 token), `type` (`subscription`|`ad_spend`|`other`), and `status` (`pending`|`succeeded`|`failed`|`refunded`) filters, and returns `charges[]` plus a `cursor` for the next page. Each charge exposes `id`, `amount_cents`, `currency`, `type`, `status`, `description`, `created_at`, and `billed_at`, so the UI mirrors provider/local history without calling the billing provider per request.
 
+### Billing Plans
+
+* `GET /api/v1/vendor/billing/plans` – vendor-only read-only list of active billing plans (`status=active`), returning price, currency, trial rules, feature gates, and UI metadata so the storefront can surface the available options without pinging Square.
+* `GET /api/v1/vendor/billing/plans/{planId}` – vendor-only detail view for a single active plan.
+* Admin-only `/api/admin/v1/billing/plans` group (GET list, POST create, PATCH update, DELETE hide) lets admins manage the canonical billing metadata, link each plan to a Square selling plan ID, and toggle `is_default`/`status` flags without touching Square; every request still requires the admin role plus the standard middleware chain.
+
 ### Vendor Payment Methods
 
 * `POST /api/v1/vendor/payment-methods/cc` – vendor-only endpoint (Idempotency-Key required) that accepts `{ "source_id": "...", "cardholder_name": "...?", "verification_token": "...?", "is_default": true|false }`, creates a card-on-file via the Square Cards API (using the store’s `square_customer_id`), and writes the returned metadata (`card_brand`, `card_last4`, `card_exp_month`, `card_exp_year`, `billing_details`, `metadata`) into `payment_methods`. The first card added (or any card when no default exists) automatically becomes the default, and `is_default=true` flips the existing default off before persisting the record, keeping the `is_default` column unique per store. The response returns a retracted view (`id`, `card_brand`, `card_last4`, `card_exp_month`, `card_exp_year`, `is_default`, `created_at`) so the UI can render the stored instrument without exposing Square identifiers.
