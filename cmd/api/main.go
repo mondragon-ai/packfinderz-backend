@@ -54,6 +54,8 @@ func main() {
 	squareClient, err := square.NewClient(context.Background(), cfg.Square, logg)
 	requireResource(ctx, logg, "square client", err)
 
+	squareSubsClient := subscriptions.NewSquareClient(squareClient, cfg.Square.LocationID)
+
 	dbClient, err := db.New(context.Background(), cfg.DB, logg)
 	requireResource(ctx, logg, "database", err)
 	defer func() {
@@ -133,7 +135,7 @@ func main() {
 	subscriptionsService, err := subscriptions.NewService(subscriptions.ServiceParams{
 		BillingRepo:       billingRepo,
 		StoreRepo:         storeRepo,
-		SquareClient:      subscriptions.NewSquareClient(),
+		SquareClient:      squareSubsClient,
 		DefaultPriceID:    cfg.Square.SubscriptionPlanID,
 		TransactionRunner: dbClient,
 	})
@@ -142,7 +144,7 @@ func main() {
 	squareWebhookService, err := squarewebhook.NewService(squarewebhook.ServiceParams{
 		BillingRepo:       billingRepo,
 		StoreRepo:         storeRepo,
-		SquareClient:      subscriptions.NewSquareClient(),
+		SquareClient:      squareSubsClient,
 		TransactionRunner: dbClient,
 	})
 	requireResource(ctx, logg, "square webhook service", err)

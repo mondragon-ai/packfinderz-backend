@@ -27,7 +27,7 @@ func TestServiceCreateReturnsExisting(t *testing.T) {
 	svc, err := NewService(ServiceParams{
 		BillingRepo:       billingRepo,
 		StoreRepo:         &stubStoreRepo{store: store},
-		SquareClient:      &stubSquareClient{},
+		SquareClient:      &stubSquareSubscriptionClient{},
 		DefaultPriceID:    "price-default",
 		TransactionRunner: &stubTxRunner{},
 	})
@@ -57,7 +57,7 @@ func TestServiceCreatesNewSubscription(t *testing.T) {
 	storeID := uuid.New()
 	store := &models.Store{SubscriptionActive: false}
 	billingRepo := &stubBillingRepo{}
-	squareClient := &stubSquareClient{
+	squareClient := &stubSquareSubscriptionClient{
 		createResp: &SquareSubscription{
 			ID:     "sub-new",
 			Status: "ACTIVE",
@@ -118,7 +118,7 @@ func TestServiceCancelsSubscription(t *testing.T) {
 		SquareSubscriptionID: "sub-cancel",
 	}
 	billingRepo := &stubBillingRepo{existing: existing}
-	squareClient := &stubSquareClient{
+	squareClient := &stubSquareSubscriptionClient{
 		cancelResp: &SquareSubscription{
 			ID:     "sub-cancel",
 			Status: "CANCELED",
@@ -150,29 +150,6 @@ func TestServiceCancelsSubscription(t *testing.T) {
 	if squareClient.calledCancel == false {
 		t.Fatalf("square cancel not invoked")
 	}
-}
-
-// stubSquareClient satisfies SquareSubscriptionClient for tests.
-type stubSquareClient struct {
-	createResp   *SquareSubscription
-	cancelResp   *SquareSubscription
-	getResp      *SquareSubscription
-	calledCreate bool
-	calledCancel bool
-}
-
-func (s *stubSquareClient) Create(ctx context.Context, params *SquareSubscriptionParams) (*SquareSubscription, error) {
-	s.calledCreate = true
-	return s.createResp, nil
-}
-
-func (s *stubSquareClient) Cancel(ctx context.Context, id string, params *SquareSubscriptionCancelParams) (*SquareSubscription, error) {
-	s.calledCancel = true
-	return s.cancelResp, nil
-}
-
-func (s *stubSquareClient) Get(ctx context.Context, id string, params *SquareSubscriptionParams) (*SquareSubscription, error) {
-	return s.getResp, nil
 }
 
 type stubBillingRepo struct {

@@ -41,6 +41,7 @@ Central config via `envconfig`.
 
 * Loads `PACKFINDERZ_SQUARE_ACCESS_TOKEN`, `PACKFINDERZ_SQUARE_WEBHOOK_SECRET`, and `PACKFINDERZ_SQUARE_ENV` (default `sandbox`).
 * `cfg.Environment()` normalizes to `sandbox|production`, and `pkg/square.NewClient` validates the tokens and keeps the signing secret handy for webhook verification.
+* `cfg.Square.LocationID` (env `PACKFINDERZ_SQUARE_LOCATION_ID`) identifies which Square location is billed by subscriptions so `subscriptions.NewSquareClient` can populate every `/v2/subscriptions` request.
 * `internal/webhooks/square.Service` consumes `/api/v1/webhooks/square`, verifies the `Square-Signature` header, deduplicates deliveries via a Redis guard (key pattern `pf:idempotency:square-webhook:<event_id>` with TTL `PACKFINDERZ_EVENTING_IDEMPOTENCY_TTL`), and mirrors subscription/invoice events into `subscriptions.status` plus `stores.subscription_active`.
 * `cmd/api/main.go` and `cmd/worker/main.go` both call `pkg/square.NewClient` during startup and exit immediately when the client returns an error, ensuring missing or invalid Square credentials block API/worker bootstrapping (`cmd/api/main.go:55-65`; `cmd/worker/main.go:51-70`).
 * `pkg/square` now normalizes Square access for customers, cards, payments, and subscriptions through typed helpers, enforces idempotency key conventions, redacts PII in each request/response log, and maps Square SDK errors into deterministic `pkg/errors` codes so all binaries share the same domain-safe client surface.

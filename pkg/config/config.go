@@ -198,6 +198,7 @@ type SquareConfig struct {
 	WebhookSecret      string `envconfig:"PACKFINDERZ_SQUARE_WEBHOOK_SECRET"`
 	Env                string `envconfig:"PACKFINDERZ_SQUARE_ENV" default:"sandbox"`
 	SubscriptionPlanID string `envconfig:"PACKFINDERZ_SQUARE_SUBSCRIPTION_PLAN_ID"`
+	LocationID         string `envconfig:"PACKFINDERZ_SQUARE_LOCATION_ID"`
 }
 
 type SendgridConfig struct {
