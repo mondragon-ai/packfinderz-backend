@@ -600,9 +600,12 @@ func (r *repository) ListPayoutOrders(ctx context.Context, params pagination.Par
 
 	nextCursor := ""
 	if len(records) == limitWithBuffer {
-		last := records[len(records)-1]
-		nextCursor = pagination.EncodeCursor(pagination.Cursor{CreatedAt: last.DeliveredAt, ID: last.ID})
 		records = records[:len(records)-1]
+
+		lastReturned := records[len(records)-1]
+		nextCursor = pagination.EncodeCursor(
+			pagination.Cursor{CreatedAt: lastReturned.DeliveredAt, ID: lastReturned.ID},
+		)
 	}
 
 	list := &PayoutOrderList{
