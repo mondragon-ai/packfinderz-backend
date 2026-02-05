@@ -19,6 +19,7 @@ type Store struct {
 	Description          *string              `gorm:"column:description"`
 	Phone                *string              `gorm:"column:phone"`
 	Email                *string              `gorm:"column:email"`
+	SquareCustomerID     *string              `gorm:"column:square_customer_id"`
 	KYCStatus            enums.KYCStatus      `gorm:"column:kyc_status;type:kyc_status;not null;default:'pending_verification'"`
 	SubscriptionActive   bool                 `gorm:"column:subscription_active;not null;default:false"`
 	DeliveryRadiusMeters int                  `gorm:"column:delivery_radius_meters;not null;default:0"`

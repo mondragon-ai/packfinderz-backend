@@ -28,6 +28,7 @@ func BuildSubscriptionFromSquare(squareSub *SquareSubscription, storeID uuid.UUI
 	}
 	if paymentMethodID != "" {
 		metaExtras["square_payment_method_id"] = paymentMethodID
+		metaExtras["square_card_id"] = paymentMethodID
 	}
 
 	metadata, err := mergeMetadata(squareSub.Metadata, metaExtras)
@@ -46,6 +47,10 @@ func BuildSubscriptionFromSquare(squareSub *SquareSubscription, storeID uuid.UUI
 		SquareSubscriptionID: squareSub.ID,
 		Status:               status,
 		PriceID:              price,
+		BillingPlanID:        nil,
+		SquareCustomerID:     trimmedPtr(customerID),
+		SquareCardID:         trimmedPtr(paymentMethodID),
+		PausedAt:             nil,
 		CurrentPeriodStart:   toTimePtr(startTS),
 		CurrentPeriodEnd:     toTime(endTS),
 		CancelAtPeriodEnd:    squareSub.CancelAtPeriodEnd,
@@ -155,6 +160,13 @@ func periodFromSubscription(sub *SquareSubscription) (int64, int64) {
 		return item.CurrentPeriodStart, item.CurrentPeriodEnd
 	}
 	return 0, 0
+}
+
+func trimmedPtr(value string) *string {
+	if s := strings.TrimSpace(value); s != "" {
+		return &s
+	}
+	return nil
 }
 
 func mapSquareStatus(raw string) (enums.SubscriptionStatus, error) {
