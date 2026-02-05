@@ -19,7 +19,7 @@ import (
 func setupOrdersTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
 
-	db, err := gorm.Open(sqlite.Open("file::memory:?cache=shared"), &gorm.Config{})
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
 
 	stores := `
@@ -130,6 +130,9 @@ CREATE TABLE IF NOT EXISTS order_assignments (
   active INTEGER NOT NULL DEFAULT 1
 );`
 	require.NoError(t, db.Exec(stores).Error)
+	require.NoError(t, db.Exec(`ALTER TABLE stores ADD COLUMN banner_media_id TEXT;`).Error)
+	require.NoError(t, db.Exec(`ALTER TABLE stores ADD COLUMN logo_media_id TEXT;`).Error)
+
 	require.NoError(t, db.Exec(vendorOrders).Error)
 	require.NoError(t, db.Exec(orderLineItems).Error)
 	require.NoError(t, db.Exec(paymentIntents).Error)
@@ -169,6 +172,8 @@ func createOrder(t *testing.T, db *gorm.DB, buyer, vendor *models.Store, number 
 	total := qty * 1000
 	order := &models.VendorOrder{
 		CartID:            uuid.New(),
+		CheckoutGroupID:   uuid.New(),
+		RefundStatus:      enums.RefundStatusNone,
 		BuyerStoreID:      buyer.ID,
 		VendorStoreID:     vendor.ID,
 		Status:            status,
@@ -192,9 +197,14 @@ func createOrder(t *testing.T, db *gorm.DB, buyer, vendor *models.Store, number 
 	intent := &models.PaymentIntent{
 		OrderID:     order.ID,
 		Status:      paymentStatus,
+		Method:      enums.PaymentMethodCash,
 		AmountCents: total,
 		CreatedAt:   created,
 		UpdatedAt:   created,
+	}
+	if paymentStatus == enums.PaymentStatusPaid || paymentStatus == enums.PaymentStatusSettled {
+		cc := created
+		intent.CashCollectedAt = &cc
 	}
 	intent.ID = uuid.New()
 	require.NoError(t, db.Create(intent).Error)

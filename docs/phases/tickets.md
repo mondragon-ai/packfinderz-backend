@@ -320,19 +320,74 @@
   * [ ] Ticket [PF-XXX]: Create DLQ replay tooling/runbook (safe requeue + idempotency expectations)
 
 * **Phase 11 — Billing + Subscriptions + Square (Production-Ready)**
-  **Goal:** Replace Square stubs with real API integrations, add plan + card + subscription primitives, reconcile via webhooks, and implement nightly ad usage billing into `usage_charges`/`charges` with proper guards and logging.
+  **Goal:** Replace Square stubs with real API integrations, add plan + card + subscription primitives, reconcile via webhooks, and implement nightly ad usage billing into `usage_charges`/`subscriptions` with proper guards and logging.
 
-  * [ ] Ticket [PF-XXX]: Implement `pkg/square` wrapper (shared) with: auth/env config, idempotency key conventions, request/response logging w/ strict redaction, and unified error mapping
+  * [ ] Ticket [PF-255]: Finalize the Implemention of `pkg/square` wrapper (shared) with: auth/env config, idempotency key conventions, request/response logging w/ strict redaction, and unified error mapping
   * [ ] Ticket [PF-XXX]: Replace `internal/subscriptions/square_client.go` stub with real Square-backed client behind an interface (keep stub only for tests); refactor `internal/subscriptions.Service` to use `pkg/square` wrapper
+
   * [ ] Ticket [PF-XXX]: Add Goose migration(s) + model updates to persist Square identifiers required for billing flows (at minimum `stores.square_customer_id`; optionally store-level billing state for past_due/disabled_ads) and wire into store repo helpers
+
   * [ ] Ticket [PF-XXX]: Refactor/extend `subscriptions` persistence to enforce **0..1 subscription per store** (unique `store_id`) and add missing subscription linkage fields (`billing_plan_id`, `square_customer_id`, `square_card_id`, lifecycle timestamps) while preserving existing data where possible
+
   * [ ] Ticket [PF-XXX]: Implement Square customer creation flow: service helper + endpoint (admin/internal) AND integrate into `POST /api/v1/auth/register` (idempotent create-or-fetch; compensation strategy for partial failures)
+
   * [ ] Ticket [PF-XXX]: Implement card-on-file flow end-to-end: Next.js Square Web Payments SDK tokenization → backend endpoint to create/store card in Square (Cards API) → upsert `payment_methods` row (last4/brand/exp/status) with a clear “one active/default card per store” policy (migration if needed)
+
+
   * [ ] Ticket [PF-XXX]: Add `billing_plans` table + GORM model + repo/service (local source-of-truth for plans with Square mapping IDs, interval/price/trial, status, is_default, and UI metadata JSON) + indexes (`status`, `is_default`, `square_*`)
-  * [ ] Ticket [PF-XXX]: Implement BillingPlan APIs: admin CRUD (create/update/disable) + vendor read-only list/get of active plans; explicitly support “Square plan created via dashboard first” with stored IDs (Square Catalog create optional/explicit, not assumed)
+  ```ts
+  export type BillingInterval = "EVERY_30_DAYS" | "ANNUAL";
+  export type BillingCurrencyCode = "USD" | "BRL" | "EUR" | "GBP" | string;
+
+  export type PlanStatus = "active" | "deprecated" | "hidden";
+
+  export interface Money {
+    amount: string; // decimal as string to avoid float bugs ("9.99")
+    currency_code: BillingCurrencyCode;
+  }
+
+  export interface Trial {
+    days: number; // 0 means no trial
+    require_payment_method?: boolean; // some apps still want card on file even during trial
+    start_on_activation?: boolean; // usually true
+  }
+
+  export interface SubscriptionComponent {
+    interval: BillingInterval;
+    price: Money;
+    // Optional: metadata for UI / feature gating
+    features?: string[];
+  }
+  export interface BillingPlan {
+    id: string; // internal stable plan id, e.g. "starter_v1"
+    name: string; // merchant-facing
+    status: PlanStatus;
+
+    // Common toggles
+    test?: boolean; // Shopify test charges in dev stores
+    trial?: Trial;
+
+    // Components
+    subscription: SubscriptionComponent;
+
+    // Plan selection / migration controls
+    is_default?: boolean;
+    created_at?: string; // ISO
+    updated_at?: string; // ISO
+
+    // Used by embed/config UI
+    ui?: {
+      badge?: "popular" | "best_value" | "new";
+      description?: string;
+      bullets?: string[];
+    };
+  }
+
+  ```
+  * [ ] Ticket [PF-XXX]: Implement BillingPlan APIs: admin CRUD (create/update/disable) + vendor read-only list/get of active plans;
   * [ ] Ticket [PF-XXX]: Implement vendor subscription lifecycle endpoints using stored customer+card+plan mapping: create (requires active card + selected plan), get current, cancel, pause, resume; persist state transitions and keep `store.SubscriptionActive` aligned
   * [ ] Ticket [PF-XXX]: Harden Square webhook reconciliation: expand `subscription.*` + relevant `invoice.*` handling, keep Redis idempotency guard, fix brittle `store_id` metadata dependency (fallback lookup by `square_subscription_id`), and make status mapping forward-compatible (no hard-fail on new statuses)
-  * [ ] Ticket [PF-XXX]: Make `charges` real: implement Square payment creation for ad usage billing and persist outcomes into `charges` + `usage_charges` with consistent typing/status enums and pagination support via existing `/vendor/billing/charges`
+  * [ ] Ticket [PF-XXX]: Make `charges` real: implement Square payment creation for ad usage billing and persist outcomes into `usage_charges` with consistent typing/status enums and pagination support via existing `/vendor/billing/charges`
   * [ ] Ticket [PF-XXX]: Implement nightly ad usage billing worker job (inside existing worker binary): roll up per-store ad spend from your counters, charge via Square using card-on-file, write `usage_charges` rows, and apply failure policy (mark past_due/disable ads/retry hooks)
   * [ ] Ticket [PF-XXX]: Add billing permissions + security guards: admin-only plan management; vendor role restrictions for card + subscription actions; enforce PII redaction rules in logs for all billing payloads (API + worker + webhook paths)
 

@@ -106,7 +106,7 @@ sequenceDiagram
 ---
 
 
-LIST OF ITEMS NEEDED TO BE DONE:
+LIST OF ITEMS NEEDED TO BE DONE or refactored based on the current state of square and billing as seen above:
 * **[Billing/Square] Create Square client/helper wrapper**
 
   * Encapsulate auth, idempotency key generation, request logging/redaction, and error mapping
@@ -200,16 +200,16 @@ LIST OF ITEMS NEEDED TO BE DONE:
 * **[Frontend/Payments] Integrate Square Web Payments SDK (Next.js) for card capture**
 
   * Secure context + CSP requirements (ignore for now)
-  * Tokenize card for `STORE` intent and send token to backend by creating a new `payment_methods` record for the store (using activeStoreID) must be owner or manager role. 
+  * Tokenize card for `STORE` intent and send token to backend by creating a new `payment_methods` record tied to the store (using activeStoreID) must be owner or manager role. 
 
 * **[API/Billing] Card-on-file storage endpoint**
 
   * Accept tokenized `source_id` from frontend
   * Create card on file in Square (Cards API) linked to store’s `square_customer_id`
   * Upsert into existing `payment_methods` table: store `square_card_id` + last4/brand/exp + status
-  * Enforce “one active card per store” policy (or allow multiple, pick default)
+  * Enforce “one active card per store” policy (or allow multiple, pick default -> may require goose migration to add that column)
 
-* **[Billing/Subscriptions] Add `subscriptions` table (Goose migration)**
+* **[Billing/Subscriptions] Add/extend `subscriptions` table (Goose migration)**
 
   * Columns for 1:1 store subscription (ex: `id`, `store_id` unique, `billing_plan_id`, `square_subscription_id`, `square_customer_id`, `square_card_id`, `status`, `start_date`, `canceled_at`, `paused_at`, timestamps)
   * Unique index on `store_id`
@@ -222,41 +222,38 @@ LIST OF ITEMS NEEDED TO BE DONE:
 
   * Requires: store has `square_customer_id` + active `payment_method` w/ `square_card_id`
   * Uses selected `billing_plan.square_plan_variation_id` + `location_id` + `card_id`
-  * Persists `square_subscription_id` and local subscription record
+  * Persists `square_subscription_id` and `subscription` record
 
 * **[API/Vendor] Get current subscription endpoint**
 
-  * Returns local subscription + Square status fields (optionally reconcile via RetrieveSubscription)
+  * Returns `subscription` + Square status fields (optionally reconcile via RetrieveSubscription)
 
 * **[API/Vendor] Cancel subscription endpoint**
 
   * Calls Square cancel using `square_subscription_id`
-  * Updates local status
+  * Updates `store.subscription_active=false` status
 
 * **[API/Vendor] Pause subscription endpoint**
 
   * Calls Square pause using `square_subscription_id`
-  * Updates local status
+  * Updates `store.subscription_active=false` status
 
 * **[API/Vendor] Resume subscription endpoint**
 
   * Calls Square resume using `square_subscription_id`
-  * Updates local status
+  * Updates `store.subscription_active=true` status
 
 * **[Billing/Webhooks] Add Square webhook receiver for subscription lifecycle**
 
   * Handle `subscription.created` / `subscription.updated` (and any needed payment events)
   * Verify webhook signatures
-  * Update local subscription state idempotently
-
-* **[Billing/Usage Charges] Add `usage_charges` (or `charges`) table (Goose migration)**
-
-  * Columns (ex: `id`, `store_id`, `date`, `amount`, `currency`, `square_payment_id`, `status`, `failure_reason`, timestamps)
-  * Unique idempotency constraint per `store_id + date` (or `store_id + period_key`)
+  * Update subscription state idempotently
+  * Updates `store.subscription_active=true|false` status if active or failed
 
 * **[Billing/Usage Charges] Implement nightly cron job for ad usage billing (stub for later)**
 
-  * Computes daily spend per store
+  * Inside our cronjob binary worker, we will Computes daily spend per store per add, batch all add spend together per store and charge them.
+  * Must only create the service to charge (payment) and add to the existing binary worker
   * Creates Square payment using store `square_card_id`
   * Writes `usage_charges` record and failure handling (past_due / ads disabled)
 
