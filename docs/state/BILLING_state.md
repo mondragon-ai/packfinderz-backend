@@ -262,4 +262,5 @@ LIST OF ITEMS NEEDED TO BE DONE or refactored based on the current state of squa
 
   * Admin permissions for plan management
   * Vendor permissions for payment method + subscription actions
+  * Vendor billing mutations require store members with one of `owner`, `admin`, `manager`, `staff`, or `ops` roles (enforced by `middleware.RequireStoreRoles`) before reaching the card/subscription endpoints so the guard covers API + worker + webhook flows that hit the same logic.
   * PII redaction rules in logs for billing payloads

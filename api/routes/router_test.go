@@ -58,6 +58,12 @@ func (stubAdminRegisterService) Register(ctx context.Context, req auth.AdminRegi
 	return nil, fmt.Errorf("not implemented")
 }
 
+type stubMembershipsRepo struct{}
+
+func (stubMembershipsRepo) UserHasRole(ctx context.Context, userID, storeID uuid.UUID, roles ...enums.MemberRole) (bool, error) {
+	return true, nil
+}
+
 type stubRegisterService struct{}
 
 func (stubRegisterService) Register(ctx context.Context, req auth.RegisterRequest) error {
@@ -493,6 +499,7 @@ func newTestRouter(cfg *config.Config) http.Handler {
 		stubSwitchService{}, // auth.SwitchStoreService
 		stubStoreService{},
 		stubSquareCustomerUpdater{},
+		stubMembershipsRepo{},
 		stubSquareCustomerService{},
 		stubMediaService{},
 		stubLicensesService{},
@@ -764,6 +771,7 @@ func TestAgentAssignedOrdersRequiresAgentRole(t *testing.T) {
 		stubSwitchService{},
 		stubStoreService{},
 		stubSquareCustomerUpdater{},
+		stubMembershipsRepo{},
 		stubSquareCustomerService{},
 		stubMediaService{},
 		stubLicensesService{},
@@ -835,6 +843,7 @@ func TestAgentAssignedOrderDetailRequiresAgentRole(t *testing.T) {
 		stubSwitchService{},
 		stubStoreService{},
 		stubSquareCustomerUpdater{},
+		stubMembershipsRepo{},
 		stubSquareCustomerService{},
 		stubMediaService{},
 		stubLicensesService{},
@@ -882,6 +891,7 @@ func TestAgentPickupRequiresAgentRole(t *testing.T) {
 		stubSwitchService{},
 		stubStoreService{},
 		stubSquareCustomerUpdater{},
+		stubMembershipsRepo{},
 		stubSquareCustomerService{},
 		stubMediaService{},
 		stubLicensesService{},
@@ -944,6 +954,7 @@ func TestAgentDeliverRequiresAgentRole(t *testing.T) {
 		stubSwitchService{},
 		stubStoreService{},
 		stubSquareCustomerUpdater{},
+		stubMembershipsRepo{},
 		stubSquareCustomerService{},
 		stubMediaService{},
 		stubLicensesService{},
