@@ -4291,6 +4291,7 @@ type IdentityProvider interface {
   * GCS service account keys (prefer workload identity)
 * Square config loads `PACKFINDERZ_SQUARE_ACCESS_TOKEN`, `PACKFINDERZ_SQUARE_WEBHOOK_SECRET`, and `PACKFINDERZ_SQUARE_ENV` (default `sandbox`) via `SquareConfig`, whose `.Environment()` helper lowercases/trims the selector so `pkg/square.NewClient` can enforce valid environments before returning the client (`pkg/config/config.go:191-221`; `pkg/square/client.go:33-80`).
 * `PACKFINDERZ_SQUARE_SUBSCRIPTION_PLAN_ID` defines the default Square plan used when vendors call `/api/v1/vendor/subscriptions`.
+* `PACKFINDERZ_SQUARE_LOCATION_ID` identifies the Square location that receives the billing for subscription creates/cancels, and `subscriptions.NewSquareClient` injects it into every request.
 * `cmd/api/main.go` and `cmd/worker/main.go` both call `pkg/square.NewClient` during bootstrap, log and exit when it errors, and therefore treat missing credentials or env mismatches as fatal startup failures that prevent the API/worker from registering any routes or consumers (`cmd/api/main.go:55-65`; `cmd/worker/main.go:51-70`).
 * `pkg/square` now surfaces a shared client layer that validates auth/env, generates idempotency keys, logs requests/responses with PII redaction, maps Square SDK errors into deterministic `pkg/errors` codes, and exposes typed helpers for the customer, card, payment, and subscription primitives used throughout the platform.
 

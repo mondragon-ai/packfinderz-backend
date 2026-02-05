@@ -583,6 +583,7 @@ PACKFINDERZ_EVENTING_IDEMPOTENCY_TTL=720h
 * `PACKFINDERZ_SQUARE_WEBHOOK_SECRET` (required) – the webhook signing secret used to verify Square events.
 * `PACKFINDERZ_SQUARE_ENV` (default `sandbox`) – selects between sandbox/production Square hosts and enforces the matching token conventions. The API and worker boot fail fast when tokens are missing or invalid so misconfigured environments surface immediately.
 * `PACKFINDERZ_SQUARE_SUBSCRIPTION_PLAN_ID` (required) – the Square plan variation ID used when creating vendor subscriptions.
+* `PACKFINDERZ_SQUARE_LOCATION_ID` (required) – the Square location that should be billed when vendor subscriptions are created via `subscriptions.NewSquareClient`.
 * `pkg/square` exposes the shared Square client that centralizes auth/env validation, deterministic idempotency keys, PII-redacted request/response logging, and Square→domain error mapping while providing helpers for customer, card, payment, and subscription operations (`SubscriptionCreateParams`, `CustomerCreateParams`, `CardCreateParams`, `PaymentCreateParams`).
 
 ### Outbox Publisher Tuning
