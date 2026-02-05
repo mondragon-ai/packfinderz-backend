@@ -88,6 +88,12 @@ func UpdateSubscriptionFromSquare(target *models.Subscription, squareSub *Square
 	target.CancelAtPeriodEnd = squareSub.CancelAtPeriodEnd
 	target.CanceledAt = toTimePtr(squareSub.CanceledAt)
 	target.Metadata = metadata
+	if target.Status == enums.SubscriptionStatusPaused {
+		now := time.Now().UTC()
+		target.PausedAt = &now
+	} else {
+		target.PausedAt = nil
+	}
 	return nil
 }
 
@@ -109,7 +115,7 @@ func StoreIDFromMetadata(metadata map[string]string) (uuid.UUID, error) {
 
 // IsActiveStatus reports whether the provided status keeps the subscription active.
 func IsActiveStatus(status enums.SubscriptionStatus) bool {
-	return status != enums.SubscriptionStatusCanceled
+	return status != enums.SubscriptionStatusCanceled && status != enums.SubscriptionStatusPaused
 }
 
 func mergeMetadata(base map[string]string, extras map[string]string) (json.RawMessage, error) {
@@ -176,6 +182,9 @@ func mapSquareStatus(raw string) (enums.SubscriptionStatus, error) {
 	case "PENDING":
 		return enums.SubscriptionStatusTrialing, nil
 	case "CANCELED", "DEACTIVATED", "PAUSED", "COMPLETED":
+		if strings.ToUpper(strings.TrimSpace(raw)) == "PAUSED" {
+			return enums.SubscriptionStatusPaused, nil
+		}
 		return enums.SubscriptionStatusCanceled, nil
 	case "PAST_DUE", "PAST-DUE", "PASTDUE":
 		return enums.SubscriptionStatusPastDue, nil

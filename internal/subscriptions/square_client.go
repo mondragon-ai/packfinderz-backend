@@ -16,6 +16,8 @@ type SquareSubscriptionClient interface {
 	Create(ctx context.Context, params *SquareSubscriptionParams) (*SquareSubscription, error)
 	Cancel(ctx context.Context, id string, params *SquareSubscriptionCancelParams) (*SquareSubscription, error)
 	Get(ctx context.Context, id string, params *SquareSubscriptionParams) (*SquareSubscription, error)
+	Pause(ctx context.Context, id string, params *SquareSubscriptionPauseParams) (*SquareSubscription, error)
+	Resume(ctx context.Context, id string, params *SquareSubscriptionResumeParams) (*SquareSubscription, error)
 }
 
 // NewSquareClient wraps the shared pkg/square client with the required location context.
@@ -81,6 +83,42 @@ func (c *squareSubscriptionClient) Get(ctx context.Context, id string, params *S
 		fallbackPrice = params.PriceID
 	}
 	return convertSubscription(resp, fallbackPrice, metadata), nil
+}
+
+func (c *squareSubscriptionClient) Pause(ctx context.Context, id string, params *SquareSubscriptionPauseParams) (*SquareSubscription, error) {
+	if c.square == nil {
+		return nil, fmt.Errorf("square client required")
+	}
+	req := &sq.PauseSubscriptionRequest{
+		SubscriptionID: id,
+	}
+	resp, err := c.square.Pause(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	price := ""
+	if params != nil {
+		price = params.PriceID
+	}
+	return convertSubscription(resp, price, nil), nil
+}
+
+func (c *squareSubscriptionClient) Resume(ctx context.Context, id string, params *SquareSubscriptionResumeParams) (*SquareSubscription, error) {
+	if c.square == nil {
+		return nil, fmt.Errorf("square client required")
+	}
+	req := &sq.ResumeSubscriptionRequest{
+		SubscriptionID: id,
+	}
+	resp, err := c.square.Resume(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	price := ""
+	if params != nil {
+		price = params.PriceID
+	}
+	return convertSubscription(resp, price, nil), nil
 }
 
 func convertSubscription(resp *sq.Subscription, fallbackPrice string, providedMetadata map[string]string) *SquareSubscription {

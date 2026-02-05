@@ -92,6 +92,50 @@ func VendorSubscriptionCancel(svc subsvc.Service, logg *logger.Logger) http.Hand
 	}
 }
 
+func VendorSubscriptionPause(svc subsvc.Service, logg *logger.Logger) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if svc == nil {
+			responses.WriteError(r.Context(), logg, w, pkgerrors.New(pkgerrors.CodeInternal, "subscription service unavailable"))
+			return
+		}
+
+		storeID, err := vendorcontext.ResolveVendorStoreID(r)
+		if err != nil {
+			responses.WriteError(r.Context(), logg, w, err)
+			return
+		}
+
+		if err := svc.Pause(r.Context(), storeID); err != nil {
+			responses.WriteError(r.Context(), logg, w, err)
+			return
+		}
+
+		responses.WriteSuccess(w, nil)
+	}
+}
+
+func VendorSubscriptionResume(svc subsvc.Service, logg *logger.Logger) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if svc == nil {
+			responses.WriteError(r.Context(), logg, w, pkgerrors.New(pkgerrors.CodeInternal, "subscription service unavailable"))
+			return
+		}
+
+		storeID, err := vendorcontext.ResolveVendorStoreID(r)
+		if err != nil {
+			responses.WriteError(r.Context(), logg, w, err)
+			return
+		}
+
+		if err := svc.Resume(r.Context(), storeID); err != nil {
+			responses.WriteError(r.Context(), logg, w, err)
+			return
+		}
+
+		responses.WriteSuccess(w, nil)
+	}
+}
+
 func VendorSubscriptionFetch(svc subsvc.Service, logg *logger.Logger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if svc == nil {

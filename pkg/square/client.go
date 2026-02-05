@@ -160,6 +160,50 @@ func (c *Client) CancelSubscription(ctx context.Context, subscriptionID string) 
 	return sub, nil
 }
 
+func (c *Client) Pause(ctx context.Context, req *sq.PauseSubscriptionRequest) (*sq.Subscription, error) {
+	if req == nil {
+		return nil, fmt.Errorf("pause subscription request required")
+	}
+	c.log(ctx, "request", "pause_subscription", map[string]any{
+		"subscription_id": req.SubscriptionID,
+	})
+
+	resp, err := c.sdk.Subscriptions.Pause(ctx, req)
+	if err != nil {
+		c.log(ctx, "error", "pause_subscription", map[string]any{"error": err.Error()})
+		return nil, c.mapSquareError(err, "pause subscription")
+	}
+
+	sub := resp.GetSubscription()
+	c.log(ctx, "response", "pause_subscription", map[string]any{
+		"subscription_id": stringValue(sub.GetID()),
+		"status":          subscriptionStatusString(sub.GetStatus()),
+	})
+	return sub, nil
+}
+
+func (c *Client) Resume(ctx context.Context, req *sq.ResumeSubscriptionRequest) (*sq.Subscription, error) {
+	if req == nil {
+		return nil, fmt.Errorf("resume subscription request required")
+	}
+	c.log(ctx, "request", "resume_subscription", map[string]any{
+		"subscription_id": req.SubscriptionID,
+	})
+
+	resp, err := c.sdk.Subscriptions.Resume(ctx, req)
+	if err != nil {
+		c.log(ctx, "error", "resume_subscription", map[string]any{"error": err.Error()})
+		return nil, c.mapSquareError(err, "resume subscription")
+	}
+
+	sub := resp.GetSubscription()
+	c.log(ctx, "response", "resume_subscription", map[string]any{
+		"subscription_id": stringValue(sub.GetID()),
+		"status":          subscriptionStatusString(sub.GetStatus()),
+	})
+	return sub, nil
+}
+
 func (c *Client) GetSubscription(ctx context.Context, subscriptionID string) (*sq.Subscription, error) {
 	req := &sq.GetSubscriptionsRequest{SubscriptionID: subscriptionID}
 	c.log(ctx, "request", "get_subscription", map[string]any{"subscription_id": subscriptionID})

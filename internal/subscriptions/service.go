@@ -4,9 +4,11 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/angelmondragon/packfinderz-backend/internal/billing"
 	"github.com/angelmondragon/packfinderz-backend/pkg/db/models"
+	"github.com/angelmondragon/packfinderz-backend/pkg/enums"
 	pkgerrors "github.com/angelmondragon/packfinderz-backend/pkg/errors"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
@@ -26,6 +28,8 @@ type Service interface {
 	Create(ctx context.Context, storeID uuid.UUID, input CreateSubscriptionInput) (*models.Subscription, bool, error)
 	Cancel(ctx context.Context, storeID uuid.UUID) error
 	GetActive(ctx context.Context, storeID uuid.UUID) (*models.Subscription, error)
+	Pause(ctx context.Context, storeID uuid.UUID) error
+	Resume(ctx context.Context, storeID uuid.UUID) error
 }
 
 // ServiceParams groups dependencies for the subscription service.
@@ -238,6 +242,63 @@ func (s *service) Cancel(ctx context.Context, storeID uuid.UUID) error {
 	return nil
 }
 
+func (s *service) Pause(ctx context.Context, storeID uuid.UUID) error {
+	if storeID == uuid.Nil {
+		return pkgerrors.New(pkgerrors.CodeValidation, "store id is required")
+	}
+
+	sub, err := s.findSubscription(ctx, storeID)
+	if err != nil {
+		return err
+	}
+	if sub == nil {
+		return pkgerrors.New(pkgerrors.CodeNotFound, "subscription not found")
+	}
+	if !IsActiveStatus(sub.Status) {
+		return pkgerrors.New(pkgerrors.CodeStateConflict, "subscription not active")
+	}
+
+	squareSub, err := s.square.Pause(ctx, sub.SquareSubscriptionID, &SquareSubscriptionPauseParams{
+		PriceID: resolvePriceID(sub.PriceID),
+	})
+	if err != nil {
+		return pkgerrors.Wrap(pkgerrors.CodeDependency, err, "pause square subscription")
+	}
+
+	return s.persistSquareUpdate(ctx, storeID, squareSub, func(stored *models.Subscription) {
+		now := time.Now().UTC()
+		stored.PausedAt = &now
+	})
+}
+
+func (s *service) Resume(ctx context.Context, storeID uuid.UUID) error {
+	if storeID == uuid.Nil {
+		return pkgerrors.New(pkgerrors.CodeValidation, "store id is required")
+	}
+
+	sub, err := s.findSubscription(ctx, storeID)
+	if err != nil {
+		return err
+	}
+	if sub == nil {
+		return pkgerrors.New(pkgerrors.CodeNotFound, "subscription not found")
+	}
+	if sub.Status != enums.SubscriptionStatusPaused {
+		return pkgerrors.New(pkgerrors.CodeStateConflict, "subscription not paused")
+	}
+
+	squareSub, err := s.square.Resume(ctx, sub.SquareSubscriptionID, &SquareSubscriptionResumeParams{
+		PriceID: resolvePriceID(sub.PriceID),
+	})
+	if err != nil {
+		return pkgerrors.Wrap(pkgerrors.CodeDependency, err, "resume square subscription")
+	}
+
+	return s.persistSquareUpdate(ctx, storeID, squareSub, func(stored *models.Subscription) {
+		stored.PausedAt = nil
+	})
+}
+
 // GetActive returns the current active subscription if one exists.
 func (s *service) GetActive(ctx context.Context, storeID uuid.UUID) (*models.Subscription, error) {
 	if storeID == uuid.Nil {
@@ -247,9 +308,9 @@ func (s *service) GetActive(ctx context.Context, storeID uuid.UUID) (*models.Sub
 }
 
 func (s *service) findActive(ctx context.Context, storeID uuid.UUID) (*models.Subscription, error) {
-	sub, err := s.billingRepo.FindSubscription(ctx, storeID)
+	sub, err := s.findSubscription(ctx, storeID)
 	if err != nil {
-		return nil, pkgerrors.Wrap(pkgerrors.CodeDependency, err, "lookup subscription")
+		return nil, err
 	}
 	if sub == nil || !IsActiveStatus(sub.Status) {
 		return nil, nil
@@ -258,14 +319,74 @@ func (s *service) findActive(ctx context.Context, storeID uuid.UUID) (*models.Su
 }
 
 func (s *service) findActiveWithTx(ctx context.Context, repo billing.Repository, storeID uuid.UUID) (*models.Subscription, error) {
-	sub, err := repo.FindSubscription(ctx, storeID)
+	sub, err := s.findSubscriptionWithTx(ctx, repo, storeID)
 	if err != nil {
-		return nil, pkgerrors.Wrap(pkgerrors.CodeDependency, err, "lookup subscription")
+		return nil, err
 	}
 	if sub == nil || !IsActiveStatus(sub.Status) {
 		return nil, nil
 	}
 	return sub, nil
+}
+
+func (s *service) persistSquareUpdate(ctx context.Context, storeID uuid.UUID, squareSub *SquareSubscription, modify func(*models.Subscription)) error {
+	return s.txRunner.WithTx(ctx, func(tx *gorm.DB) error {
+		txRepo := s.billingRepo.WithTx(tx)
+		stored, err := s.findSubscriptionWithTx(ctx, txRepo, storeID)
+		if err != nil {
+			return err
+		}
+		if stored == nil {
+			return pkgerrors.New(pkgerrors.CodeNotFound, "subscription not found")
+		}
+
+		if err := UpdateSubscriptionFromSquare(stored, squareSub, stored.PriceID); err != nil {
+			return err
+		}
+		if modify != nil {
+			modify(stored)
+		}
+		if err := txRepo.UpdateSubscription(ctx, stored); err != nil {
+			return err
+		}
+
+		store, err := s.storeRepo.FindByIDWithTx(tx, storeID)
+		if err != nil {
+			if err == gorm.ErrRecordNotFound {
+				return pkgerrors.New(pkgerrors.CodeNotFound, "store not found")
+			}
+			return pkgerrors.Wrap(pkgerrors.CodeDependency, err, "load store")
+		}
+		store.SubscriptionActive = IsActiveStatus(stored.Status)
+		if err := s.storeRepo.UpdateWithTx(tx, store); err != nil {
+			return pkgerrors.Wrap(pkgerrors.CodeDependency, err, "update store subscription flag")
+		}
+
+		return nil
+	})
+}
+
+func (s *service) findSubscription(ctx context.Context, storeID uuid.UUID) (*models.Subscription, error) {
+	sub, err := s.billingRepo.FindSubscription(ctx, storeID)
+	if err != nil {
+		return nil, pkgerrors.Wrap(pkgerrors.CodeDependency, err, "lookup subscription")
+	}
+	return sub, nil
+}
+
+func (s *service) findSubscriptionWithTx(ctx context.Context, repo billing.Repository, storeID uuid.UUID) (*models.Subscription, error) {
+	sub, err := repo.FindSubscription(ctx, storeID)
+	if err != nil {
+		return nil, pkgerrors.Wrap(pkgerrors.CodeDependency, err, "lookup subscription")
+	}
+	return sub, nil
+}
+
+func resolvePriceID(price *string) string {
+	if price == nil {
+		return ""
+	}
+	return *price
 }
 
 func (s *service) ensureStoreFlag(ctx context.Context, storeID uuid.UUID, active bool) error {

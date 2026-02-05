@@ -223,6 +223,14 @@ func (stubSubscriptionsService) Cancel(ctx context.Context, storeID uuid.UUID) e
 	return nil
 }
 
+func (stubSubscriptionsService) Pause(ctx context.Context, storeID uuid.UUID) error {
+	return nil
+}
+
+func (stubSubscriptionsService) Resume(ctx context.Context, storeID uuid.UUID) error {
+	return nil
+}
+
 func (stubSubscriptionsService) GetActive(ctx context.Context, storeID uuid.UUID) (*models.Subscription, error) {
 	return nil, nil
 }
