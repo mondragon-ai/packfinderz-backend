@@ -280,6 +280,7 @@ func main() {
 			switchService,
 			storeService,
 			storeRepo,
+			membershipsRepo,
 			squareCustomerService,
 			mediaService,
 			licenseService,

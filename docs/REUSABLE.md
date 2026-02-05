@@ -728,6 +728,7 @@ Redis-backed refresh sessions.
 * `api/controllers/billing/plans.go` now exposes admin CRUD (`/api/admin/v1/billing/plans`) plus vendor read-only endpoints (`/api/v1/vendor/billing/plans` and `/{planId}`), validating statuses/intervals, converting `price_amount_cents` ↔ `decimal.Decimal`, and reusing the service helpers so plan metadata stays in sync with the `billing_plans` table.
 * `internal/paymentmethods.Service` is the controller-facing card-on-file helper: it validates `source_id` + `Idempotency-Key`, calls Square’s Cards API using the store’s `square_customer_id`, writes the metadata into a `payment_methods` row (new `is_default` boolean + unique partial index), and clears any prior default whenever the client requests `is_default=true`, guaranteeing one default per store before returning the retracted card DTO.
 * Vendor subscription creation/cancellation is implemented in `api/controllers/subscriptions/vendor` and `internal/subscriptions.Service`, which drive Square + DB state in one transaction, gate `stores.subscription_active`, and uses the configured `PACKFINDERZ_SQUARE_SUBSCRIPTION_PLAN_ID` as the default plan. The same controller adds `POST /api/v1/vendor/subscriptions/pause`/`resume` so vendors can pause or resume billing without touching Square directly while the service persists the `PAUSED` status and `PausedAt` timestamp.
+* Vendor payment-method and subscription routes sit behind `middleware.RequireStoreRoles`, so only store members with owner/admin/manager/staff/ops roles reach the billing controllers that mutate Square subscriptions/payment methods.
 
 
 ## API
@@ -759,6 +760,7 @@ Redis-backed refresh sessions.
 * `Auth` (JWT + Redis session)
 * `StoreContext`
 * `RequireRole`
+* `RequireStoreRoles` (membership roles) – gates billing mutations to specific store roles (owner/admin/manager/staff/ops) before reaching controllers that handle payment methods or subscriptions.
 * `Idempotency` (placeholder)
 * `RateLimit` (placeholder)
 

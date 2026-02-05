@@ -33,6 +33,7 @@ import (
 	"github.com/angelmondragon/packfinderz-backend/pkg/bigquery"
 	"github.com/angelmondragon/packfinderz-backend/pkg/config"
 	"github.com/angelmondragon/packfinderz-backend/pkg/db"
+	"github.com/angelmondragon/packfinderz-backend/pkg/enums"
 	"github.com/angelmondragon/packfinderz-backend/pkg/logger"
 	"github.com/angelmondragon/packfinderz-backend/pkg/redis"
 	"github.com/angelmondragon/packfinderz-backend/pkg/square"
@@ -43,6 +44,12 @@ type sessionManager interface {
 	session.AccessSessionChecker
 	Rotate(context.Context, string, string) (string, string, error)
 	Revoke(context.Context, string) error
+}
+
+var vendorBillingRoles = []enums.MemberRole{
+	enums.MemberRoleOwner,
+	enums.MemberRoleAdmin,
+	enums.MemberRoleManager,
 }
 
 func NewRouter(
@@ -60,6 +67,7 @@ func NewRouter(
 	switchService auth.SwitchStoreService,
 	storeService stores.Service,
 	storeRepo stores.SquareCustomerUpdater,
+	membershipChecker middleware.MembershipChecker,
 	squareCustomerService squarecustomers.Service,
 	mediaService media.Service,
 	licenseService licenses.Service,
@@ -146,7 +154,10 @@ func NewRouter(
 				r.Patch("/products/{productId}", controllers.VendorUpdateProduct(productService, logg))
 				r.Delete("/products/{productId}", controllers.VendorDeleteProduct(productService, logg))
 				r.Get("/billing/charges", billingcontrollers.VendorBillingCharges(billingService, logg))
-				r.Post("/payment-methods/cc", billingcontrollers.VendorPaymentMethodCreate(paymentMethodService, logg))
+				r.Route("/payment-methods", func(r chi.Router) {
+					r.Use(middleware.RequireStoreRoles(membershipChecker, logg, vendorBillingRoles...))
+					r.Post("/cc", billingcontrollers.VendorPaymentMethodCreate(paymentMethodService, logg))
+				})
 				r.Route("/billing/plans", func(r chi.Router) {
 					r.Get("/", billingcontrollers.VendorBillingPlansList(billingPlanService, logg))
 					r.Get("/{planId}", billingcontrollers.VendorBillingPlanDetail(billingPlanService, logg))
@@ -154,6 +165,7 @@ func NewRouter(
 				r.Post("/orders/{orderId}/decision", ordercontrollers.VendorOrderDecision(ordersSvc, logg))
 				r.Post("/orders/{orderId}/line-items/decision", ordercontrollers.VendorLineItemDecision(ordersSvc, logg))
 				r.Route("/subscriptions", func(r chi.Router) {
+					r.Use(middleware.RequireStoreRoles(membershipChecker, logg, vendorBillingRoles...))
 					r.Post("/", subscriptionControllers.VendorSubscriptionCreate(subscriptionsService, logg))
 					r.Post("/cancel", subscriptionControllers.VendorSubscriptionCancel(subscriptionsService, logg))
 					r.Post("/pause", subscriptionControllers.VendorSubscriptionPause(subscriptionsService, logg))
