@@ -188,6 +188,30 @@ func (s *stubBillingRepo) ListUsageChargesByStore(ctx context.Context, storeID u
 	return nil, nil
 }
 
+func (s *stubBillingRepo) CreateBillingPlan(ctx context.Context, plan *models.BillingPlan) error {
+	return nil
+}
+
+func (s *stubBillingRepo) UpdateBillingPlan(ctx context.Context, plan *models.BillingPlan) error {
+	return nil
+}
+
+func (s *stubBillingRepo) ListBillingPlans(ctx context.Context, params billing.ListBillingPlansQuery) ([]models.BillingPlan, error) {
+	return nil, nil
+}
+
+func (s *stubBillingRepo) FindBillingPlanByID(ctx context.Context, id string) (*models.BillingPlan, error) {
+	return nil, nil
+}
+
+func (s *stubBillingRepo) FindBillingPlanBySquareID(ctx context.Context, squareBillingPlanID string) (*models.BillingPlan, error) {
+	return nil, nil
+}
+
+func (s *stubBillingRepo) FindDefaultBillingPlan(ctx context.Context) (*models.BillingPlan, error) {
+	return nil, nil
+}
+
 type stubStoreRepo struct {
 	customerID *string
 }

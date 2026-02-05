@@ -18,6 +18,12 @@ type Repository interface {
 	ListSubscriptionsByStore(ctx context.Context, storeID uuid.UUID) ([]models.Subscription, error)
 	FindSubscription(ctx context.Context, storeID uuid.UUID) (*models.Subscription, error)
 	FindSubscriptionBySquareID(ctx context.Context, squareSubscriptionID string) (*models.Subscription, error)
+	CreateBillingPlan(ctx context.Context, plan *models.BillingPlan) error
+	UpdateBillingPlan(ctx context.Context, plan *models.BillingPlan) error
+	ListBillingPlans(ctx context.Context, params ListBillingPlansQuery) ([]models.BillingPlan, error)
+	FindBillingPlanByID(ctx context.Context, id string) (*models.BillingPlan, error)
+	FindBillingPlanBySquareID(ctx context.Context, squareBillingPlanID string) (*models.BillingPlan, error)
+	FindDefaultBillingPlan(ctx context.Context) (*models.BillingPlan, error)
 	CreatePaymentMethod(ctx context.Context, method *models.PaymentMethod) error
 	ListPaymentMethodsByStore(ctx context.Context, storeID uuid.UUID) ([]models.PaymentMethod, error)
 	ClearDefaultPaymentMethod(ctx context.Context, storeID uuid.UUID) error
@@ -29,6 +35,12 @@ type Repository interface {
 
 type repository struct {
 	db *gorm.DB
+}
+
+// ListBillingPlansQuery configures billing plan list queries.
+type ListBillingPlansQuery struct {
+	Status    *enums.PlanStatus
+	IsDefault *bool
 }
 
 // NewRepository returns a billing repository bound to the provided database.
@@ -90,6 +102,76 @@ func (r *repository) FindSubscriptionBySquareID(ctx context.Context, squareSubsc
 		return nil, err
 	}
 	return &sub, nil
+}
+
+func (r *repository) CreateBillingPlan(ctx context.Context, plan *models.BillingPlan) error {
+	return r.db.WithContext(ctx).Create(plan).Error
+}
+
+func (r *repository) UpdateBillingPlan(ctx context.Context, plan *models.BillingPlan) error {
+	return r.db.WithContext(ctx).Save(plan).Error
+}
+
+func (r *repository) ListBillingPlans(ctx context.Context, params ListBillingPlansQuery) ([]models.BillingPlan, error) {
+	query := r.db.WithContext(ctx).Model(&models.BillingPlan{})
+	if params.Status != nil {
+		query = query.Where("status = ?", *params.Status)
+	}
+	if params.IsDefault != nil {
+		query = query.Where("is_default = ?", *params.IsDefault)
+	}
+
+	var plans []models.BillingPlan
+	if err := query.Order("is_default DESC, test DESC, name ASC").Find(&plans).Error; err != nil {
+		return nil, err
+	}
+	return plans, nil
+}
+
+func (r *repository) FindBillingPlanByID(ctx context.Context, id string) (*models.BillingPlan, error) {
+	if id == "" {
+		return nil, gorm.ErrRecordNotFound
+	}
+	var plan models.BillingPlan
+	if err := r.db.WithContext(ctx).
+		Where("id = ?", id).
+		First(&plan).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &plan, nil
+}
+
+func (r *repository) FindBillingPlanBySquareID(ctx context.Context, squareBillingPlanID string) (*models.BillingPlan, error) {
+	if squareBillingPlanID == "" {
+		return nil, gorm.ErrRecordNotFound
+	}
+	var plan models.BillingPlan
+	if err := r.db.WithContext(ctx).
+		Where("square_billing_plan_id = ?", squareBillingPlanID).
+		First(&plan).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &plan, nil
+}
+
+func (r *repository) FindDefaultBillingPlan(ctx context.Context) (*models.BillingPlan, error) {
+	var plan models.BillingPlan
+	if err := r.db.WithContext(ctx).
+		Where("is_default = true").
+		Order("updated_at DESC").
+		First(&plan).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &plan, nil
 }
 
 func (r *repository) CreatePaymentMethod(ctx context.Context, method *models.PaymentMethod) error {
