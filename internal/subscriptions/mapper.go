@@ -2,7 +2,6 @@ package subscriptions
 
 import (
 	"encoding/json"
-	"fmt"
 	"strings"
 	"time"
 
@@ -176,19 +175,34 @@ func trimmedPtr(value string) *string {
 }
 
 func mapSquareStatus(raw string) (enums.SubscriptionStatus, error) {
-	switch strings.ToUpper(strings.TrimSpace(raw)) {
-	case "ACTIVE":
+	normalized := normalizeSquareStatus(raw)
+	if normalized == "" {
 		return enums.SubscriptionStatusActive, nil
-	case "PENDING":
-		return enums.SubscriptionStatusTrialing, nil
-	case "CANCELED", "DEACTIVATED", "PAUSED", "COMPLETED":
-		if strings.ToUpper(strings.TrimSpace(raw)) == "PAUSED" {
-			return enums.SubscriptionStatusPaused, nil
-		}
-		return enums.SubscriptionStatusCanceled, nil
-	case "PAST_DUE", "PAST-DUE", "PASTDUE":
-		return enums.SubscriptionStatusPastDue, nil
-	default:
-		return "", fmt.Errorf("unknown square subscription status %q", raw)
 	}
+	if mapped, ok := squareStatusAliases[normalized]; ok {
+		return mapped, nil
+	}
+	if parsed, err := enums.ParseSubscriptionStatus(strings.ToLower(normalized)); err == nil {
+		return parsed, nil
+	}
+	return enums.SubscriptionStatusActive, nil
+}
+
+func normalizeSquareStatus(raw string) string {
+	normalized := strings.TrimSpace(raw)
+	normalized = strings.ToUpper(normalized)
+	normalized = strings.ReplaceAll(normalized, "-", "_")
+	normalized = strings.ReplaceAll(normalized, " ", "_")
+	return normalized
+}
+
+var squareStatusAliases = map[string]enums.SubscriptionStatus{
+	"PENDING":     enums.SubscriptionStatusTrialing,
+	"TRIAL":       enums.SubscriptionStatusTrialing,
+	"DEACTIVATED": enums.SubscriptionStatusCanceled,
+	"COMPLETED":   enums.SubscriptionStatusCanceled,
+	"CANCELING":   enums.SubscriptionStatusCanceled,
+	"CANCELLING":  enums.SubscriptionStatusCanceled,
+	"CANCELLED":   enums.SubscriptionStatusCanceled,
+	"SUSPENDED":   enums.SubscriptionStatusPaused,
 }

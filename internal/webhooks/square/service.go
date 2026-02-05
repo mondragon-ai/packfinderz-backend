@@ -69,9 +69,16 @@ type SquareWebhookData struct {
 }
 
 type SquareWebhookObject struct {
-	Type         string                            `json:"type"`
-	ID           string                            `json:"id"`
-	Subscription *subscriptions.SquareSubscription `json:"subscription"`
+	Type           string                            `json:"type"`
+	ID             string                            `json:"id"`
+	SubscriptionID string                            `json:"subscription_id"`
+	Subscription   *subscriptions.SquareSubscription `json:"subscription"`
+	Invoice        *SquareWebhookInvoice             `json:"invoice"`
+}
+
+type SquareWebhookInvoice struct {
+	ID             string `json:"id"`
+	SubscriptionID string `json:"subscription_id"`
 }
 
 // HandleEvent processes Square subscription / invoice events.
@@ -80,25 +87,60 @@ func (s *Service) HandleEvent(ctx context.Context, event *SquareWebhookEvent) er
 		return pkgerrors.New(pkgerrors.CodeValidation, "square event required")
 	}
 
-	switch strings.ToLower(event.Type) {
-	case "subscription.created", "subscription.updated", "subscription.canceled":
-		if event.Data.Object.Subscription == nil {
-			return pkgerrors.New(pkgerrors.CodeValidation, "subscription payload missing")
-		}
-		return s.syncSubscription(ctx, event.Data.Object.Subscription)
-	case "invoice.paid", "invoice.payment_failed":
-		subscriptionID := event.Data.Object.ID
-		if subscriptionID == "" {
-			return pkgerrors.New(pkgerrors.CodeValidation, "subscription id missing")
-		}
-		squareSub, err := s.square.Get(ctx, subscriptionID, nil)
-		if err != nil {
-			return pkgerrors.Wrap(pkgerrors.CodeDependency, err, "fetch square subscription")
-		}
-		return s.syncSubscription(ctx, squareSub)
+	eventType := strings.ToLower(strings.TrimSpace(event.Type))
+	switch {
+	case strings.HasPrefix(eventType, "subscription."):
+		return s.handleSubscriptionEvent(ctx, event)
+	case strings.HasPrefix(eventType, "invoice."):
+		return s.handleInvoiceEvent(ctx, event)
 	default:
 		return nil
 	}
+}
+
+func (s *Service) handleSubscriptionEvent(ctx context.Context, event *SquareWebhookEvent) error {
+	subscription := event.Data.Object.Subscription
+	if subscription == nil || strings.TrimSpace(subscription.ID) == "" {
+		subscriptionID := subscriptionIDFromEvent(event)
+		if subscriptionID == "" {
+			return pkgerrors.New(pkgerrors.CodeValidation, "subscription id missing")
+		}
+		var err error
+		subscription, err = s.square.Get(ctx, subscriptionID, nil)
+		if err != nil {
+			return pkgerrors.Wrap(pkgerrors.CodeDependency, err, "fetch square subscription")
+		}
+	}
+	return s.syncSubscription(ctx, subscription)
+}
+
+func (s *Service) handleInvoiceEvent(ctx context.Context, event *SquareWebhookEvent) error {
+	subscriptionID := subscriptionIDFromEvent(event)
+	if subscriptionID == "" {
+		return pkgerrors.New(pkgerrors.CodeValidation, "subscription id missing")
+	}
+	squareSub, err := s.square.Get(ctx, subscriptionID, nil)
+	if err != nil {
+		return pkgerrors.Wrap(pkgerrors.CodeDependency, err, "fetch square subscription")
+	}
+	return s.syncSubscription(ctx, squareSub)
+}
+
+func subscriptionIDFromEvent(event *SquareWebhookEvent) string {
+	if event == nil {
+		return ""
+	}
+	obj := event.Data.Object
+	if obj.Subscription != nil && strings.TrimSpace(obj.Subscription.ID) != "" {
+		return strings.TrimSpace(obj.Subscription.ID)
+	}
+	if strings.TrimSpace(obj.SubscriptionID) != "" {
+		return strings.TrimSpace(obj.SubscriptionID)
+	}
+	if obj.Invoice != nil && strings.TrimSpace(obj.Invoice.SubscriptionID) != "" {
+		return strings.TrimSpace(obj.Invoice.SubscriptionID)
+	}
+	return strings.TrimSpace(obj.ID)
 }
 
 func (s *Service) syncSubscription(ctx context.Context, squareSub *subscriptions.SquareSubscription) error {
@@ -112,13 +154,9 @@ func (s *Service) syncSubscription(ctx context.Context, squareSub *subscriptions
 			return err
 		}
 
-		storeID, metadataErr := subscriptions.StoreIDFromMetadata(squareSub.Metadata)
-		if metadataErr != nil && stored != nil {
-			storeID = stored.StoreID
-			metadataErr = nil
-		}
-		if metadataErr != nil {
-			return metadataErr
+		storeID, storeErr := determineStoreID(stored, squareSub.Metadata)
+		if storeErr != nil {
+			return storeErr
 		}
 
 		priceID := determinePriceID(squareSub)
@@ -187,4 +225,11 @@ func determinePriceID(sub *subscriptions.SquareSubscription) string {
 		return sub.Items.Data[0].Price.ID
 	}
 	return ""
+}
+
+func determineStoreID(stored *models.Subscription, metadata map[string]string) (uuid.UUID, error) {
+	if stored != nil {
+		return stored.StoreID, nil
+	}
+	return subscriptions.StoreIDFromMetadata(metadata)
 }
