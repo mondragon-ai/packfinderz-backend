@@ -102,6 +102,67 @@ func (s *Service) ListCharges(ctx context.Context, params ListChargesParams) (*L
 	return result, nil
 }
 
+func (s *Service) CreateBillingPlan(ctx context.Context, plan *models.BillingPlan) error {
+	if err := s.repo.CreateBillingPlan(ctx, plan); err != nil {
+		return pkgerrors.Wrap(pkgerrors.CodeDependency, err, "create billing plan")
+	}
+	return nil
+}
+
+func (s *Service) UpdateBillingPlan(ctx context.Context, plan *models.BillingPlan) error {
+	if err := s.repo.UpdateBillingPlan(ctx, plan); err != nil {
+		return pkgerrors.Wrap(pkgerrors.CodeDependency, err, "update billing plan")
+	}
+	return nil
+}
+
+// ListBillingPlansParams configures plan listing.
+type ListBillingPlansParams struct {
+	Status    *enums.PlanStatus
+	IsDefault *bool
+}
+
+func (s *Service) ListBillingPlans(ctx context.Context, params ListBillingPlansParams) ([]models.BillingPlan, error) {
+	query := ListBillingPlansQuery(params)
+	plans, err := s.repo.ListBillingPlans(ctx, query)
+	if err != nil {
+		return nil, pkgerrors.Wrap(pkgerrors.CodeDependency, err, "list billing plans")
+	}
+	return plans, nil
+}
+
+func (s *Service) FindBillingPlanByID(ctx context.Context, id string) (*models.BillingPlan, error) {
+	if id == "" {
+		return nil, pkgerrors.New(pkgerrors.CodeValidation, "billing plan id is required")
+	}
+
+	plan, err := s.repo.FindBillingPlanByID(ctx, id)
+	if err != nil {
+		return nil, pkgerrors.Wrap(pkgerrors.CodeDependency, err, "find billing plan by id")
+	}
+	return plan, nil
+}
+
+func (s *Service) FindBillingPlanBySquareID(ctx context.Context, squareID string) (*models.BillingPlan, error) {
+	if squareID == "" {
+		return nil, pkgerrors.New(pkgerrors.CodeValidation, "square billing plan id is required")
+	}
+
+	plan, err := s.repo.FindBillingPlanBySquareID(ctx, squareID)
+	if err != nil {
+		return nil, pkgerrors.Wrap(pkgerrors.CodeDependency, err, "find billing plan by square id")
+	}
+	return plan, nil
+}
+
+func (s *Service) FindDefaultBillingPlan(ctx context.Context) (*models.BillingPlan, error) {
+	plan, err := s.repo.FindDefaultBillingPlan(ctx)
+	if err != nil {
+		return nil, pkgerrors.Wrap(pkgerrors.CodeDependency, err, "find default billing plan")
+	}
+	return plan, nil
+}
+
 func (s *Service) CreateUsageCharge(ctx context.Context, usage *models.UsageCharge) error {
 	return s.repo.CreateUsageCharge(ctx, usage)
 }
