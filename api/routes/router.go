@@ -73,6 +73,7 @@ func NewRouter(
 	subscriptionsService subscriptionsvc.Service,
 	paymentMethodService paymentsvc.Service,
 	billingService billingcontrollers.ChargesService,
+	billingPlanService billingcontrollers.BillingPlanService,
 	squareClient *square.Client,
 	squareWebhookService *squarewebhook.Service,
 	squareWebhookGuard *squarewebhook.IdempotencyGuard,
@@ -146,6 +147,10 @@ func NewRouter(
 				r.Delete("/products/{productId}", controllers.VendorDeleteProduct(productService, logg))
 				r.Get("/billing/charges", billingcontrollers.VendorBillingCharges(billingService, logg))
 				r.Post("/payment-methods/cc", billingcontrollers.VendorPaymentMethodCreate(paymentMethodService, logg))
+				r.Route("/billing/plans", func(r chi.Router) {
+					r.Get("/", billingcontrollers.VendorBillingPlansList(billingPlanService, logg))
+					r.Get("/{planId}", billingcontrollers.VendorBillingPlanDetail(billingPlanService, logg))
+				})
 				r.Post("/orders/{orderId}/decision", ordercontrollers.VendorOrderDecision(ordersSvc, logg))
 				r.Post("/orders/{orderId}/line-items/decision", ordercontrollers.VendorLineItemDecision(ordersSvc, logg))
 				r.Route("/subscriptions", func(r chi.Router) {
@@ -234,6 +239,12 @@ func NewRouter(
 				r.Get("/{orderId}", controllers.AdminPayoutOrderDetail(ordersRepo, logg))
 			})
 			r.Post("/{orderId}/confirm-payout", controllers.AdminConfirmPayout(ordersSvc, logg))
+		})
+		r.Route("/v1/billing/plans", func(r chi.Router) {
+			r.Get("/", billingcontrollers.AdminBillingPlansList(billingPlanService, logg))
+			r.Post("/", billingcontrollers.AdminBillingPlanCreate(billingPlanService, logg))
+			r.Patch("/{planId}", billingcontrollers.AdminBillingPlanUpdate(billingPlanService, logg))
+			r.Delete("/{planId}", billingcontrollers.AdminBillingPlanDelete(billingPlanService, logg))
 		})
 	})
 
