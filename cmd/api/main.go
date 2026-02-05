@@ -18,6 +18,7 @@ import (
 	"github.com/angelmondragon/packfinderz-backend/internal/memberships"
 	"github.com/angelmondragon/packfinderz-backend/internal/notifications"
 	"github.com/angelmondragon/packfinderz-backend/internal/orders"
+	"github.com/angelmondragon/packfinderz-backend/internal/paymentmethods"
 	products "github.com/angelmondragon/packfinderz-backend/internal/products"
 	"github.com/angelmondragon/packfinderz-backend/internal/squarecustomers"
 	"github.com/angelmondragon/packfinderz-backend/internal/stores"
@@ -135,6 +136,14 @@ func main() {
 		Repo: billingRepo,
 	})
 	requireResource(ctx, logg, "billing service", err)
+
+	paymentMethodService, err := paymentmethods.NewService(paymentmethods.ServiceParams{
+		BillingRepo:       billingRepo,
+		StoreLoader:       storeRepo,
+		SquareClient:      squareClient,
+		TransactionRunner: dbClient,
+	})
+	requireResource(ctx, logg, "payment method service", err)
 
 	subscriptionsService, err := subscriptions.NewService(subscriptions.ServiceParams{
 		BillingRepo:       billingRepo,
@@ -282,6 +291,7 @@ func main() {
 			ordersRepo,
 			ordersService,
 			subscriptionsService,
+			paymentMethodService,
 			billingService,
 			squareClient,
 			squareWebhookService,

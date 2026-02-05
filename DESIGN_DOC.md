@@ -2392,6 +2392,12 @@ Registration now calls the shared Square customer helper so onboarding persists 
   * Success: `201`
   * Errors: `400, 401, 403, 409`
 
+  * Payload: `{ "source_id": "nonce", "cardholder_name": "...?", "verification_token": "...?", "is_default": true|false }`.
+    `is_default` defaults to `false`, but the service automatically promotes the first stored card (or any store lacking a default) so there is always exactly one active card per store; setting `is_default=true` flips the existing default off before persisting the row.
+  * Hits the Square Cards API (passing the store’s `square_customer_id` + the request’s `source_id`/`verification_token`) and writes the returned metadata (`card_brand`, `last4`, `exp_month`, `exp_year`, `fingerprint`, `billing_details`, `metadata`) into `payment_methods`. A new `is_default` boolean column (backed by a partial unique index) enforces the 1‑default rule even when multiple vendors race to attach cards.
+  * The request also requires `Idempotency-Key` (middleware enforces it) and returns a retracted view of the saved card (`id`, `card_brand`, `card_last4`, `card_exp_month`, `card_exp_year`, `is_default`, `created_at`) so the UI can show the stored instrument without exposing Square IDs or fingerprints.
+  * On database failures the Square card stays vaulted (no rollback), leaving the provider as the source of truth while the user retries storage.
+
 **Get CC payment method**
 
 * `GET /api/v1/vendor/payment-methods/cc`

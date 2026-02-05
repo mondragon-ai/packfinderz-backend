@@ -20,6 +20,7 @@ type Repository interface {
 	FindSubscriptionBySquareID(ctx context.Context, squareSubscriptionID string) (*models.Subscription, error)
 	CreatePaymentMethod(ctx context.Context, method *models.PaymentMethod) error
 	ListPaymentMethodsByStore(ctx context.Context, storeID uuid.UUID) ([]models.PaymentMethod, error)
+	ClearDefaultPaymentMethod(ctx context.Context, storeID uuid.UUID) error
 	CreateCharge(ctx context.Context, charge *models.Charge) error
 	ListCharges(ctx context.Context, params ListChargesQuery) ([]models.Charge, *pagination.Cursor, error)
 	CreateUsageCharge(ctx context.Context, usage *models.UsageCharge) error
@@ -104,6 +105,13 @@ func (r *repository) ListPaymentMethodsByStore(ctx context.Context, storeID uuid
 		return nil, err
 	}
 	return methods, nil
+}
+
+func (r *repository) ClearDefaultPaymentMethod(ctx context.Context, storeID uuid.UUID) error {
+	return r.db.WithContext(ctx).
+		Model(&models.PaymentMethod{}).
+		Where("store_id = ? AND is_default", storeID).
+		Update("is_default", false).Error
 }
 
 func (r *repository) CreateCharge(ctx context.Context, charge *models.Charge) error {

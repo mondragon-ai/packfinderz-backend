@@ -194,6 +194,9 @@ func (s *stubBillingRepo) CreatePaymentMethod(ctx context.Context, method *model
 func (s *stubBillingRepo) ListPaymentMethodsByStore(ctx context.Context, storeID uuid.UUID) ([]models.PaymentMethod, error) {
 	return nil, nil
 }
+func (s *stubBillingRepo) ClearDefaultPaymentMethod(ctx context.Context, storeID uuid.UUID) error {
+	return nil
+}
 
 func (s *stubBillingRepo) CreateCharge(ctx context.Context, charge *models.Charge) error {
 	return nil

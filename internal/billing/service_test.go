@@ -39,6 +39,9 @@ func (s *stubRepo) CreatePaymentMethod(ctx context.Context, method *models.Payme
 func (s *stubRepo) ListPaymentMethodsByStore(ctx context.Context, storeID uuid.UUID) ([]models.PaymentMethod, error) {
 	return nil, nil
 }
+func (s *stubRepo) ClearDefaultPaymentMethod(ctx context.Context, storeID uuid.UUID) error {
+	return nil
+}
 func (s *stubRepo) CreateCharge(ctx context.Context, charge *models.Charge) error {
 	return nil
 }
