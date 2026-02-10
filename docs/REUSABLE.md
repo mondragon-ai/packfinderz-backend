@@ -37,6 +37,11 @@ Central config via `envconfig`.
 
   * Synthesizes legacy vars → `PACKFINDERZ_DB_DSN` if missing.
 
+**GoogleMapsConfig**
+
+* Loads `PACKFINDERZ_GOOGLE_MAPS_API_KEY`, making the key available to `pkg/maps.NewClient`.
+* Missing or empty keys fail fast so any address integration relying on Google Places does not start without valid credentials.
+
 **SquareConfig**
 
 * Loads `PACKFINDERZ_SQUARE_ACCESS_TOKEN`, `PACKFINDERZ_SQUARE_WEBHOOK_SECRET`, and `PACKFINDERZ_SQUARE_ENV` (default `sandbox`).
@@ -45,6 +50,17 @@ Central config via `envconfig`.
 * `internal/webhooks/square.Service` consumes `/api/v1/webhooks/square`, verifies the `Square-Signature` header, deduplicates deliveries via a Redis guard (key pattern `pf:idempotency:square-webhook:<event_id>` with TTL `PACKFINDERZ_EVENTING_IDEMPOTENCY_TTL`), and mirrors subscription/invoice events into `subscriptions.status` plus `stores.subscription_active`.
 * `cmd/api/main.go` and `cmd/worker/main.go` both call `pkg/square.NewClient` during startup and exit immediately when the client returns an error, ensuring missing or invalid Square credentials block API/worker bootstrapping (`cmd/api/main.go:55-65`; `cmd/worker/main.go:51-70`).
 * `pkg/square` now normalizes Square access for customers, cards, payments, and subscriptions through typed helpers, enforces idempotency key conventions, redacts PII in each request/response log, and maps Square SDK errors into deterministic `pkg/errors` codes so all binaries share the same domain-safe client surface.
+
+### `maps`
+
+* `pkg/maps.NewClient` ties into `config.GoogleMaps` so the `PACKFINDERZ_GOOGLE_MAPS_API_KEY` is required before any autocomplete/place-resolution client can start.
+* `Autocomplete(ctx, AutocompleteRequest)` POSTs to `places:autocomplete` with `Content-Type: application/json`, `X-Goog-Api-Key`, and `X-Goog-FieldMask: suggestions.placePrediction.placeId,suggestions.placePrediction.text`, returning `AutocompleteSuggestion` DTOs (place ID + description).
+* `ResolvePlace(ctx, placeID)` GETs `places/{placeId}` with `X-Goog-FieldMask: id,formattedAddress,location,addressComponents`, decodes `PlaceDetails` (formatted address, `LatLng`, typed `AddressComponent`s), and wraps transient failures with `pkg/errors.CodeDependency`.
+
+### `address`
+
+* `internal/address.Service` wraps `pkg/maps` and exposes `Suggest`/`Resolve` helpers that map Google responses into `pkg/types.Address` so every controller sees a stable address DTO.
+* `GET /api/address/suggest` and `POST /api/address/resolve` both rely on this service plus `middleware.RateLimit`, ensuring the frontend always receives normalized address data backed by `PACKFINDERZ_GOOGLE_MAPS_API_KEY`.
 
 ---
 
@@ -746,6 +762,8 @@ Redis-backed refresh sessions.
 * `/api/v1/agent/orders`
 * `/api/v1/agent/orders/{orderId}`
 * `/api/v1/agent/orders/queue`
+* `/api/address/suggest`
+* `/api/address/resolve`
 * `/api/v1/vendor/analytics`
 * `/api/v1/analytics/marketplace`
 * `/api/v1/vendor/billing/charges`

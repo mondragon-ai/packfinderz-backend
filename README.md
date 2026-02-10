@@ -374,6 +374,12 @@ The GitHub Actions workflow (`.github/workflows/ci.yml`) runs gofmt, `golangci-l
 * TTLs are 24h by default and 7 days for checkout/payment flows (see `DESIGN_DOC.md` section 6 for the complete endpoint list).
 * `POST /api/v1/checkout` uses the idempotency middleware so the first successful response (checkout group + vendor orders) is cached for 7 days; duplicate calls with the same key/body replay that response, while a different payload triggers `409 IDEMPOTENCY_KEY_REUSED`, preventing double reservations.
 
+### Address Lookup
+
+* `GET /api/address/suggest` – public, rate-limited endpoint. Pass `query` plus optional `country` / `language` to receive `place_id` + `description` suggestions pulled from Google Places via `pkg/maps`.
+* `POST /api/address/resolve` – public, rate-limited endpoint. Send `{ "place_id": "..." }` and receive the normalized `pkg/types.Address` (line1, optional line2/subpremise, city, state, postal_code, country, lat, lng) returned by `internal/address.Service`.
+* Both endpoints rely on `PACKFINDERZ_GOOGLE_MAPS_API_KEY` (configured via `pkg/config.GoogleMaps`) and map Google’s response into the canonical address shape so the frontend always sees a stable payload.
+
 ### Checkout Submission
 
 * `POST /api/v1/checkout` finalizes the buyer store's active cart within a single transaction, splitting it into per-vendor `VendorOrders` that share the cart's `checkout_group_id`.
@@ -575,6 +581,7 @@ REDIS_ADDR=localhost:6379
 PACKFINDERZ_LOG_LEVEL=info
 PACKFINDERZ_LOG_WARN_STACK=false
 PACKFINDERZ_EVENTING_IDEMPOTENCY_TTL=720h
+PACKFINDERZ_GOOGLE_MAPS_API_KEY=<your-google-maps-api-key>
 ```
 
 > **Rule:** Do not add new env vars without documentation.
@@ -595,6 +602,11 @@ PACKFINDERZ_EVENTING_IDEMPOTENCY_TTL=720h
 * `PACKFINDERZ_SQUARE_SUBSCRIPTION_PLAN_ID` (required) – the Square plan variation ID used when creating vendor subscriptions.
 * `PACKFINDERZ_SQUARE_LOCATION_ID` (required) – the Square location that should be billed when vendor subscriptions are created via `subscriptions.NewSquareClient`.
 * `pkg/square` exposes the shared Square client that centralizes auth/env validation, deterministic idempotency keys, PII-redacted request/response logging, and Square→domain error mapping while providing helpers for customer, card, payment, and subscription operations (`SubscriptionCreateParams`, `CustomerCreateParams`, `CardCreateParams`, `PaymentCreateParams`).
+
+### Google Maps
+
+* `PACKFINDERZ_GOOGLE_MAPS_API_KEY` (required) – the Google Maps Places API key used for autocomplete suggestions and place detail lookups.
+* `pkg/maps` exposes reusable helpers for hitting `places:autocomplete` and `places/{placeId}` with the required headers/field masks plus typed DTOs so address-related features share a single client surface.
 
 ### Outbox Publisher Tuning
 

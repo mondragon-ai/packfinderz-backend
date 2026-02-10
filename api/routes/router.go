@@ -15,6 +15,7 @@ import (
 	subscriptionControllers "github.com/angelmondragon/packfinderz-backend/api/controllers/subscriptions"
 	webhookcontrollers "github.com/angelmondragon/packfinderz-backend/api/controllers/webhooks"
 	"github.com/angelmondragon/packfinderz-backend/api/middleware"
+	"github.com/angelmondragon/packfinderz-backend/internal/address"
 	"github.com/angelmondragon/packfinderz-backend/internal/analytics"
 	"github.com/angelmondragon/packfinderz-backend/internal/auth"
 	"github.com/angelmondragon/packfinderz-backend/internal/cart"
@@ -85,6 +86,7 @@ func NewRouter(
 	squareClient *square.Client,
 	squareWebhookService *squarewebhook.Service,
 	squareWebhookGuard *squarewebhook.IdempotencyGuard,
+	addressService address.Service,
 ) http.Handler {
 	r := chi.NewRouter()
 	// if squareClient != nil && logg != nil {
@@ -118,6 +120,12 @@ func NewRouter(
 	r.Route("/api/public", func(r chi.Router) {
 		r.Get("/ping", controllers.PublicPing())
 		r.Post("/validate", controllers.PublicValidate(logg))
+	})
+
+	r.Route("/api/address", func(r chi.Router) {
+		r.Use(middleware.RateLimit())
+		r.Get("/suggest", controllers.AddressSuggest(addressService, logg))
+		r.Post("/resolve", controllers.AddressResolve(addressService, logg))
 	})
 
 	r.Route("/api/v1/webhooks", func(r chi.Router) {

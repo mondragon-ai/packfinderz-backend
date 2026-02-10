@@ -299,6 +299,8 @@ Store address mutability (MVP policy):
 * Treat as **effectively immutable** in-app for MVP (reduces fraud + geo confusion).
 * If needed, changes are handled by admin override (audited).
 * Geocoding occurs on create (and on admin override if changed).
+* Address autocomplete and place-detail lookups rely on the new `pkg/maps` client, which calls Google’s `places:autocomplete` and `places/{placeId}` endpoints (headers include `X-Goog-Api-Key: PACKFINDERZ_GOOGLE_MAPS_API_KEY` plus the prescribed field masks) and returns DTOs containing `formattedAddress`, `location.latitude`, `location.longitude`, and typed `addressComponents`. Keeping the client in `pkg/maps` ensures every address-related feature shares one integration point.
+* Public `GET /api/address/suggest` and `POST /api/address/resolve` APIs sit under `/api/address`. They use `internal/address.Service` to call `pkg/maps`, map Google’s response into `pkg/types.Address`, and return the stable DTO while honoring the `middleware.RateLimit` guard so the frontend can reuse a single source of truth for geocoding and shipping-address normalization.
 
 ---
 

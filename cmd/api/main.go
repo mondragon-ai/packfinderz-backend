@@ -7,6 +7,7 @@ import (
 	"os"
 
 	"github.com/angelmondragon/packfinderz-backend/api/routes"
+	"github.com/angelmondragon/packfinderz-backend/internal/address"
 	"github.com/angelmondragon/packfinderz-backend/internal/analytics"
 	"github.com/angelmondragon/packfinderz-backend/internal/auth"
 	"github.com/angelmondragon/packfinderz-backend/internal/billing"
@@ -30,6 +31,7 @@ import (
 	"github.com/angelmondragon/packfinderz-backend/pkg/config"
 	"github.com/angelmondragon/packfinderz-backend/pkg/db"
 	"github.com/angelmondragon/packfinderz-backend/pkg/logger"
+	"github.com/angelmondragon/packfinderz-backend/pkg/maps"
 	"github.com/angelmondragon/packfinderz-backend/pkg/migrate"
 	"github.com/angelmondragon/packfinderz-backend/pkg/outbox"
 	"github.com/angelmondragon/packfinderz-backend/pkg/redis"
@@ -55,6 +57,10 @@ func main() {
 
 	squareClient, err := square.NewClient(context.Background(), cfg.Square, logg)
 	requireResource(ctx, logg, "square client", err)
+
+	mapsClient, err := maps.NewClient(cfg.GoogleMaps.APIKey)
+	requireResource(ctx, logg, "google maps client", err)
+	addressService := address.NewService(mapsClient)
 
 	squareCustomerService := squarecustomers.NewService(squareClient)
 
@@ -298,6 +304,7 @@ func main() {
 			squareClient,
 			squareWebhookService,
 			squareWebhookGuard,
+			addressService,
 		),
 	}
 
