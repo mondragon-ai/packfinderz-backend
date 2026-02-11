@@ -32,6 +32,7 @@ type ProductDTO struct {
 	VolumeDiscounts     []VolumeDiscountDTO `json:"volume_discounts,omitempty"`
 	Media               []ProductMediaDTO   `json:"media,omitempty"`
 	COAMediaID          *uuid.UUID          `json:"coa_media_id,omitempty"`
+	COAReadURL          *string             `json:"coa_read_url,omitempty"`
 	Vendor              VendorSummaryDTO    `json:"vendor"`
 	MaxQty              int                 `json:"max_qty"`
 	CreatedAt           time.Time           `json:"created_at"`

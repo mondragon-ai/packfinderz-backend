@@ -34,15 +34,23 @@ type squareSubscriptionClient struct {
 }
 
 func (c *squareSubscriptionClient) Create(ctx context.Context, params *SquareSubscriptionParams) (*SquareSubscription, error) {
+	fmt.Printf("[squareSubscriptionClient.Create] start locationID='%s'\n", c.locationID)
+
 	if c.square == nil {
+		fmt.Printf("[squareSubscriptionClient.Create] FAIL square client nil\n")
 		return nil, fmt.Errorf("square client required")
 	}
 	if c.locationID == "" {
+		fmt.Printf("[squareSubscriptionClient.Create] FAIL locationID empty\n")
 		return nil, fmt.Errorf("square location id required")
 	}
 	if params == nil {
+		fmt.Printf("[squareSubscriptionClient.Create] FAIL params nil\n")
 		return nil, fmt.Errorf("square subscription params required")
 	}
+
+	fmt.Printf("[squareSubscriptionClient.Create] customerID='%s' planVariationID='%s' cardID='%s'\n",
+		params.CustomerID, strings.TrimSpace(params.PriceID), params.PaymentMethodID)
 
 	req := square.SubscriptionCreateParams{
 		LocationID:      c.locationID,
@@ -50,10 +58,17 @@ func (c *squareSubscriptionClient) Create(ctx context.Context, params *SquareSub
 		CustomerID:      params.CustomerID,
 		CardID:          params.PaymentMethodID,
 	}
+
+	fmt.Printf("[squareSubscriptionClient.Create] Square API POST /v2/subscriptions request=%+v\n", req)
 	resp, err := c.square.CreateSubscription(ctx, req)
 	if err != nil {
+		fmt.Printf("[squareSubscriptionClient.Create] FAIL CreateSubscription err=%T %v\n", err, err)
+		debugSquareErr(err)
 		return nil, err
 	}
+
+	fmt.Printf("[squareSubscriptionClient.Create] Square API POST /v2/subscriptions response=%+v\n", resp)
+	fmt.Printf("[squareSubscriptionClient.Create] OK subscriptionID='%s'\n", safeString(resp.GetID()))
 	return convertSubscription(resp, params.PriceID, params.Metadata), nil
 }
 
@@ -61,10 +76,12 @@ func (c *squareSubscriptionClient) Cancel(ctx context.Context, id string, params
 	if c.square == nil {
 		return nil, fmt.Errorf("square client required")
 	}
+	fmt.Printf("[squareSubscriptionClient.Cancel] Square API POST /v2/subscriptions/%s/cancel\n", id)
 	resp, err := c.square.CancelSubscription(ctx, id)
 	if err != nil {
 		return nil, err
 	}
+	fmt.Printf("[squareSubscriptionClient.Cancel] Square API POST /v2/subscriptions/%s/cancel response=%+v\n", id, resp)
 	return convertSubscription(resp, "", nil), nil
 }
 
@@ -72,10 +89,12 @@ func (c *squareSubscriptionClient) Get(ctx context.Context, id string, params *S
 	if c.square == nil {
 		return nil, fmt.Errorf("square client required")
 	}
+	fmt.Printf("[squareSubscriptionClient.Get] Square API GET /v2/subscriptions/%s\n", id)
 	resp, err := c.square.GetSubscription(ctx, id)
 	if err != nil {
 		return nil, err
 	}
+	fmt.Printf("[squareSubscriptionClient.Get] Square API GET /v2/subscriptions/%s response=%+v\n", id, resp)
 	var metadata map[string]string
 	fallbackPrice := ""
 	if params != nil {
@@ -92,10 +111,12 @@ func (c *squareSubscriptionClient) Pause(ctx context.Context, id string, params 
 	req := &sq.PauseSubscriptionRequest{
 		SubscriptionID: id,
 	}
+	fmt.Printf("[squareSubscriptionClient.Pause] Square API POST /v2/subscriptions/%s/pause request=%+v\n", id, req)
 	resp, err := c.square.Pause(ctx, req)
 	if err != nil {
 		return nil, err
 	}
+	fmt.Printf("[squareSubscriptionClient.Pause] Square API POST /v2/subscriptions/%s/pause response=%+v\n", id, resp)
 	price := ""
 	if params != nil {
 		price = params.PriceID
@@ -110,10 +131,12 @@ func (c *squareSubscriptionClient) Resume(ctx context.Context, id string, params
 	req := &sq.ResumeSubscriptionRequest{
 		SubscriptionID: id,
 	}
+	fmt.Printf("[squareSubscriptionClient.Resume] Square API POST /v2/subscriptions/%s/resume request=%+v\n", id, req)
 	resp, err := c.square.Resume(ctx, req)
 	if err != nil {
 		return nil, err
 	}
+	fmt.Printf("[squareSubscriptionClient.Resume] Square API POST /v2/subscriptions/%s/resume response=%+v\n", id, resp)
 	price := ""
 	if params != nil {
 		price = params.PriceID

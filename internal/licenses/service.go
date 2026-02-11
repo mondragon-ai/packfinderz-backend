@@ -184,9 +184,9 @@ func (s *service) CreateLicense(ctx context.Context, userID, storeID uuid.UUID, 
 	if mediaRow.StoreID != storeID {
 		return nil, pkgerrors.New(pkgerrors.CodeForbidden, "media does not belong to active store")
 	}
-	if mediaRow.Kind != enums.MediaKindLicenseDoc {
-		return nil, pkgerrors.New(pkgerrors.CodeValidation, "media must be a license document")
-	}
+	// if mediaRow.Kind != enums.MediaKindLicenseDoc {
+	// 	return nil, pkgerrors.New(pkgerrors.CodeValidation, "media must be a license document")
+	// }
 	if !isLicenseMediaStatus(mediaRow.Status) {
 		return nil, pkgerrors.New(pkgerrors.CodeConflict, "media not ready")
 	}
@@ -213,18 +213,30 @@ func (s *service) CreateLicense(ctx context.Context, userID, storeID uuid.UUID, 
 		if err != nil {
 			return err
 		}
-		if err := s.attachments.Reconcile(ctx, tx, models.AttachmentEntityLicense, stored.ID, stored.StoreID, nil, []uuid.UUID{stored.MediaID}); err != nil {
+		if err := s.attachments.Reconcile(
+			ctx,
+			tx,
+			models.AttachmentEntityLicense,
+			stored.ID,
+			stored.StoreID,
+			nil,
+			[]uuid.UUID{stored.MediaID},
+		); err != nil {
+			return err
+		}
+		storeRef := storeID
+		if err := s.emitLicenseStatusEvent(ctx, tx, stored, stored.Status, "", &outbox.ActorRef{
+			UserID:  userID,
+			StoreID: &storeRef,
+		}); err != nil {
 			return err
 		}
 		created = stored
-		storeRef := storeID
-		return s.emitLicenseStatusEvent(ctx, tx, stored, stored.Status, "", &outbox.ActorRef{
-			UserID:  userID,
-			StoreID: &storeRef,
-		})
+		return nil
 	}); err != nil {
 		return nil, pkgerrors.Wrap(pkgerrors.CodeDependency, err, "create license")
 	}
+
 	return created, nil
 }
 

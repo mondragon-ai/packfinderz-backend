@@ -3,6 +3,7 @@ package stores
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/angelmondragon/packfinderz-backend/pkg/db/models"
 	"github.com/angelmondragon/packfinderz-backend/pkg/enums"
@@ -107,6 +108,30 @@ func (r *Repository) UpdateWithTx(tx *gorm.DB, store *models.Store) error {
 		return fmt.Errorf("store is required")
 	}
 	return tx.Save(store).Error
+}
+
+func (r *Repository) UpdateSubscriptionActiveWithTx(tx *gorm.DB, storeID uuid.UUID, active bool) error {
+	if tx == nil {
+		return fmt.Errorf("tx is required")
+	}
+	if storeID == uuid.Nil {
+		return fmt.Errorf("storeID is required")
+	}
+
+	res := tx.Model(&models.Store{}).
+		Where("id = ?", storeID).
+		Updates(map[string]any{
+			"subscription_active": active,
+			"updated_at":          time.Now(),
+		})
+
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
+		return gorm.ErrRecordNotFound
+	}
+	return nil
 }
 
 // UpdateStatusWithTx persists the store using the provided transaction & mod status.

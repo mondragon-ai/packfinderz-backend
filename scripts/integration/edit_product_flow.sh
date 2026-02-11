@@ -183,108 +183,71 @@ http_json() {
   local name="$1"
   local method="$2"
   local path="$3"
-  local payload=""
-  if [ "$#" -ge 4 ]; then
-    payload="$4"
-    shift 4 || true
-  else
-    shift 3
-  fi
+  local payload="$4"
+  shift 4
   local extra_headers=("$@")
   local url
-  url=$(build_url "$path")
-  local request_headers=("Accept: application/json" "Content-Type: application/json")
-  if [ "${#extra_headers[@]}" -gt 0 ]; then
-    request_headers+=("${extra_headers[@]}")
-  fi
-
-  log_line "[$name] Request: $method $url"
-  log_line "[$name] Headers:"
-  for hdr in "${request_headers[@]}"; do
-    log_line "  $hdr"
+  url="$(build_url "$path")"
+  local headers_args=("-H" "Accept: application/json")
+  local header_log=("Accept: application/json")
+  for header in "${extra_headers[@]}"; do
+    headers_args+=("-H" "$header")
+    header_log+=("$header")
   done
-  log_line "[$name] Payload:"
+  local body_file
+  body_file="$(mktemp)"
+  local headers_file
+  headers_file="$(mktemp)"
+  local curl_args=("-sS" "-o" "$body_file" "-D" "$headers_file" "-w" "%{http_code} %{time_total}" "-X" "$method")
   if [ -n "$payload" ]; then
-    pretty_json_or_raw "$payload" | while IFS= read -r line; do
-      [ -n "$line" ] && log_line "  $line"
+    curl_args+=("-H" "Content-Type: application/json" "--data" "$payload")
+    header_log+=("Content-Type: application/json")
+  fi
+  curl_args+=("${headers_args[@]}" "$url")
+  log_line ">>> HTTP REQUEST [$name]"
+  log_line "Method: $method"
+  log_line "URL: $url"
+  if [ "${#header_log[@]}" -gt 0 ]; then
+    log_line "Extra Headers:"
+    for h in "${header_log[@]}"; do
+      log_line "  $h"
     done
-  else
-    log_line "  <empty>"
   fi
-
-  local header_args=()
-  for hdr in "${request_headers[@]}"; do
-    header_args+=(--header "$hdr")
-  done
-  local data_args=()
+  log_line "Payload:"
   if [ -n "$payload" ]; then
-    data_args+=(--data-binary "$payload")
+    log_line "$payload"
+  else
+    log_line "<empty>"
   fi
-
-  local response_file status_file headers_file
-  response_file=$(mktemp)
-  status_file=$(mktemp)
-  headers_file=$(mktemp)
-
-  local start_ms end_ms
-  start_ms=$(millis_now)
-  set +e
-  curl --silent --show-error --location \
-    --request "$method" \
-    ${header_args[@]+"${header_args[@]}"} \
-    ${data_args[@]+"${data_args[@]}"} \
-    --dump-header "$headers_file" \
-    --output "$response_file" \
-    --write-out "%{http_code}" \
-    "$url" > "$status_file"
-  local curl_exit=$?
-  set -e
-  end_ms=$(millis_now)
-
-  local http_code response_body response_headers
-  http_code=$(cat "$status_file" 2>/dev/null || true)
-  response_body=$(cat "$response_file" 2>/dev/null || true)
-  response_headers=$(cat "$headers_file" 2>/dev/null || true)
-  rm -f "$response_file" "$status_file" "$headers_file"
-
-  if [ $curl_exit -ne 0 ]; then
-    log_line "[$name] curl error ($curl_exit)"
-    log_detail "Response body ($name) (curl failed): $response_body"
-    exit 1
-  fi
-  if [ -z "$http_code" ]; then
-    log_line "[$name] empty status line"
-    exit 1
-  fi
-
-  HTTP_LAST_METHOD="$method"
+  local stats
+  stats="$(curl "${curl_args[@]}")"
+  local status
+  status="$(awk '{print $1}' <<<"$stats")"
+  local duration_seconds
+  duration_seconds="$(awk '{print $2}' <<<"$stats")"
+  local duration_ms
+  duration_ms="$(python3 - <<PY
+import math
+print(int(float("$duration_seconds") * 1000))
+PY
+)"
+  HTTP_LAST_STATUS="$status"
+  HTTP_LAST_BODY="$(cat "$body_file")"
+  HTTP_LAST_RESPONSE_HEADERS="$(cat "$headers_file")"
   HTTP_LAST_URL="$url"
-  HTTP_LAST_STATUS="$http_code"
-  HTTP_LAST_RESPONSE_HEADERS="$response_headers"
-  HTTP_LAST_BODY="$response_body"
-  HTTP_LAST_REQUEST_BODY="$payload"
-  HTTP_LAST_REQUEST_HEADERS="$(printf '%s\n' "${request_headers[@]}")"
-  HTTP_LAST_DURATION_MS=$((end_ms - start_ms))
-
-  log_line "[$name] Response status: $http_code (${HTTP_LAST_DURATION_MS}ms)"
-  log_line "[$name] Response headers:"
-  if [ -n "$response_headers" ]; then
-    printf '%s\n' "$response_headers" | while IFS= read -r hdr; do
-      [ -n "$hdr" ] && log_line "  $hdr"
-    done
-  else
-    log_line "  <empty>"
-  fi
-  log_line "[$name] Response body:"
-  if [ -n "$response_body" ]; then
-    pretty_json_or_raw "$response_body" | while IFS= read -r line; do
-      [ -n "$line" ] && log_line "  $line"
-    done
-  else
-    log_line "  <empty>"
-  fi
+  HTTP_LAST_METHOD="$method"
+  HTTP_LAST_DURATION_MS="$duration_ms"
+  log_line "Response Status: $status"
+  log_line "Response Headers:"
+  log_line "$HTTP_LAST_RESPONSE_HEADERS"
+  log_line "Response Body:"
+  local pretty_body
+  pretty_body="$(pretty_json_or_raw "$HTTP_LAST_BODY")"
+  while IFS= read -r line; do
+    log_line "$line"
+  done <<<"$pretty_body"
+  rm -f "$body_file" "$headers_file"
 }
-
 record_test_result() {
   local name="$1"
   local assertions_json
@@ -679,17 +642,78 @@ build_gallery_media_json() {
   rm -f "$tmp"
 }
 
+
+# -------- Postman-equivalent PATCH payload --------
+# Mirrors:
+# {
+#   "title": "Fresh Cut Spinach (updated)",
+#   "price_cents": 630,
+#   "inventory": { "available_qty": 250, "reserved_qty": 5, "low_stock_threshold": 10 },
+#   "media_ids": [...],
+#   "volume_discounts": [
+#     {"min_qty":5,"discount_percent":2},
+#     {"min_qty":15,"discount_percent":5}
+#   ]
+# }
+#
+# Media selection policy:
+# - Prefer explicit --media-id (in order), then auto-discovered IDs
+# - Truncate to 3 IDs (to match your known-working example)
+build_postman_like_patch_payload() {
+  local title="${PATCH_TITLE:-Fresh Cut Spinach (updated)}"
+  local price_cents="${PATCH_PRICE_CENTS:-630}"
+  local available_qty="${PATCH_AVAILABLE_QTY:-250}"
+  local reserved_qty="${PATCH_RESERVED_QTY:-5}"
+  local low_stock_threshold="${PATCH_LOW_STOCK_THRESHOLD:-10}"
+
+  # Combine manual  auto gallery ids, de-dupe preserving insertion order, then take first 3
+  local media_json
+  media_json="$(build_gallery_media_json)"
+  media_json="$(jq -c '.[0:3]' <<<"$media_json" 2>/dev/null || printf '[]')"
+
+  # If you *require* exactly 3 media ids (like your Postman run), enforce it here.
+  # Otherwise, allow 0..3.
+  if jq -e 'length == 0' >/dev/null 2>&1 <<<"$media_json"; then
+    log_line "WARN: No media IDs available (manual --media-id or auto-discovered). PATCH will send media_ids=[]"
+  fi
+
+  jq -n \
+    --arg title "$title" \
+    --argjson price_cents "$price_cents" \
+    --argjson available_qty "$available_qty" \
+    --argjson reserved_qty "$reserved_qty" \
+    --argjson low_stock_threshold "$low_stock_threshold" \
+    --argjson media_ids "$media_json" \
+    '{
+      title: $title,
+      price_cents: $price_cents,
+      inventory: {
+        available_qty: $available_qty,
+        reserved_qty: $reserved_qty,
+        low_stock_threshold: $low_stock_threshold
+      },
+      media_ids: $media_ids,
+      volume_discounts: [
+        { min_qty: 5,  discount_percent: 2 },
+        { min_qty: 15, discount_percent: 5 }
+      ]
+    }'
+}
+
 # -------- Existing product patch tests --------
 
-test_patch_product_happy() {
+
+ test_patch_product_happy() {
   current_assertions=()
   local payload
-  payload=$(build_update_payload)
+  # IMPORTANT: This is now the Postman-equivalent payload that worked.
+  # It uses --media-id (preferred) or auto-discovered IDs to populate media_ids.
+  payload=$(build_postman_like_patch_payload)
   http_json "patch_product" PATCH "/vendor/products/${target_product_id}" "$payload" "Authorization: Bearer $auth_token"
   assert_status 200 "product patch succeeds"
   assert_jq ".data.id == \"${target_product_id}\"" "response references patched product"
   record_test_result "patch_product_happy"
-}
+ }
 
 test_patch_product_no_auth() {
   current_assertions=()

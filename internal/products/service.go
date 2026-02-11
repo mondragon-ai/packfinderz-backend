@@ -83,11 +83,12 @@ type service struct {
 	storeRepo         storeLoader
 	membershipChecker membershipChecker
 	mediaRepo         mediaReader
+	mediaSvc          media.Service
 	attachments       media.AttachmentReconciler
 }
 
 // NewService constructs a product service instance.
-func NewService(repo *Repository, dbClient *db.Client, storeRepo storeLoader, membershipChecker membershipChecker, mediaRepo mediaReader, attachments media.AttachmentReconciler) (Service, error) {
+func NewService(repo *Repository, dbClient *db.Client, storeRepo storeLoader, membershipChecker membershipChecker, mediaRepo mediaReader, attachments media.AttachmentReconciler, mediaSvc media.Service) (Service, error) {
 	if repo == nil {
 		return nil, fmt.Errorf("product repository required")
 	}
@@ -106,12 +107,16 @@ func NewService(repo *Repository, dbClient *db.Client, storeRepo storeLoader, me
 	if attachments == nil {
 		return nil, fmt.Errorf("attachment reconciler required")
 	}
+	if mediaSvc == nil {
+		return nil, fmt.Errorf("media service required")
+	}
 	return &service{
 		repo:              repo,
 		dbClient:          dbClient,
 		storeRepo:         storeRepo,
 		membershipChecker: membershipChecker,
 		mediaRepo:         mediaRepo,
+		mediaSvc:          mediaSvc,
 		attachments:       attachments,
 	}, nil
 }
@@ -236,7 +241,7 @@ func (s *service) CreateProduct(ctx context.Context, userID, storeID uuid.UUID, 
 	if err != nil {
 		return nil, pkgerrors.Wrap(pkgerrors.CodeDependency, err, "load product detail")
 	}
-	return NewProductDTO(product, summary), nil
+	return s.newProductDTO(ctx, product, summary)
 }
 
 // UpdateProductInput holds optional mutation values for a product.
@@ -418,7 +423,7 @@ func (s *service) UpdateProduct(ctx context.Context, userID, storeID, productID 
 	if err != nil {
 		return nil, pkgerrors.Wrap(pkgerrors.CodeDependency, err, "load product detail")
 	}
-	return NewProductDTO(updated, summary), nil
+	return s.newProductDTO(ctx, updated, summary)
 }
 
 // DeleteProduct removes a product and relies on FK cascades for related rows.
@@ -513,7 +518,73 @@ func (s *service) GetProductDetail(ctx context.Context, storeID uuid.UUID, store
 		return nil, pkgerrors.New(pkgerrors.CodeForbidden, "unsupported store type")
 	}
 
-	return NewProductDTO(product, summary), nil
+	return s.newProductDTO(ctx, product, summary)
+}
+func (s *service) newProductDTO(ctx context.Context, product *models.Product, summary *VendorSummary) (*ProductDTO, error) {
+	dto := NewProductDTO(product, summary)
+
+	// 1) Fill signed URLs for product media items (if any).
+	if len(dto.Media) > 0 {
+		for i := range dto.Media {
+			mediaID := dto.Media[i].MediaID
+			if mediaID == nil {
+				continue
+			}
+
+			url, err := s.fetchMediaReadURL(ctx, product.StoreID, *mediaID)
+			if err != nil {
+				if typed := pkgerrors.As(err); typed != nil {
+					// Same pattern as COA: tolerate missing / conflicting media records.
+					if typed.Code() == pkgerrors.CodeConflict || typed.Code() == pkgerrors.CodeNotFound {
+						continue
+					}
+				}
+				return nil, err
+			}
+
+			dto.Media[i].URL = url
+		}
+	}
+
+	// 2) COA URL (unchanged)
+	if product.COAMediaID == nil {
+		return dto, nil
+	}
+
+	url, err := s.fetchCOAReadURL(ctx, product.StoreID, *product.COAMediaID)
+	if err != nil {
+		if typed := pkgerrors.As(err); typed != nil {
+			if typed.Code() == pkgerrors.CodeConflict || typed.Code() == pkgerrors.CodeNotFound {
+				return dto, nil
+			}
+		}
+		return nil, err
+	}
+	dto.COAReadURL = url
+
+	return dto, nil
+}
+
+func (s *service) fetchCOAReadURL(ctx context.Context, storeID, mediaID uuid.UUID) (*string, error) {
+	output, err := s.mediaSvc.GenerateReadURL(ctx, media.ReadURLParams{
+		StoreID: storeID,
+		MediaID: mediaID,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &output.URL, nil
+}
+
+func (s *service) fetchMediaReadURL(ctx context.Context, storeID, mediaID uuid.UUID) (*string, error) {
+	output, err := s.mediaSvc.GenerateReadURL(ctx, media.ReadURLParams{
+		StoreID: storeID,
+		MediaID: mediaID,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &output.URL, nil
 }
 
 func (s *service) ensureVendorStore(ctx context.Context, storeID uuid.UUID) error {

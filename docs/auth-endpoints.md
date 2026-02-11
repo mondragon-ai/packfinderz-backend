@@ -244,6 +244,579 @@ curl -X DELETE "{{API_BASE_URL}}/api/v1/media/{{media_id}}" \
 
 If the media row was already marked deleted or belongs to a different store, the endpoint silently succeeds or returns HTTP 403/404 accordingly.
 
+## Vendor billing & subscriptions
+
+Every route listed below runs inside the authenticated vendor store context, so the bearer token must carry the vendor store you intend to operate on. `middleware.RequireStoreRoles` further restricts payment method and subscription actions to `owner`, `admin`, `manager`, `staff`, or `ops`; missing roles return HTTP 403. All POST/PUT hooks may be retried safely when you supply an `Idempotency-Key` header (`Idempotency-Key` missing on idempotent routes results in HTTP 400). Responses mirror the `{"data": ...}` envelope and errors follow the `pkg/errors` metadata (validation → 400, forbidden/unauthorized → 403/401, not found → 404, conflict/state → 409/422, internal/dependency → 500/503).
+
+### GET /api/v1/vendor/billing/charges
+
+Streams the vendor’s persisted `charges` rows so billing dashboards can paginate through settled and pending activity without hitting Square on every request. The response always includes `cursor` (base64 encoded `created_at|id`). Filters are optional and eager validated before they reach the repo.
+
+#### Supported query parameters
+- `limit` (integer > 0, defaults to 25, max 100) – caps the number of rows returned.
+- `cursor` (string) – base64 cursor returned from the previous page (`pagination.EncodeCursor`).
+- `type` – charge type enum values: `subscription`, `ad_spend`, or `other`.
+- `status` – charge status enum values: `pending`, `succeeded`, `failed`, `refunded`.
+
+#### cURL
+```bash
+curl -G "{{API_BASE_URL}}/api/v1/vendor/billing/charges" \
+  -H "Accept: application/json" \
+  -H "Authorization: Bearer {{access_token}}" \
+  --data-urlencode "limit=25" \
+  --data-urlencode "cursor={{previous_cursor}}" \
+  --data-urlencode "type=subscription" \
+  --data-urlencode "status=succeeded"
+```
+
+#### Success response (`200 OK`)
+```json
+{
+  "data": {
+    "charges": [
+      {
+        "id": "a3c9d100-1fda-4a66-b020-28d9a0d5a1a1",
+        "amount_cents": 1500,
+        "currency": "USD",
+        "type": "subscription",
+        "status": "succeeded",
+        "description": "Monthly plan",
+        "created_at": "2025-01-01T13:45:29.123Z",
+        "billed_at": "2025-01-01T13:45:29.123Z"
+      }
+    ],
+    "cursor": "MjAyNS0wMS0wMVQxMzo0NTo0OS4xMjNa|3004c4b2-19f1-448e-9e4f-6b0c1bd06e1a"
+  }
+}
+```
+
+#### Failure paths
+- `400 Validation` – invalid `limit`, malformed `cursor`, or bad enum values.
+- `401 Unauthorized` – missing/expired token.
+- `403 Forbidden` – token belongs to a non-vendor store or lacks context.
+- `500/503` – internal/dependency errors when listing charges (e.g., repository failure).
+
+### POST /api/v1/vendor/payment-methods/cc
+
+Registers a card-on-file via the billing service. Requires the vendor store to be active and the caller to hold one of the billing roles (`owner`, `admin`, `manager`, `staff`, `ops`). The request body is JSON and you should include an `Idempotency-Key` header for safe retries (default TTL matches other critical vendor POSTs).
+
+#### Request body
+```json
+{
+  "source_id": "cnon:card-nonce-ok",
+  "cardholder_name": "Rivera Grocers",
+  "verification_token": "verif-abc123", // optional
+  "is_default": true
+}
+```
+
+#### cURL
+```bash
+curl -X POST "{{API_BASE_URL}}/api/v1/vendor/payment-methods/cc" \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json" \
+  -H "Authorization: Bearer {{access_token}}" \
+  -H "Idempotency-Key: {{unique_payment_key}}" \
+  -d '{
+    "source_id": "{{square_card_source_id}}",
+    "cardholder_name": "Rivera Grocers",
+    "is_default": true
+  }'
+```
+
+#### Success response (`201 Created`)
+```json
+{
+  "data": {
+    "id": "b7c3927d-13b6-4e56-ba44-1b5f89433062",
+    "card_brand": "visa",
+    "card_last4": "4242",
+    "card_exp_month": 12,
+    "card_exp_year": 2025,
+    "is_default": true,
+    "created_at": "2025-01-02T11:22:33.456Z"
+  }
+}
+```
+
+#### Failure paths
+- `400 Validation` – missing `source_id` or invalid payload keys.
+- `401 Unauthorized` – invalid token, missing `Authorization`.
+- `403 Forbidden` – vendor store lacks the required billing role.
+- `409 Conflict` – duplicate payment method or reused `Idempotency-Key`.
+- `500/503` – billing service/unavailable Square dependency.
+
+### GET /api/v1/vendor/billing/plans
+
+Returns the curated catalog of active billing plans (`status=active`). Each plan includes metadata that the storefront UI uses to describe pricing, trial rules, and features without hitting Square.
+
+#### cURL
+```bash
+curl -G "{{API_BASE_URL}}/api/v1/vendor/billing/plans" \
+  -H "Accept: application/json" \
+  -H "Authorization: Bearer {{access_token}}"
+```
+
+#### Success response (`200 OK`)
+```json
+{
+  "data": {
+    "plans": [
+      {
+        "id": "plan-basic",
+        "name": "Marketplace Starter",
+        "status": "active",
+        "square_billing_plan_id": "sq_plan_1234",
+        "test": false,
+        "is_default": true,
+        "trial_days": 14,
+        "trial_require_payment_method": true,
+        "trial_start_on_activation": true,
+        "interval": "monthly",
+        "price_amount": "29.99",
+        "price_amount_cents": 2999,
+        "currency_code": "USD",
+        "features": ["dashboard", "inventory_sync"],
+        "ui": {"badge": "Most Popular"},
+        "created_at": "2024-12-15T08:00:00Z",
+        "updated_at": "2024-12-15T08:00:00Z"
+      }
+    ]
+  }
+}
+```
+
+#### Failure paths
+- `401 Unauthorized` – missing token.
+- `403 Forbidden` – token belongs to non-vendor store.
+- `500/503` – repository/Square catalog unavailable.
+
+### GET /api/v1/vendor/billing/plans/{planId}
+
+Fetches a single active plan; hidden or missing plans return HTTP 404.
+
+#### Path parameters
+- `planId` (string) – UUID or opaque identifier for the plan.
+
+#### cURL
+```bash
+curl -G "{{API_BASE_URL}}/api/v1/vendor/billing/plans/{{plan_id}}" \
+  -H "Accept: application/json" \
+  -H "Authorization: Bearer {{access_token}}"
+```
+
+#### Success response (`200 OK`)
+```json
+{
+  "data": {
+    "id": "plan-basic",
+    "name": "Marketplace Starter",
+    "status": "active",
+    "square_billing_plan_id": "sq_plan_1234",
+    "test": false,
+    "is_default": true,
+    "trial_days": 14,
+    "trial_require_payment_method": true,
+    "trial_start_on_activation": true,
+    "interval": "monthly",
+    "price_amount": "29.99",
+    "price_amount_cents": 2999,
+    "currency_code": "USD",
+    "features": ["dashboard", "inventory_sync"],
+    "ui": {"badge": "Most Popular"},
+    "created_at": "2024-12-15T08:00:00Z",
+    "updated_at": "2024-12-15T08:00:00Z"
+  }
+}
+```
+
+#### Failure paths
+- `400 Validation` – empty `planId`.
+- `404 Not Found` – plan does not exist or is not `active`.
+- `401/403` – auth failures.
+- `500/503` – backend dependency issues.
+
+### POST /api/v1/vendor/subscriptions
+
+Creates or returns the active vendor subscription. The body must include `square_customer_id` and `square_payment_method_id`; `price_id` is optional and falls back to the store’s default price when omitted. If an active subscription already exists, the endpoint returns `200 OK` with the existing record instead of creating a duplicate.
+
+#### Request body
+```json
+{
+  "square_customer_id": "cust_123",
+  "square_payment_method_id": "pm_123",
+  "price_id": "price_basic"
+}
+```
+
+#### cURL
+```bash
+curl -X POST "{{API_BASE_URL}}/api/v1/vendor/subscriptions" \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json" \
+  -H "Authorization: Bearer {{access_token}}" \
+  -H "Idempotency-Key: {{unique_subscription_key}}" \
+  -d '{
+    "square_customer_id": "{{square_customer_id}}",
+    "square_payment_method_id": "{{square_payment_method_id}}",
+    "price_id": "{{price_id}}"
+  }'
+```
+
+#### Success response (`200 OK` / `201 Created`)
+```json
+{
+  "data": {
+    "id": "5f2c1bda-2b40-4a38-a10d-8ed9c8b8a9f4",
+    "square_subscription_id": "sub_abcdef",
+    "status": "active",
+    "price_id": "price_basic",
+    "current_period_start": "2025-01-10T00:00:00Z",
+    "current_period_end": "2025-02-10T00:00:00Z",
+    "cancel_at_period_end": false,
+    "canceled_at": null
+  }
+}
+```
+
+#### Failure paths
+- `400 Validation` – missing required fields.
+- `401/403` – auth or role failures.
+- `422 State Conflict` – concurrent race produced a conflicting status (rare).
+- `500/503` – Square dependency errors during creation.
+
+### POST /api/v1/vendor/subscriptions/cancel
+
+Schedules cancellation at period end (or immediately if already canceled). Requests are idempotent and require the same billing roles.
+
+#### cURL
+```bash
+curl -X POST "{{API_BASE_URL}}/api/v1/vendor/subscriptions/cancel" \
+  -H "Accept: application/json" \
+  -H "Authorization: Bearer {{access_token}}"
+```
+
+#### Success response (`200 OK`)
+```json
+{
+  "data": null
+}
+```
+
+#### Failure paths
+- `401/403` – unauthorized or role validation.
+- `404 Not Found` – no stored subscription.
+- `500/503` – square/billing repo issues.
+
+### POST /api/v1/vendor/subscriptions/pause
+
+Pauses an active subscription. The service verifies the subscription exists and is in an active state before calling Square. If the subscription is already paused or absent, the controller surfaces the corresponding error.
+
+#### cURL
+```bash
+curl -X POST "{{API_BASE_URL}}/api/v1/vendor/subscriptions/pause" \
+  -H "Accept: application/json" \
+  -H "Authorization: Bearer {{access_token}}"
+```
+
+#### Success response (`200 OK`)
+```json
+{
+  "data": null
+}
+```
+
+#### Failure paths
+- `400 Validation` – missing store context.
+- `404 Not Found` – subscription missing.
+- `422 State Conflict` – subscription not active.
+- `500/503` – Square pause call or DB writes failed.
+
+### POST /api/v1/vendor/subscriptions/resume
+
+Resumes a subscription that currently sits in the `paused` state.
+
+#### cURL
+```bash
+curl -X POST "{{API_BASE_URL}}/api/v1/vendor/subscriptions/resume" \
+  -H "Accept: application/json" \
+  -H "Authorization: Bearer {{access_token}}"
+```
+
+#### Success response (`200 OK`)
+```json
+{
+  "data": null
+}
+```
+
+#### Failure paths
+- `400 Validation` – missing store context.
+- `404 Not Found` – subscription missing.
+- `422 State Conflict` – subscription is not paused.
+- `500/503` – dependency failure.
+
+### GET /api/v1/vendor/subscriptions
+
+Returns the active subscription. When none exists you still receive `200 OK` but `data` is `null`.
+
+#### cURL
+```bash
+curl -G "{{API_BASE_URL}}/api/v1/vendor/subscriptions" \
+  -H "Accept: application/json" \
+  -H "Authorization: Bearer {{access_token}}"
+```
+
+#### Success response (`200 OK`)
+```json
+{
+  "data": {
+    "id": "5f2c1bda-2b40-4a38-a10d-8ed9c8b8a9f4",
+    "square_subscription_id": "sub_abcdef",
+    "status": "active",
+    "price_id": "price_basic",
+    "current_period_start": "2025-01-10T00:00:00Z",
+    "current_period_end": "2025-02-10T00:00:00Z",
+    "cancel_at_period_end": false,
+    "canceled_at": null
+  }
+}
+```
+
+#### Failure paths
+- `400 Validation` – missing store context.
+- `401/403` – auth/role failures.
+- `500/503` – dependency errors reading the repository.
+
+## Admin billing plans
+
+These admin-only endpoints sit under `/api/admin/v1/billing/plans`. They inherit the standard admin middleware stack (`Auth`, `RequireRole("admin")`, `Idempotency`, `RateLimit`) and return the same `billingPlanResponse` structure seen by vendors. Use the admin token (`Authorization: Bearer {{admin_access_token}}`) when you hit them.
+
+### GET /api/admin/v1/billing/plans
+
+Lists every plan, optionally filtering by status or default flag. Servers return the raw plan DTO so admins can confirm metadata before editing it.
+
+#### Supported query parameters
+- `status` – optional enum `active`, `hidden`, etc. (case-sensitive) via `enums.PlanStatus`.
+- `is_default` – optional boolean flag (`true`/`false`) to find the current default plan.
+
+#### cURL
+```bash
+curl -G "{{API_BASE_URL}}/api/admin/v1/billing/plans" \
+  -H "Accept: application/json" \
+  -H "Authorization: Bearer {{admin_access_token}}" \
+  --data-urlencode "status=active" \
+  --data-urlencode "is_default=true"
+```
+
+#### Success response (`200 OK`)
+```json
+{
+  "data": {
+    "plans": [
+      {
+        "id": "plan-pro",
+        "name": "Marketplace Pro",
+        "status": "active",
+        "square_billing_plan_id": "sq_plan_6464",
+        "test": false,
+        "is_default": false,
+        "trial_days": 7,
+        "trial_require_payment_method": true,
+        "trial_start_on_activation": true,
+        "interval": "monthly",
+        "price_amount": "59.99",
+        "price_amount_cents": 5999,
+        "currency_code": "USD",
+        "features": ["priority_support", "api_access"],
+        "ui": {"badge": "Advanced"},
+        "created_at": "2024-12-01T09:00:00Z",
+        "updated_at": "2025-01-05T10:30:00Z"
+      }
+    ]
+  }
+}
+```
+
+#### Failure paths
+- `400 Validation` – invalid `status`/`is_default` values.
+- `401 Unauthorized` – missing/invalid admin token.
+- `403 Forbidden` – token lacks the `admin` role.
+- `500/503` – dependency or repository failures.
+
+### POST /api/admin/v1/billing/plans
+
+Creates a new billing plan record. The DTO mirrors the stored `models.BillingPlan`, and `price_amount_cents` drives `price_amount`. `id`, `name`, `status`, `square_billing_plan_id`, `interval`, `price_amount_cents`, and `currency_code` are required.
+
+#### Request body
+```json
+{
+  "id": "plan-starter",
+  "name": "Marketplace Starter",
+  "status": "active",
+  "square_billing_plan_id": "sq_plan_1234",
+  "test": false,
+  "is_default": true,
+  "trial_days": 14,
+  "trial_require_payment_method": true,
+  "trial_start_on_activation": true,
+  "interval": "monthly",
+  "price_amount_cents": 2999,
+  "currency_code": "USD",
+  "features": ["analytics", "inventory_sync"],
+  "ui": {"badge": "Most Popular"}
+}
+```
+
+#### cURL
+```bash
+curl -X POST "{{API_BASE_URL}}/api/admin/v1/billing/plans" \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json" \
+  -H "Authorization: Bearer {{admin_access_token}}" \
+  -d '{ ... }'
+```
+
+Replace `{ ... }` with the full JSON payload above.
+
+#### Success response (`200 OK`)
+```json
+{
+  "data": {
+    "id": "plan-starter",
+    "name": "Marketplace Starter",
+    "status": "active",
+    "square_billing_plan_id": "sq_plan_1234",
+    "test": false,
+    "is_default": true,
+    "trial_days": 14,
+    "trial_require_payment_method": true,
+    "trial_start_on_activation": true,
+    "interval": "monthly",
+    "price_amount": "29.99",
+    "price_amount_cents": 2999,
+    "currency_code": "USD",
+    "features": ["analytics", "inventory_sync"],
+    "ui": {"badge": "Most Popular"},
+    "created_at": "2025-01-01T08:00:00Z",
+    "updated_at": "2025-01-01T08:00:00Z"
+  }
+}
+```
+
+#### Failure paths
+- `400 Validation` – missing required fields (`id`, `name`, `price_amount_cents`, etc.) or invalid enum values.
+- `401/403` – auth failures or missing admin role.
+- `409 Conflict` – duplicate plan ID.
+- `500/503` – dependency/repo error during create.
+
+### PATCH /api/admin/v1/billing/plans/{planId}
+
+Updates an existing plan. Provide the same DTO as creation (omitting `id` is fine because the path determines the plan). Fields that are pointers (booleans/ints) can selectively override defaults while leaving others untouched. The handler validates `planId` exists before patching.
+
+#### Path parameters
+- `planId` (string) – identifier of the plan you intend to update.
+
+#### Request body
+```json
+{
+  "name": "Marketplace Starter Plus",
+  "status": "active",
+  "square_billing_plan_id": "sq_plan_1234",
+  "interval": "monthly",
+  "price_amount_cents": 3999,
+  "currency_code": "USD",
+  "features": ["analytics", "inventory_sync", "premium_support"],
+  "ui": {"badge": "Updated"}
+}
+```
+
+#### cURL
+```bash
+curl -X PATCH "{{API_BASE_URL}}/api/admin/v1/billing/plans/{{plan_id}}" \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json" \
+  -H "Authorization: Bearer {{admin_access_token}}" \
+  -d '{ ... }'
+```
+
+Use the JSON above but adjust fields as needed.
+
+#### Success response (`200 OK`)
+```json
+{
+  "data": {
+    "id": "plan-starter",
+    "name": "Marketplace Starter Plus",
+    "status": "active",
+    "square_billing_plan_id": "sq_plan_1234",
+    "test": false,
+    "is_default": false,
+    "trial_days": 14,
+    "trial_require_payment_method": true,
+    "trial_start_on_activation": true,
+    "interval": "monthly",
+    "price_amount": "39.99",
+    "price_amount_cents": 3999,
+    "currency_code": "USD",
+    "features": ["analytics", "inventory_sync", "premium_support"],
+    "ui": {"badge": "Updated"},
+    "created_at": "2025-01-01T08:00:00Z",
+    "updated_at": "2025-01-15T09:00:00Z"
+  }
+}
+```
+
+#### Failure paths
+- `400 Validation` – missing plan data or invalid `planId`.
+- `401/403` – auth or role failure.
+- `404 Not Found` – plan ID absent.
+- `500/503` – repository/dependency errors.
+
+### DELETE /api/admin/v1/billing/plans/{planId}
+
+Marks the plan as hidden (`status=hidden`, `is_default=false`). The handler requires the plan to exist and returns the updated DTO so admins can confirm the deletion.
+
+#### Path parameters
+- `planId` – plan to hide.
+
+#### cURL
+```bash
+curl -X DELETE "{{API_BASE_URL}}/api/admin/v1/billing/plans/{{plan_id}}" \
+  -H "Accept: application/json" \
+  -H "Authorization: Bearer {{admin_access_token}}"
+```
+
+#### Success response (`200 OK`)
+```json
+{
+  "data": {
+    "id": "plan-starter",
+    "name": "Marketplace Starter Plus",
+    "status": "hidden",
+    "square_billing_plan_id": "sq_plan_1234",
+    "test": false,
+    "is_default": false,
+    "trial_days": 14,
+    "trial_require_payment_method": true,
+    "trial_start_on_activation": true,
+    "interval": "monthly",
+    "price_amount": "39.99",
+    "price_amount_cents": 3999,
+    "currency_code": "USD",
+    "features": ["analytics", "inventory_sync", "premium_support"],
+    "ui": {"badge": "Updated"},
+    "created_at": "2025-01-01T08:00:00Z",
+    "updated_at": "2025-01-15T09:00:00Z"
+  }
+}
+```
+
+#### Failure paths
+- `401/403` – missing admin auth or role.
+- `404 Not Found` – plan not found.
+- `500/503` – dependency/repo errors while hiding.
+
 ## Cart & Checkout endpoints
 
 Cart-related routes live inside the authenticated store context, so every request requires `Authorization: Bearer {{access_token}}` and, for mutating routes (`POST /api/v1/cart` and `POST /api/v1/checkout`), an `Idempotency-Key` header with a store-scoped unique value. These headers are enforced by the idempotency middleware (missing keys return HTTP 400/422).
@@ -664,7 +1237,7 @@ curl -X POST "{{API_BASE_URL}}/api/v1/vendor/products" \
   -d '{ ... }'
 ```
 
-Replace `{ ... }` with the JSON payload above. The response returns the persisted `product.ProductDTO`, which includes `inventory`, `volume_discounts`, and `media` (may be absent/`null` when there are no attachments). The `inventory` block in the response surfaces the live `available_qty`, `reserved_qty`, and `updated_at`, while `media` objects expose `id`, `url` (nullable), `gcs_key`, `position`, and `created_at`.
+Replace `{ ... }` with the JSON payload above. The response returns the persisted `product.ProductDTO`, which includes `inventory`, `volume_discounts`, and `media` (may be absent/`null` when there are no attachments). The `inventory` block in the response surfaces the live `available_qty`, `reserved_qty`, and `updated_at`, while `media` objects expose `id`, `url` (nullable), `gcs_key`, `position`, and `created_at`. When a COA is attached and ready for download, `coa_read_url` contains the signed GET URL so you can show or download the PDF/video/photo.
 
 ### PATCH /api/v1/vendor/products/{productId}
 Updates metadata, inventory, volume discounts, or media for an existing product. The `updateProductRequest` allows every field to be optional, but trimmed strings (`sku`, `title`) must not become empty and enumerated values are re-validated. The controller enforces the same enum/value rules as creation, and the service includes these behaviors:
@@ -709,7 +1282,7 @@ curl -X PATCH "{{API_BASE_URL}}/api/v1/vendor/products/{{product_id}}" \
   -d '{ ... }'
 ```
 
-The response is the updated `product.ProductDTO`. Inventory changes appear under `inventory`, and `media` may be `null` if no attachments remain. Each media object exposes `id`, `media_id`, `url`, `gcs_key`, `position`, and `created_at` so clients can trace the attachment back to the originating `media` row. Volume discounts mirror the new tier list with each entry returning `id`, `min_qty`, `discount_percent`, and `created_at`.
+The response is the updated `product.ProductDTO`. Inventory changes appear under `inventory`, and `media` may be `null` if no attachments remain. Each media object exposes `id`, `media_id`, `url`, `gcs_key`, `position`, and `created_at` so clients can trace the attachment back to the originating `media` row. Volume discounts mirror the new tier list with each entry returning `id`, `min_qty`, `discount_percent`, and `created_at`. If a COA is attached and ready, `coa_read_url` surfaces the signed GET link so the UI can fetch or embed those compliance assets.
 
 ### DELETE /api/v1/vendor/products/{productId}
 Removes the product, its inventory, volume discounts, and media cascading via FK constraints. The bearer must be a vendor member who owns (or is an allowed role on) the store; the controller checks `store_id` ownership before delegating to the service.

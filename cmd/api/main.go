@@ -196,7 +196,7 @@ func main() {
 	requireResource(ctx, logg, "store service", err)
 
 	productRepo := products.NewRepository(dbClient.DB())
-	productService, err := products.NewService(productRepo, dbClient, storeRepo, membershipsRepo, mediaRepo, attachmentReconciler)
+	productService, err := products.NewService(productRepo, dbClient, storeRepo, membershipsRepo, mediaRepo, attachmentReconciler, mediaService)
 	requireResource(ctx, logg, "product service", err)
 
 	cartRepo := cart.NewRepository(dbClient.DB())
