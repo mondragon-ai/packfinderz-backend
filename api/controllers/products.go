@@ -170,6 +170,172 @@ func VendorUpdateProduct(svc productsvc.Service, logg *logger.Logger) http.Handl
 	}
 }
 
+type updateProductRequest struct {
+	SKU                 *string                        `json:"sku,omitempty"`
+	Title               *string                        `json:"title,omitempty"`
+	Subtitle            *string                        `json:"subtitle,omitempty"`
+	BodyHTML            *string                        `json:"body_html,omitempty"`
+	Category            *string                        `json:"category,omitempty"`
+	Feelings            *[]string                      `json:"feelings,omitempty"`
+	Flavors             *[]string                      `json:"flavors,omitempty"`
+	Usage               *[]string                      `json:"usage,omitempty"`
+	Strain              *string                        `json:"strain,omitempty"`
+	Classification      *string                        `json:"classification,omitempty"`
+	Unit                *string                        `json:"unit,omitempty"`
+	MOQ                 *int                           `json:"moq,omitempty" validate:"omitempty,min=1"`
+	PriceCents          *int                           `json:"price_cents,omitempty" validate:"omitempty,min=0"`
+	CompareAtPriceCents *int                           `json:"compare_at_price_cents,omitempty" validate:"omitempty,min=0"`
+	IsActive            *bool                          `json:"is_active,omitempty"`
+	IsFeatured          *bool                          `json:"is_featured,omitempty"`
+	THCPercent          *float64                       `json:"thc_percent,omitempty" validate:"omitempty,gte=0,lte=100"`
+	CBDPercent          *float64                       `json:"cbd_percent,omitempty" validate:"omitempty,gte=0,lte=100"`
+	Inventory           *updateInventoryRequest        `json:"inventory,omitempty"`
+	MediaIDs            *[]string                      `json:"media_ids,omitempty"`
+	VolumeDiscounts     *[]updateVolumeDiscountRequest `json:"volume_discounts,omitempty"`
+	CoaMediaID          *string                        `json:"coa_media_id,omitempty"`
+	MaxQty              *int                           `json:"max_qty,omitempty" validate:"omitempty,min=0"`
+}
+
+func (r updateProductRequest) toUpdateInput() (productsvc.UpdateProductInput, error) {
+	var input productsvc.UpdateProductInput
+
+	if r.SKU != nil {
+		trimmed := strings.TrimSpace(*r.SKU)
+		if trimmed == "" {
+			return input, pkgerrors.New(pkgerrors.CodeValidation, "sku cannot be empty")
+		}
+		input.SKU = &trimmed
+	}
+	if r.Title != nil {
+		trimmed := strings.TrimSpace(*r.Title)
+		if trimmed == "" {
+			return input, pkgerrors.New(pkgerrors.CodeValidation, "title cannot be empty")
+		}
+		input.Title = &trimmed
+	}
+	if r.Subtitle != nil {
+		input.Subtitle = r.Subtitle
+	}
+	if r.BodyHTML != nil {
+		input.BodyHTML = r.BodyHTML
+	}
+	if r.Category != nil {
+		parsed, err := enums.ParseProductCategory(strings.TrimSpace(*r.Category))
+		if err != nil {
+			return input, pkgerrors.Wrap(pkgerrors.CodeValidation, err, "invalid category")
+		}
+		input.Category = &parsed
+	}
+	if r.Feelings != nil {
+		values, err := parseEnumStrings(*r.Feelings, enums.ParseProductFeeling)
+		if err != nil {
+			return input, err
+		}
+		input.Feelings = &values
+	}
+	if r.Flavors != nil {
+		values, err := parseEnumStrings(*r.Flavors, enums.ParseProductFlavor)
+		if err != nil {
+			return input, err
+		}
+		input.Flavors = &values
+	}
+	if r.Usage != nil {
+		values, err := parseEnumStrings(*r.Usage, enums.ParseProductUsage)
+		if err != nil {
+			return input, err
+		}
+		input.Usage = &values
+	}
+	if r.Strain != nil {
+		input.Strain = r.Strain
+	}
+	if r.Classification != nil {
+		parsed, err := enums.ParseProductClassification(strings.TrimSpace(*r.Classification))
+		if err != nil {
+			return input, pkgerrors.Wrap(pkgerrors.CodeValidation, err, "invalid classification")
+		}
+		input.Classification = &parsed
+	}
+	if r.Unit != nil {
+		parsed, err := enums.ParseProductUnit(strings.TrimSpace(*r.Unit))
+		if err != nil {
+			return input, pkgerrors.Wrap(pkgerrors.CodeValidation, err, "invalid unit")
+		}
+		input.Unit = &parsed
+	}
+	if r.MOQ != nil {
+		input.MOQ = r.MOQ
+	}
+	if r.PriceCents != nil {
+		input.PriceCents = r.PriceCents
+	}
+	if r.CompareAtPriceCents != nil {
+		input.CompareAtPriceCents = r.CompareAtPriceCents
+	}
+	if r.IsActive != nil {
+		input.IsActive = r.IsActive
+	}
+	if r.IsFeatured != nil {
+		input.IsFeatured = r.IsFeatured
+	}
+	if r.THCPercent != nil {
+		input.THCPercent = r.THCPercent
+	}
+	if r.CBDPercent != nil {
+		input.CBDPercent = r.CBDPercent
+	}
+
+	if r.Inventory != nil {
+		if r.Inventory.AvailableQty == nil || r.Inventory.ReservedQty == nil {
+			return input, pkgerrors.New(pkgerrors.CodeValidation, "inventory available_qty and reserved_qty are required")
+		}
+		if r.Inventory.LowStockThreshold == nil {
+			return input, pkgerrors.New(pkgerrors.CodeValidation, "inventory low_stock_threshold is required")
+		}
+		input.Inventory = &productsvc.InventoryInput{
+			AvailableQty:      *r.Inventory.AvailableQty,
+			ReservedQty:       *r.Inventory.ReservedQty,
+			LowStockThreshold: *r.Inventory.LowStockThreshold,
+		}
+	}
+
+	if r.MediaIDs != nil {
+		ids, err := parseUUIDList(*r.MediaIDs)
+		if err != nil {
+			return input, err
+		}
+		input.MediaIDs = &ids
+	}
+
+	if r.VolumeDiscounts != nil {
+		tiers := make([]productsvc.VolumeDiscountInput, len(*r.VolumeDiscounts))
+		for i, tier := range *r.VolumeDiscounts {
+			tiers[i] = productsvc.VolumeDiscountInput{
+				MinQty:          tier.MinQty,
+				DiscountPercent: tier.DiscountPercent,
+			}
+		}
+		input.VolumeDiscounts = &tiers
+	}
+
+	if r.CoaMediaID != nil {
+		coaID, err := parseOptionalUUID(r.CoaMediaID)
+		if err != nil {
+			return input, err
+		}
+		input.COAMediaID = coaID
+		input.COAMediaIDSet = true
+	}
+
+	if r.MaxQty != nil {
+		val := *r.MaxQty
+		input.MaxQty = &val
+	}
+
+	return input, nil
+}
+
 // VendorDeleteProduct removes an existing product owned by the active vendor store.
 func VendorDeleteProduct(svc productsvc.Service, logg *logger.Logger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -327,6 +493,48 @@ func BrowseProducts(svc productsvc.Service, storeSvc stores.Service, logg *logge
 	}
 }
 
+// ProductDetail returns the full product payload for the requested product ID.
+func ProductDetail(svc productsvc.Service, logg *logger.Logger) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if svc == nil {
+			responses.WriteError(r.Context(), logg, w, pkgerrors.New(pkgerrors.CodeInternal, "product service unavailable"))
+			return
+		}
+
+		productIDParam := strings.TrimSpace(chi.URLParam(r, "productId"))
+		if productIDParam == "" {
+			responses.WriteError(r.Context(), logg, w, pkgerrors.New(pkgerrors.CodeValidation, "product id is required"))
+			return
+		}
+
+		productID, err := uuid.Parse(productIDParam)
+		if err != nil {
+			responses.WriteError(r.Context(), logg, w, pkgerrors.Wrap(pkgerrors.CodeValidation, err, "invalid product id"))
+			return
+		}
+
+		storeID, err := parseStoreID(r)
+		if err != nil {
+			responses.WriteError(r.Context(), logg, w, err)
+			return
+		}
+
+		storeType, ok := middleware.StoreTypeFromContext(r.Context())
+		if !ok {
+			responses.WriteError(r.Context(), logg, w, pkgerrors.New(pkgerrors.CodeForbidden, "store type missing"))
+			return
+		}
+
+		product, err := svc.GetProductDetail(r.Context(), storeID, storeType, productID)
+		if err != nil {
+			responses.WriteError(r.Context(), logg, w, pkgerrors.Wrap(pkgerrors.CodeDependency, err, "load product detail"))
+			return
+		}
+
+		responses.WriteSuccess(w, product)
+	}
+}
+
 func VendorProductList(svc productsvc.Service, logg *logger.Logger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if svc == nil {
@@ -375,32 +583,6 @@ func VendorProductList(svc productsvc.Service, logg *logger.Logger) http.Handler
 
 		responses.WriteSuccess(w, list)
 	}
-}
-
-type updateProductRequest struct {
-	SKU                 *string                        `json:"sku,omitempty"`
-	Title               *string                        `json:"title,omitempty"`
-	Subtitle            *string                        `json:"subtitle,omitempty"`
-	BodyHTML            *string                        `json:"body_html,omitempty"`
-	Category            *string                        `json:"category,omitempty"`
-	Feelings            *[]string                      `json:"feelings,omitempty"`
-	Flavors             *[]string                      `json:"flavors,omitempty"`
-	Usage               *[]string                      `json:"usage,omitempty"`
-	Strain              *string                        `json:"strain,omitempty"`
-	Classification      *string                        `json:"classification,omitempty"`
-	Unit                *string                        `json:"unit,omitempty"`
-	MOQ                 *int                           `json:"moq,omitempty" validate:"omitempty,min=1"`
-	PriceCents          *int                           `json:"price_cents,omitempty" validate:"omitempty,min=0"`
-	CompareAtPriceCents *int                           `json:"compare_at_price_cents,omitempty" validate:"omitempty,min=0"`
-	IsActive            *bool                          `json:"is_active,omitempty"`
-	IsFeatured          *bool                          `json:"is_featured,omitempty"`
-	THCPercent          *float64                       `json:"thc_percent,omitempty" validate:"omitempty,gte=0,lte=100"`
-	CBDPercent          *float64                       `json:"cbd_percent,omitempty" validate:"omitempty,gte=0,lte=100"`
-	Inventory           *updateInventoryRequest        `json:"inventory,omitempty"`
-	MediaIDs            *[]string                      `json:"media_ids,omitempty"`
-	VolumeDiscounts     *[]updateVolumeDiscountRequest `json:"volume_discounts,omitempty"`
-	CoaMediaID          *string                        `json:"coa_media_id,omitempty"`
-	MaxQty              *int                           `json:"max_qty,omitempty" validate:"omitempty,min=0"`
 }
 
 type updateInventoryRequest struct {
@@ -504,145 +686,6 @@ func (r createProductRequest) toCreateInput() (productsvc.CreateProductInput, er
 	}, nil
 }
 
-func (r updateProductRequest) toUpdateInput() (productsvc.UpdateProductInput, error) {
-	var input productsvc.UpdateProductInput
-
-	if r.SKU != nil {
-		trimmed := strings.TrimSpace(*r.SKU)
-		if trimmed == "" {
-			return input, pkgerrors.New(pkgerrors.CodeValidation, "sku cannot be empty")
-		}
-		input.SKU = &trimmed
-	}
-	if r.Title != nil {
-		trimmed := strings.TrimSpace(*r.Title)
-		if trimmed == "" {
-			return input, pkgerrors.New(pkgerrors.CodeValidation, "title cannot be empty")
-		}
-		input.Title = &trimmed
-	}
-	if r.Subtitle != nil {
-		input.Subtitle = r.Subtitle
-	}
-	if r.BodyHTML != nil {
-		input.BodyHTML = r.BodyHTML
-	}
-	if r.Category != nil {
-		parsed, err := enums.ParseProductCategory(strings.TrimSpace(*r.Category))
-		if err != nil {
-			return input, pkgerrors.Wrap(pkgerrors.CodeValidation, err, "invalid category")
-		}
-		input.Category = &parsed
-	}
-	if r.Feelings != nil {
-		values, err := parseEnumStrings(*r.Feelings, enums.ParseProductFeeling)
-		if err != nil {
-			return input, err
-		}
-		input.Feelings = &values
-	}
-	if r.Flavors != nil {
-		values, err := parseEnumStrings(*r.Flavors, enums.ParseProductFlavor)
-		if err != nil {
-			return input, err
-		}
-		input.Flavors = &values
-	}
-	if r.Usage != nil {
-		values, err := parseEnumStrings(*r.Usage, enums.ParseProductUsage)
-		if err != nil {
-			return input, err
-		}
-		input.Usage = &values
-	}
-	if r.Strain != nil {
-		input.Strain = r.Strain
-	}
-	if r.Classification != nil {
-		parsed, err := enums.ParseProductClassification(strings.TrimSpace(*r.Classification))
-		if err != nil {
-			return input, pkgerrors.Wrap(pkgerrors.CodeValidation, err, "invalid classification")
-		}
-		input.Classification = &parsed
-	}
-	if r.Unit != nil {
-		parsed, err := enums.ParseProductUnit(strings.TrimSpace(*r.Unit))
-		if err != nil {
-			return input, pkgerrors.Wrap(pkgerrors.CodeValidation, err, "invalid unit")
-		}
-		input.Unit = &parsed
-	}
-	if r.MOQ != nil {
-		input.MOQ = r.MOQ
-	}
-	if r.PriceCents != nil {
-		input.PriceCents = r.PriceCents
-	}
-	if r.CompareAtPriceCents != nil {
-		input.CompareAtPriceCents = r.CompareAtPriceCents
-	}
-	if r.IsActive != nil {
-		input.IsActive = r.IsActive
-	}
-	if r.IsFeatured != nil {
-		input.IsFeatured = r.IsFeatured
-	}
-	if r.THCPercent != nil {
-		input.THCPercent = r.THCPercent
-	}
-	if r.CBDPercent != nil {
-		input.CBDPercent = r.CBDPercent
-	}
-
-	if r.Inventory != nil {
-		if r.Inventory.AvailableQty == nil || r.Inventory.ReservedQty == nil {
-			return input, pkgerrors.New(pkgerrors.CodeValidation, "inventory available_qty and reserved_qty are required")
-		}
-		if r.Inventory.LowStockThreshold == nil {
-			return input, pkgerrors.New(pkgerrors.CodeValidation, "inventory low_stock_threshold is required")
-		}
-		input.Inventory = &productsvc.InventoryInput{
-			AvailableQty:      *r.Inventory.AvailableQty,
-			ReservedQty:       *r.Inventory.ReservedQty,
-			LowStockThreshold: *r.Inventory.LowStockThreshold,
-		}
-	}
-
-	if r.MediaIDs != nil {
-		ids, err := parseUUIDList(*r.MediaIDs)
-		if err != nil {
-			return input, err
-		}
-		input.MediaIDs = &ids
-	}
-
-	if r.VolumeDiscounts != nil {
-		tiers := make([]productsvc.VolumeDiscountInput, len(*r.VolumeDiscounts))
-		for i, tier := range *r.VolumeDiscounts {
-			tiers[i] = productsvc.VolumeDiscountInput{
-				MinQty:          tier.MinQty,
-				DiscountPercent: tier.DiscountPercent,
-			}
-		}
-		input.VolumeDiscounts = &tiers
-	}
-
-	if r.CoaMediaID != nil {
-		coaID, err := parseOptionalUUID(r.CoaMediaID)
-		if err != nil {
-			return input, err
-		}
-		input.COAMediaID = coaID
-		input.COAMediaIDSet = true
-	}
-
-	if r.MaxQty != nil {
-		val := *r.MaxQty
-		input.MaxQty = &val
-	}
-
-	return input, nil
-}
 func parseEnumStrings[T interface{ String() string }](values []string, parser func(string) (T, error)) ([]string, error) {
 	result := make([]string, 0, len(values))
 	for _, value := range values {

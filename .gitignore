@@ -3,9 +3,11 @@
 .modcache/
 scripts/integration/out
 
-# Docs / agent config (DO NOT COMMIT)
+# Docs / 
 AGENTS.md
 docs/prompt_template.md
+fixtures/*
+scripts/integration/out
 
 # Env Vars
 .env

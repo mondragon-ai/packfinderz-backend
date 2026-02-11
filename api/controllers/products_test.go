@@ -106,6 +106,10 @@ func (s *stubDeleteProductService) DeleteProduct(ctx context.Context, userID uui
 	return nil
 }
 
+func (s *stubDeleteProductService) GetProductDetail(ctx context.Context, storeID uuid.UUID, storeType enums.StoreType, productID uuid.UUID) (*productsvc.ProductDTO, error) {
+	return nil, nil
+}
+
 func (*stubDeleteProductService) ListProducts(ctx context.Context, input productsvc.ListProductsInput) (*productsvc.ProductListResult, error) {
 	return nil, nil
 }
@@ -277,6 +281,102 @@ func TestVendorProductList(t *testing.T) {
 	})
 }
 
+func TestProductDetail(t *testing.T) {
+	logg := logger.New(logger.Options{ServiceName: "test", Level: logger.ParseLevel("debug"), Output: io.Discard})
+	storeID := uuid.New()
+	productID := uuid.New()
+
+	t.Run("invalid product id", func(t *testing.T) {
+		ctx := middleware.WithStoreID(context.Background(), storeID.String())
+		ctx = middleware.WithStoreType(ctx, enums.StoreTypeVendor)
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/products/invalid", nil)
+		routeCtx := chi.NewRouteContext()
+		routeCtx.URLParams.Add("productId", "not-a-uuid")
+		ctx = context.WithValue(ctx, chi.RouteCtxKey, routeCtx)
+		req = req.WithContext(ctx)
+
+		rec := httptest.NewRecorder()
+		ProductDetail(&stubProductDetailService{}, logg).ServeHTTP(rec, req)
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("expected 400 for invalid product id, got %d", rec.Code)
+		}
+	})
+
+	t.Run("missing store type", func(t *testing.T) {
+		ctx := middleware.WithStoreID(context.Background(), storeID.String())
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/products/"+productID.String(), nil)
+		routeCtx := chi.NewRouteContext()
+		routeCtx.URLParams.Add("productId", productID.String())
+		ctx = context.WithValue(ctx, chi.RouteCtxKey, routeCtx)
+		req = req.WithContext(ctx)
+
+		rec := httptest.NewRecorder()
+		ProductDetail(&stubProductDetailService{}, logg).ServeHTTP(rec, req)
+		if rec.Code != http.StatusForbidden {
+			t.Fatalf("expected 403 when store type missing, got %d", rec.Code)
+		}
+	})
+
+	t.Run("success", func(t *testing.T) {
+		ctx := middleware.WithStoreID(context.Background(), storeID.String())
+		ctx = middleware.WithStoreType(ctx, enums.StoreTypeVendor)
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/products/"+productID.String(), nil)
+		routeCtx := chi.NewRouteContext()
+		routeCtx.URLParams.Add("productId", productID.String())
+		ctx = context.WithValue(ctx, chi.RouteCtxKey, routeCtx)
+		req = req.WithContext(ctx)
+
+		stub := &stubProductDetailService{
+			result: &productsvc.ProductDTO{
+				ID:         productID,
+				SKU:        "sku",
+				Title:      "title",
+				Category:   "flower",
+				Feelings:   []string{},
+				Flavors:    []string{},
+				Usage:      []string{},
+				Unit:       "unit",
+				MOQ:        1,
+				PriceCents: 1000,
+				IsActive:   true,
+				IsFeatured: false,
+				Vendor: productsvc.VendorSummaryDTO{
+					StoreID:     storeID,
+					CompanyName: "Vendor Name",
+				},
+				MaxQty: 5,
+			},
+		}
+
+		rec := httptest.NewRecorder()
+		ProductDetail(stub, logg).ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Fatalf("expected 200 on success, got %d", rec.Code)
+		}
+
+		var envelope struct {
+			Data productsvc.ProductDTO `json:"data"`
+		}
+		if err := json.NewDecoder(rec.Body).Decode(&envelope); err != nil {
+			t.Fatalf("decode response: %v", err)
+		}
+
+		if envelope.Data.ID != productID {
+			t.Fatalf("expected product id %s, got %s", productID, envelope.Data.ID)
+		}
+		if stub.lastStoreID != storeID {
+			t.Fatalf("expected store id %s, got %s", storeID, stub.lastStoreID)
+		}
+		if stub.lastStoreType != enums.StoreTypeVendor {
+			t.Fatalf("expected vendor store type, got %s", stub.lastStoreType)
+		}
+		if stub.lastProductID != productID {
+			t.Fatalf("expected product id %s in service call, got %s", productID, stub.lastProductID)
+		}
+	})
+}
+
 type stubProductListService struct {
 	lastInput productsvc.ListProductsInput
 	result    *productsvc.ProductListResult
@@ -297,6 +397,29 @@ func (s *stubProductListService) DeleteProduct(ctx context.Context, userID uuid.
 
 func (s *stubProductListService) ListProducts(ctx context.Context, input productsvc.ListProductsInput) (*productsvc.ProductListResult, error) {
 	s.lastInput = input
+	if s.err != nil {
+		return nil, s.err
+	}
+	return s.result, nil
+}
+
+func (s *stubProductListService) GetProductDetail(ctx context.Context, storeID uuid.UUID, storeType enums.StoreType, productID uuid.UUID) (*productsvc.ProductDTO, error) {
+	return nil, nil
+}
+
+type stubProductDetailService struct {
+	stubProductListService
+	lastStoreID   uuid.UUID
+	lastStoreType enums.StoreType
+	lastProductID uuid.UUID
+	result        *productsvc.ProductDTO
+	err           error
+}
+
+func (s *stubProductDetailService) GetProductDetail(ctx context.Context, storeID uuid.UUID, storeType enums.StoreType, productID uuid.UUID) (*productsvc.ProductDTO, error) {
+	s.lastStoreID = storeID
+	s.lastStoreType = storeType
+	s.lastProductID = productID
 	if s.err != nil {
 		return nil, s.err
 	}

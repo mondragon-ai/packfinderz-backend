@@ -211,6 +211,7 @@ func NewRouter(
 			})
 
 			r.Get("/v1/products", controllers.BrowseProducts(productService, storeService, logg))
+			r.Get("/v1/products/{productId}", controllers.ProductDetail(productService, logg))
 
 			r.Route("/v1/cart", func(r chi.Router) {
 				r.Get("/", cartcontrollers.CartFetch(cartService, logg))

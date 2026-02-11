@@ -21,6 +21,7 @@ type Service interface {
 	UpdateProduct(ctx context.Context, userID, storeID, productID uuid.UUID, input UpdateProductInput) (*ProductDTO, error)
 	DeleteProduct(ctx context.Context, userID, storeID, productID uuid.UUID) error
 	ListProducts(ctx context.Context, input ListProductsInput) (*ProductListResult, error)
+	GetProductDetail(ctx context.Context, storeID uuid.UUID, storeType enums.StoreType, productID uuid.UUID) (*ProductDTO, error)
 }
 
 // CreateProductInput holds the validated payload to create a product.
@@ -61,34 +62,6 @@ type InventoryInput struct {
 type VolumeDiscountInput struct {
 	MinQty          int
 	DiscountPercent float64
-}
-
-// UpdateProductInput holds optional mutation values for a product.
-type UpdateProductInput struct {
-	SKU                 *string
-	Title               *string
-	Subtitle            *string
-	BodyHTML            *string
-	Category            *enums.ProductCategory
-	Feelings            *[]string
-	Flavors             *[]string
-	Usage               *[]string
-	Strain              *string
-	Classification      *enums.ProductClassification
-	Unit                *enums.ProductUnit
-	MOQ                 *int
-	PriceCents          *int
-	CompareAtPriceCents *int
-	IsActive            *bool
-	IsFeatured          *bool
-	THCPercent          *float64
-	CBDPercent          *float64
-	Inventory           *InventoryInput
-	MediaIDs            *[]uuid.UUID
-	VolumeDiscounts     *[]VolumeDiscountInput
-	MaxQty              *int
-	COAMediaID          *uuid.UUID
-	COAMediaIDSet       bool
 }
 
 type storeLoader interface {
@@ -266,6 +239,34 @@ func (s *service) CreateProduct(ctx context.Context, userID, storeID uuid.UUID, 
 	return NewProductDTO(product, summary), nil
 }
 
+// UpdateProductInput holds optional mutation values for a product.
+type UpdateProductInput struct {
+	SKU                 *string
+	Title               *string
+	Subtitle            *string
+	BodyHTML            *string
+	Category            *enums.ProductCategory
+	Feelings            *[]string
+	Flavors             *[]string
+	Usage               *[]string
+	Strain              *string
+	Classification      *enums.ProductClassification
+	Unit                *enums.ProductUnit
+	MOQ                 *int
+	PriceCents          *int
+	CompareAtPriceCents *int
+	IsActive            *bool
+	IsFeatured          *bool
+	THCPercent          *float64
+	CBDPercent          *float64
+	Inventory           *InventoryInput
+	MediaIDs            *[]uuid.UUID
+	VolumeDiscounts     *[]VolumeDiscountInput
+	MaxQty              *int
+	COAMediaID          *uuid.UUID
+	COAMediaIDSet       bool
+}
+
 // UpdateProduct updates an existing product and related rows.
 func (s *service) UpdateProduct(ctx context.Context, userID, storeID, productID uuid.UUID, input UpdateProductInput) (*ProductDTO, error) {
 
@@ -279,6 +280,13 @@ func (s *service) UpdateProduct(ctx context.Context, userID, storeID, productID 
 		if err := validateLowStockThreshold(input.Inventory.LowStockThreshold); err != nil {
 			return nil, err
 		}
+	}
+
+	fmt.Printf("[UpdateProduct] COA set? %v COA id nil? %v\n", input.COAMediaIDSet, input.COAMediaID == nil)
+	if input.MediaIDs == nil {
+		fmt.Printf("[UpdateProduct] MediaIDs = nil (field omitted)\n")
+	} else {
+		fmt.Printf("[UpdateProduct] MediaIDs provided, len=%d\n", len(*input.MediaIDs))
 	}
 
 	if input.Inventory != nil {
@@ -464,6 +472,50 @@ func (s *service) ListProducts(ctx context.Context, input ListProductsInput) (*P
 	}
 }
 
+// GetProductDetail returns the detailed product payload considering the requesting store context.
+func (s *service) GetProductDetail(ctx context.Context, storeID uuid.UUID, storeType enums.StoreType, productID uuid.UUID) (*ProductDTO, error) {
+	product, summary, err := s.repo.GetProductDetail(ctx, productID)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, pkgerrors.New(pkgerrors.CodeNotFound, "product not found")
+		}
+		return nil, pkgerrors.Wrap(pkgerrors.CodeDependency, err, "load product detail")
+	}
+
+	switch storeType {
+	case enums.StoreTypeVendor:
+		if err := s.ensureVendorStore(ctx, storeID); err != nil {
+			return nil, err
+		}
+		if product.StoreID != storeID {
+			return nil, pkgerrors.New(pkgerrors.CodeForbidden, "product does not belong to store")
+		}
+	case enums.StoreTypeBuyer:
+		if err := s.ensureBuyerStore(ctx, storeID); err != nil {
+			return nil, err
+		}
+		if !product.IsActive {
+			return nil, pkgerrors.New(pkgerrors.CodeNotFound, "product not found")
+		}
+		vendorStore, err := s.storeRepo.FindByID(ctx, product.StoreID)
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return nil, pkgerrors.New(pkgerrors.CodeNotFound, "product not found")
+			}
+			return nil, pkgerrors.Wrap(pkgerrors.CodeDependency, err, "load vendor store")
+		}
+		if vendorStore.Type != enums.StoreTypeVendor ||
+			vendorStore.KYCStatus != enums.KYCStatusVerified ||
+			!vendorStore.SubscriptionActive {
+			return nil, pkgerrors.New(pkgerrors.CodeNotFound, "product not available")
+		}
+	default:
+		return nil, pkgerrors.New(pkgerrors.CodeForbidden, "unsupported store type")
+	}
+
+	return NewProductDTO(product, summary), nil
+}
+
 func (s *service) ensureVendorStore(ctx context.Context, storeID uuid.UUID) error {
 	store, err := s.storeRepo.FindByID(ctx, storeID)
 	if err != nil {
@@ -474,6 +526,20 @@ func (s *service) ensureVendorStore(ctx context.Context, storeID uuid.UUID) erro
 	}
 	if store.Type != enums.StoreTypeVendor {
 		return pkgerrors.New(pkgerrors.CodeForbidden, "store is not a vendor")
+	}
+	return nil
+}
+
+func (s *service) ensureBuyerStore(ctx context.Context, storeID uuid.UUID) error {
+	store, err := s.storeRepo.FindByID(ctx, storeID)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return pkgerrors.New(pkgerrors.CodeNotFound, "store not found")
+		}
+		return pkgerrors.Wrap(pkgerrors.CodeDependency, err, "load store")
+	}
+	if store.Type != enums.StoreTypeBuyer {
+		return pkgerrors.New(pkgerrors.CodeForbidden, "store is not a buyer")
 	}
 	return nil
 }

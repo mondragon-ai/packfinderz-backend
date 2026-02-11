@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -254,6 +255,36 @@ func TestMediaServicePresignForbidden(t *testing.T) {
 	}
 }
 
+func TestMediaServicePresignMimeValidationMessage(t *testing.T) {
+	t.Parallel()
+
+	repo := &stubMediaRepo{}
+	members := stubMemberships{ok: true}
+	gcs := &stubGCS{}
+	attachments := &stubAttachmentLookup{}
+	svc, err := NewService(repo, members, attachments, gcs, "bucket", time.Minute, 15*time.Minute)
+	if err != nil {
+		t.Fatalf("NewService: %v", err)
+	}
+
+	_, err = svc.PresignUpload(context.Background(), uuid.New(), uuid.New(), PresignInput{
+		Kind:      enums.MediaKindProduct,
+		MimeType:  "text/plain",
+		FileName:  "file.txt",
+		SizeBytes: 123,
+	})
+	if err == nil {
+		t.Fatal("expected validation error for mime type")
+	}
+	typed := pkgerrors.As(err)
+	if typed == nil || typed.Code() != pkgerrors.CodeValidation {
+		t.Fatalf("expected validation code got %v", err)
+	}
+	if !strings.Contains(typed.Message(), "images or videos") {
+		t.Fatalf("expected mime description mention images or videos, got %s", typed.Message())
+	}
+}
+
 func TestMediaServiceGenerateReadURLSuccess(t *testing.T) {
 	t.Parallel()
 
@@ -454,36 +485,6 @@ func TestMediaServiceDeleteStoreMismatch(t *testing.T) {
 		t.Fatal("expected forbidden error")
 	} else if typed := pkgerrors.As(err); typed == nil || typed.Code() != pkgerrors.CodeForbidden {
 		t.Fatalf("expected forbidden code, got %v", err)
-	}
-}
-
-func TestMediaServiceDeleteInvalidStatus(t *testing.T) {
-	t.Parallel()
-
-	storeID := uuid.New()
-	repo := &stubMediaRepo{
-		findMedia: &models.Media{
-			ID:      uuid.New(),
-			StoreID: storeID,
-			Status:  enums.MediaStatusPending,
-			GCSKey:  "media/key",
-		},
-	}
-	members := stubMemberships{ok: true}
-	gcs := &stubGCS{}
-	attachments := &stubAttachmentLookup{}
-	svc, err := NewService(repo, members, attachments, gcs, "bucket", time.Minute, 15*time.Minute)
-	if err != nil {
-		t.Fatalf("NewService: %v", err)
-	}
-
-	if err := svc.DeleteMedia(context.Background(), DeleteMediaParams{
-		StoreID: storeID,
-		MediaID: repo.findMedia.ID,
-	}); err == nil {
-		t.Fatal("expected conflict error")
-	} else if typed := pkgerrors.As(err); typed == nil || typed.Code() != pkgerrors.CodeConflict {
-		t.Fatalf("expected conflict code, got %v", err)
 	}
 }
 

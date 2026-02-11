@@ -322,74 +322,35 @@
 * **Phase 11 — Billing + Subscriptions + Square (Production-Ready)**
   **Goal:** Replace Square stubs with real API integrations, add plan + card + subscription primitives, reconcile via webhooks, and implement nightly ad usage billing into `usage_charges`/`subscriptions` with proper guards and logging.
 
-  * [ ] Ticket [PF-255]: Finalize the Implemention of `pkg/square` wrapper (shared) with: auth/env config, idempotency key conventions, request/response logging w/ strict redaction, and unified error mapping
-  * [ ] Ticket [PF-XXX]: Replace `internal/subscriptions/square_client.go` stub with real Square-backed client behind an interface (keep stub only for tests); refactor `internal/subscriptions.Service` to use `pkg/square` wrapper
+  * [x] Ticket [PF-255]: Finalize the Implemention of `pkg/square` wrapper (shared) with: auth/env config, idempotency key conventions, request/response logging w/ strict redaction, and unified error mapping
+  * [x] Ticket [PF-256]: Replace `internal/subscriptions/square_client.go` stub with real Square-backed client behind an interface (keep stub only for tests); refactor `internal/subscriptions.Service` to use `pkg/square` wrapper
 
-  * [ ] Ticket [PF-XXX]: Add Goose migration(s) + model updates to persist Square identifiers required for billing flows (at minimum `stores.square_customer_id`; optionally store-level billing state for past_due/disabled_ads) and wire into store repo helpers
+  * [x] Ticket [PF-257]: Add Goose migration(s) + model updates to persist Square identifiers required for billing flows (at minimum `stores.square_customer_id`; optionally store-level billing state for past_due/disabled_ads) and wire into store repo helpers
 
-  * [ ] Ticket [PF-XXX]: Refactor/extend `subscriptions` persistence to enforce **0..1 subscription per store** (unique `store_id`) and add missing subscription linkage fields (`billing_plan_id`, `square_customer_id`, `square_card_id`, lifecycle timestamps) while preserving existing data where possible
+  * [x] Ticket [PF-258]: Refactor/extend `subscriptions` persistence to enforce **0..1 subscription per store** (unique `store_id`) and add missing subscription linkage fields (`billing_plan_id`, `square_customer_id`, `square_card_id`, lifecycle timestamps) while preserving existing data where possible
 
-  * [ ] Ticket [PF-XXX]: Implement Square customer creation flow: service helper + endpoint (admin/internal) AND integrate into `POST /api/v1/auth/register` (idempotent create-or-fetch; compensation strategy for partial failures)
+  * [x] Ticket [PF-259]: Implement Square customer creation flow: service helper + endpoint (admin/internal) AND integrate into `POST /api/v1/auth/register` (idempotent create-or-fetch; compensation strategy for partial failures)
 
-  * [ ] Ticket [PF-XXX]: Implement card-on-file flow end-to-end: Next.js Square Web Payments SDK tokenization → backend endpoint to create/store card in Square (Cards API) → upsert `payment_methods` row (last4/brand/exp/status) with a clear “one active/default card per store” policy (migration if needed)
+  * [x] Ticket [PF-260]: Implement card-on-file flow end-to-end: Next.js Square Web Payments SDK tokenization → backend endpoint to create/store card in Square (Cards API) → upsert `payment_methods` row (last4/brand/exp/status) with a clear “one active/default card per store” policy (migration if needed)
 
 
-  * [ ] Ticket [PF-XXX]: Add `billing_plans` table + GORM model + repo/service (local source-of-truth for plans with Square mapping IDs, interval/price/trial, status, is_default, and UI metadata JSON) + indexes (`status`, `is_default`, `square_*`)
-  ```ts
-  export type BillingInterval = "EVERY_30_DAYS" | "ANNUAL";
-  export type BillingCurrencyCode = "USD" | "BRL" | "EUR" | "GBP" | string;
+  * [x] Ticket [PF-261]: Add `billing_plans` table + GORM model + repo/service (local source-of-truth for plans with Square mapping IDs, interval/price/trial, status, is_default, and UI metadata JSON) + indexes (`status`, `is_default`, `square_*`)
+  * [x] Ticket [PF-262]: Implement BillingPlan APIs: admin CRUD (create/update/disable) + vendor read-only list/get of active plans;
+  * [x] Ticket [PF-263]: Implement vendor subscription lifecycle endpoints using stored customer+card+plan mapping: create (requires active card + selected plan), get current, cancel, pause, resume; persist state transitions and keep `store.SubscriptionActive` aligned
+  * [x] Ticket [PF-264]: Harden Square webhook reconciliation: expand `subscription.*` + relevant `invoice.*` handling, keep Redis idempotency guard, fix brittle `store_id` metadata dependency (fallback lookup by `square_subscription_id`), and make status mapping forward-compatible (no hard-fail on new statuses)
+  * [ ] Ticket [PF-265]: Make `charges` real: implement Square payment creation for ad usage billing and persist outcomes into `usage_charges` with consistent typing/status enums and pagination support via existing `/vendor/billing/charges`
+  * [ ] Ticket [PF-266]: Implement nightly ad usage billing worker job (inside existing worker binary): roll up per-store ad spend from your counters, charge via Square using card-on-file, write `usage_charges` rows, and apply failure policy (mark past_due/disable ads/retry hooks)
+  * [x] Ticket [PF-267]: Add billing permissions + security guards: admin-only plan management; vendor role restrictions for card + subscription actions; enforce PII redaction rules in logs for all billing payloads (API + worker + webhook paths)
 
-  export type PlanStatus = "active" | "deprecated" | "hidden";
+* **Phase 12 — Address**
+  **Goal:** Auto suggest and validate addresses with Google Maps for valid addresses and lat/long mapping
+  * [x] Ticket [PF-168]: Integrate Google Maps API config and reusable pkg-level client
+  * [x] Ticket [PF-169]: Add public address suggest and resolve HTTP endpoints
 
-  export interface Money {
-    amount: string; // decimal as string to avoid float bugs ("9.99")
-    currency_code: BillingCurrencyCode;
-  }
-
-  export interface Trial {
-    days: number; // 0 means no trial
-    require_payment_method?: boolean; // some apps still want card on file even during trial
-    start_on_activation?: boolean; // usually true
-  }
-
-  export interface SubscriptionComponent {
-    interval: BillingInterval;
-    price: Money;
-    // Optional: metadata for UI / feature gating
-    features?: string[];
-  }
-  export interface BillingPlan {
-    id: string; // internal stable plan id, e.g. "starter_v1"
-    name: string; // merchant-facing
-    status: PlanStatus;
-
-    // Common toggles
-    test?: boolean; // Shopify test charges in dev stores
-    trial?: Trial;
-
-    // Components
-    subscription: SubscriptionComponent;
-
-    // Plan selection / migration controls
-    is_default?: boolean;
-    created_at?: string; // ISO
-    updated_at?: string; // ISO
-
-    // Used by embed/config UI
-    ui?: {
-      badge?: "popular" | "best_value" | "new";
-      description?: string;
-      bullets?: string[];
-    };
-  }
-
-  ```
-  * [ ] Ticket [PF-XXX]: Implement BillingPlan APIs: admin CRUD (create/update/disable) + vendor read-only list/get of active plans;
-  * [ ] Ticket [PF-XXX]: Implement vendor subscription lifecycle endpoints using stored customer+card+plan mapping: create (requires active card + selected plan), get current, cancel, pause, resume; persist state transitions and keep `store.SubscriptionActive` aligned
-  * [ ] Ticket [PF-XXX]: Harden Square webhook reconciliation: expand `subscription.*` + relevant `invoice.*` handling, keep Redis idempotency guard, fix brittle `store_id` metadata dependency (fallback lookup by `square_subscription_id`), and make status mapping forward-compatible (no hard-fail on new statuses)
-  * [ ] Ticket [PF-XXX]: Make `charges` real: implement Square payment creation for ad usage billing and persist outcomes into `usage_charges` with consistent typing/status enums and pagination support via existing `/vendor/billing/charges`
-  * [ ] Ticket [PF-XXX]: Implement nightly ad usage billing worker job (inside existing worker binary): roll up per-store ad spend from your counters, charge via Square using card-on-file, write `usage_charges` rows, and apply failure policy (mark past_due/disable ads/retry hooks)
-  * [ ] Ticket [PF-XXX]: Add billing permissions + security guards: admin-only plan management; vendor role restrictions for card + subscription actions; enforce PII redaction rules in logs for all billing payloads (API + worker + webhook paths)
+* **Phase 13 — TESTING**
+  **Goal:** Bash scripts to test happy and failure paths of endpoints
+  * [x] Ticket [PF-268]: Media Upload flow: all media types and reject mime types
+  * [x] Ticket [PF-269]: Update products + add media images
 
 
 ---
@@ -527,62 +488,6 @@
   **Goal:** Convenience endpoints that don’t affect authoritative finance state.
 
   * [ ] Ticket [PF-297]: Implement optional vendor “confirm paid” endpoint (audited; non-authoritative)
-
-* **Phase 6 — Google Maps & Autocompelte suggestions & lat / long**
-
-  > Scope + Wiring Plan: Lock in the minimal API contract + placement in your repo so implementation doesn’t thrash.
-
-  * [ ] Ticket: Decide domain location + package boundaries (`internal/address`, `api/controllers/address` vs keeping in `api/controllers`), and document it in a short `internal/address/README.md`
-  * [ ] Ticket: Define public API contract for address autocomplete: query params, request/response JSON, error shapes, and session token handling expectations
-  * [ ] Ticket: Add config keys to `config.Config` (`GoogleMaps.APIKey`) and env var mapping (`GOOGLE_MAPS_API_KEY`), including local/dev defaults behavior
-  * [ ] Ticket: Add service interface definition (Suggest/Resolve) and DTO types (`AddressSuggestion`, `AddressResolveRequest/Response`) in the chosen package(s)
-
-  >  Google Places Client (Low-level HTTP): Implement the Google REST client that can autocomplete and resolve a Place into your `Address` DTO.
-
-  * [ ] Ticket: Implement `GooglePlacesClient` constructor and shared HTTP client config (timeouts, headers, base URLs)
-  * [ ] Ticket: Implement Places Autocomplete (New) client method (POST `places:autocomplete`) returning normalized `[]AddressSuggestion`
-  * [ ] Ticket: Implement Place Details (New) client method (GET `places/{placeId}` with `X-Goog-FieldMask`) returning raw details payload
-  * [ ] Ticket: Implement mapper `mapAddressComponents → Address` to produce your `Address` struct (line1/line2/city/state/postal/country)
-  * [ ] Ticket: Add error handling for non-2xx responses (parse body to string, return typed error that includes status code)
-
-  > Address Service Layer: Wrap the Google client in a small internal service with stable method signatures for controllers.
-
-  * [ ] Ticket: Create `internal/address/service.go` implementing `Suggest(ctx, query, sessionToken)` and `Resolve(ctx, placeID, sessionToken)`
-  * [ ] Ticket: Add input sanitation rules in service (trim, min length guard, optional US-only restriction)
-  * [ ] Ticket: Add optional knobs (in code constants or config) for `regionCode`, `includedRegionCodes`, `includedPrimaryTypes`, `languageCode`
-
-  > Public API Controllers: Expose endpoints usable during registration (no auth) with correct JSON I/O.
-
-  * [ ] Ticket: Implement controller `PublicAddressSuggest` (GET) reading `q` + `session_token`, returning `{suggestions, session_token}`
-  * [ ] Ticket: Implement controller `PublicAddressResolve` (POST) reading `{place_id, session_token}`, returning `{address}`
-  * [ ] Ticket: Standardize controller error responses (400 vs 502) and logging fields (query length, place_id, google status code)
-  * [ ] Ticket: Add request timeouts in handlers (context deadlines consistent with your patterns)
-
-  > Router + Dependency Injection: Wire endpoints into your existing router and composition root cleanly.
-
-  * [ ] Ticket: Add new routes under `/api/public/address/*` in router
-  * [ ] Ticket: Add `addressService` dependency to `NewRouter(...)` signature and wire through call sites
-  * [ ] Ticket: Instantiate `GooglePlacesClient` and `address.Service` in your composition root using `cfg.GoogleMaps.APIKey`
-  * [ ] Ticket: Add startup validation/health hint (optional log warning if API key missing in non-prod)
-
-  > Rate Limiting + Abuse Controls: Prevent API key burn and scraping while keeping UX responsive.
-
-  * [ ] Ticket: Add rate limit middleware or policy for `/api/public/address/*` (separate from auth rate policies)
-  * [ ] Ticket: Add minimum query length guard (`len(q) >= 3`) and empty-response behavior for short queries
-  * [ ] Ticket: Add basic request validation constraints (max query length; max body size for resolve)
-
-  > Tests + Local Verification: Ensure the feature is reliable and doesn’t regress.
-
-  * [ ] Ticket: Unit test `mapAddressComponents` mapping logic with representative component sets (street_number/route/locality/state/postal/country/subpremise)
-  * [ ] Ticket: Unit test service Suggest/Resolve using an injected HTTP client transport stub (fake Google responses)
-  * [ ] Ticket: Controller tests for both endpoints (400 validation, 200 success, 502 upstream failure)
-  * [ ] Ticket: Add a minimal manual test script (curl examples) for suggest + resolve and expected shapes
-
-  > Integration Notes for Frontend (Non-code or small docs): Make frontend usage deterministic for registration flows.
-
-  * [ ] Ticket: Document the frontend session-token lifecycle + debounce expectations (generate token on focus; reuse for suggest; send with resolve; discard after selection)
-  * [ ] Ticket: Document how resolved `Address` is intended to populate the registration DTO fields and be submitted as-is
-
 
 ---
 

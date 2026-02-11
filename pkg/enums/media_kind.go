@@ -1,6 +1,8 @@
 package enums
 
-import "fmt"
+import (
+	"fmt"
+)
 
 // MediaKind defines where the media object is used.
 type MediaKind string

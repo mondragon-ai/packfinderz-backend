@@ -121,17 +121,6 @@ type PresignOutput struct {
 	ExpiresAt    time.Time `json:"expires_at"`
 }
 
-var mimeTypesByKind = map[enums.MediaKind][]string{
-	enums.MediaKindProduct:    {"image/png", "image/jpeg", "image/webp", "image/gif", "video/mp4", "video/webm"},
-	enums.MediaKindAds:        {"image/png", "image/jpeg", "image/webp", "image/gif", "video/mp4", "video/webm"},
-	enums.MediaKindPDF:        {"application/pdf"},
-	enums.MediaKindLicenseDoc: {"application/pdf"},
-	enums.MediaKindCOA:        {"application/pdf"},
-	enums.MediaKindManifest:   {"application/pdf"},
-	enums.MediaKindUser:       {"image/png", "image/jpeg", "image/webp"},
-	// MediaKindOther is intentionally absent to allow any mime type.
-}
-
 func (s *service) PresignUpload(ctx context.Context, userID, storeID uuid.UUID, input PresignInput) (*PresignOutput, error) {
 	if userID == uuid.Nil {
 		return nil, pkgerrors.New(pkgerrors.CodeValidation, "user identity missing")
@@ -160,8 +149,14 @@ func (s *service) PresignUpload(ctx context.Context, userID, storeID uuid.UUID, 
 	if mimeType == "" {
 		return nil, pkgerrors.New(pkgerrors.CodeValidation, "mime_type is required")
 	}
+	var err error
+	mimeType, err = sniffMimeType(mimeType)
+	if err != nil {
+		return nil, pkgerrors.New(pkgerrors.CodeValidation, err.Error())
+	}
 	if !isAllowedMime(input.Kind, mimeType) {
-		return nil, pkgerrors.New(pkgerrors.CodeValidation, "mime_type not allowed for media kind")
+		return nil, pkgerrors.New(pkgerrors.CodeValidation,
+			fmt.Sprintf("%s uploads only accept %s", input.Kind, allowedMimeDescription(input.Kind)))
 	}
 
 	ok, err := s.memberships.UserHasRole(ctx, userID, storeID, s.allowedRoles...)
@@ -280,14 +275,6 @@ func (s *service) DeleteMedia(ctx context.Context, params DeleteMediaParams) err
 		return pkgerrors.New(pkgerrors.CodeForbidden, "media does not belong to active store")
 	}
 
-	if mediaRow.Status == enums.MediaStatusDeleted {
-		return nil
-	}
-
-	if !isReadableStatus(mediaRow.Status) {
-		return pkgerrors.New(pkgerrors.CodeConflict, "media not available for deletion")
-	}
-
 	attachments, err := s.attachments.ListByMediaID(ctx, mediaRow.ID)
 	if err != nil {
 		return pkgerrors.Wrap(pkgerrors.CodeDependency, err, "load media attachments")
@@ -299,6 +286,10 @@ func (s *service) DeleteMedia(ctx context.Context, params DeleteMediaParams) err
 
 	if err := s.gcs.DeleteObject(ctx, s.bucket, mediaRow.GCSKey); err != nil {
 		return pkgerrors.Wrap(pkgerrors.CodeDependency, err, "delete gcs object")
+	}
+
+	if err = s.repo.Delete(ctx, mediaRow.ID); err != nil {
+		return pkgerrors.Wrap(pkgerrors.CodeDependency, err, "could not delete object")
 	}
 
 	return nil
@@ -330,15 +321,17 @@ func protectedAttachmentEntities(attachments []models.MediaAttachment) []string 
 }
 
 func isAllowedMime(kind enums.MediaKind, mimeType string) bool {
-	if allowed, ok := mimeTypesByKind[kind]; ok && len(allowed) > 0 {
+	if mimeType == "" {
+		return false
+	}
+	if allowed, ok := mimeTypesByKind[kind]; ok {
 		for _, candidate := range allowed {
 			if strings.EqualFold(candidate, mimeType) {
 				return true
 			}
 		}
-		return false
 	}
-	return true
+	return false
 }
 
 func buildGCSKey(storeID uuid.UUID, kind enums.MediaKind, id uuid.UUID, fileName string) string {
