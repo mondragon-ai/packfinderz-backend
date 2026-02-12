@@ -2,6 +2,7 @@ package billing
 
 import (
 	"context"
+	"time"
 
 	"github.com/angelmondragon/packfinderz-backend/pkg/db/models"
 	"github.com/angelmondragon/packfinderz-backend/pkg/enums"
@@ -15,6 +16,7 @@ type Repository interface {
 	WithTx(tx *gorm.DB) Repository
 	CreateSubscription(ctx context.Context, subscription *models.Subscription) error
 	UpdateSubscription(ctx context.Context, subscription *models.Subscription) error
+	ListSubscriptionsForReconciliation(ctx context.Context, limit int, lookback time.Duration) ([]models.Subscription, error)
 	ListSubscriptionsByStore(ctx context.Context, storeID uuid.UUID) ([]models.Subscription, error)
 	FindSubscription(ctx context.Context, storeID uuid.UUID) (*models.Subscription, error)
 	FindSubscriptionBySquareID(ctx context.Context, squareSubscriptionID string) (*models.Subscription, error)
@@ -69,6 +71,36 @@ func (r *repository) ListSubscriptionsByStore(ctx context.Context, storeID uuid.
 		Where("store_id = ?", storeID).
 		Order("created_at DESC").
 		Find(&subs).Error; err != nil {
+		return nil, err
+	}
+	return subs, nil
+}
+
+func (r *repository) ListSubscriptionsForReconciliation(ctx context.Context, limit int, lookback time.Duration) ([]models.Subscription, error) {
+	if limit <= 0 {
+		limit = 250
+	}
+	if lookback <= 0 {
+		lookback = 7 * 24 * time.Hour
+	}
+	cutoff := time.Now().UTC().Add(-lookback)
+	statuses := []enums.SubscriptionStatus{
+		enums.SubscriptionStatusActive,
+		enums.SubscriptionStatusTrialing,
+		enums.SubscriptionStatusPastDue,
+		enums.SubscriptionStatusIncomplete,
+		enums.SubscriptionStatusIncompleteExpired,
+		enums.SubscriptionStatusUnpaid,
+		enums.SubscriptionStatusPaused,
+	}
+	var subs []models.Subscription
+	query := r.db.WithContext(ctx).
+		Model(&models.Subscription{}).
+		Where("square_subscription_id <> ''").
+		Where("(status IN (?) OR cancel_at_period_end OR pause_effective_at IS NOT NULL OR current_period_end >= ?)", statuses, cutoff).
+		Order("updated_at DESC").
+		Limit(limit)
+	if err := query.Find(&subs).Error; err != nil {
 		return nil, err
 	}
 	return subs, nil

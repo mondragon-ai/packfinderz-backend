@@ -29,6 +29,9 @@ func (s *stubRepo) UpdateSubscription(ctx context.Context, subscription *models.
 func (s *stubRepo) ListSubscriptionsByStore(ctx context.Context, storeID uuid.UUID) ([]models.Subscription, error) {
 	return nil, nil
 }
+func (s *stubRepo) ListSubscriptionsForReconciliation(ctx context.Context, limit int, lookback time.Duration) ([]models.Subscription, error) {
+	return nil, nil
+}
 func (s *stubRepo) FindSubscription(ctx context.Context, storeID uuid.UUID) (*models.Subscription, error) {
 	return nil, nil
 }

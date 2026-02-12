@@ -20,6 +20,8 @@ type Subscription struct {
 	Status               enums.SubscriptionStatus `gorm:"column:status;type:subscription_status;not null;default:'active'"`
 	PriceID              *string                  `gorm:"column:price_id"`
 	PausedAt             *time.Time               `gorm:"column:paused_at"`
+	PauseEffectiveAt     *time.Time               `gorm:"column:pause_effective_at"`
+	ResumeEffectiveAt    *time.Time               `gorm:"column:resume_effective_at"`
 	CurrentPeriodStart   *time.Time               `gorm:"column:current_period_start"`
 	CurrentPeriodEnd     time.Time                `gorm:"column:current_period_end;not null"`
 	CancelAtPeriodEnd    bool                     `gorm:"column:cancel_at_period_end;not null;default:false"`

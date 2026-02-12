@@ -3,6 +3,7 @@ package paymentmethods
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/angelmondragon/packfinderz-backend/internal/billing"
 	"github.com/angelmondragon/packfinderz-backend/pkg/db/models"
@@ -185,6 +186,10 @@ func (s *stubBillingRepo) CreateUsageCharge(ctx context.Context, usage *models.U
 	return nil
 }
 func (s *stubBillingRepo) ListUsageChargesByStore(ctx context.Context, storeID uuid.UUID) ([]models.UsageCharge, error) {
+	return nil, nil
+}
+
+func (s *stubBillingRepo) ListSubscriptionsForReconciliation(ctx context.Context, limit int, lookback time.Duration) ([]models.Subscription, error) {
 	return nil, nil
 }
 

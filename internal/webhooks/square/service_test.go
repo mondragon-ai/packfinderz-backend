@@ -3,6 +3,7 @@ package squarewebhook
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/angelmondragon/packfinderz-backend/internal/billing"
 	"github.com/angelmondragon/packfinderz-backend/internal/subscriptions"
@@ -187,6 +188,10 @@ func (s *stubBillingRepo) ListUsageChargesByStore(ctx context.Context, storeID u
 	return nil, nil
 }
 
+func (s *stubBillingRepo) ListSubscriptionsForReconciliation(ctx context.Context, limit int, lookback time.Duration) ([]models.Subscription, error) {
+	return nil, nil
+}
+
 type stubStoreRepo struct {
 	store   *models.Store
 	updated []*models.Store
@@ -234,5 +239,9 @@ func (s *stubSquareClient) Pause(ctx context.Context, id string, params *subscri
 }
 
 func (s *stubSquareClient) Resume(ctx context.Context, id string, params *subscriptions.SquareSubscriptionResumeParams) (*subscriptions.SquareSubscription, error) {
+	return nil, nil
+}
+
+func (s *stubSquareClient) DeleteAction(ctx context.Context, id, actionID string) (*subscriptions.SquareSubscription, error) {
 	return nil, nil
 }

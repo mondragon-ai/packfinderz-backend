@@ -18,6 +18,7 @@ type SquareSubscriptionClient interface {
 	Get(ctx context.Context, id string, params *SquareSubscriptionParams) (*SquareSubscription, error)
 	Pause(ctx context.Context, id string, params *SquareSubscriptionPauseParams) (*SquareSubscription, error)
 	Resume(ctx context.Context, id string, params *SquareSubscriptionResumeParams) (*SquareSubscription, error)
+	DeleteAction(ctx context.Context, id, actionID string) (*SquareSubscription, error)
 }
 
 // NewSquareClient wraps the shared pkg/square client with the required location context.
@@ -90,7 +91,8 @@ func (c *squareSubscriptionClient) Get(ctx context.Context, id string, params *S
 		return nil, fmt.Errorf("square client required")
 	}
 	fmt.Printf("[squareSubscriptionClient.Get] Square API GET /v2/subscriptions/%s\n", id)
-	resp, err := c.square.GetSubscription(ctx, id)
+	includeActions := params != nil && params.IncludeActions
+	resp, err := c.square.GetSubscription(ctx, id, includeActions)
 	if err != nil {
 		return nil, err
 	}
@@ -110,6 +112,12 @@ func (c *squareSubscriptionClient) Pause(ctx context.Context, id string, params 
 	}
 	req := &sq.PauseSubscriptionRequest{
 		SubscriptionID: id,
+	}
+	if params != nil {
+		pauseEffective := strings.TrimSpace(params.PauseEffectiveDate)
+		if pauseEffective != "" {
+			req.PauseEffectiveDate = &pauseEffective
+		}
 	}
 	fmt.Printf("[squareSubscriptionClient.Pause] Square API POST /v2/subscriptions/%s/pause request=%+v\n", id, req)
 	resp, err := c.square.Pause(ctx, req)
@@ -144,6 +152,21 @@ func (c *squareSubscriptionClient) Resume(ctx context.Context, id string, params
 	return convertSubscription(resp, price, nil), nil
 }
 
+func (c *squareSubscriptionClient) DeleteAction(ctx context.Context, id, actionID string) (*SquareSubscription, error) {
+	if c.square == nil {
+		return nil, fmt.Errorf("square client required")
+	}
+	fmt.Printf("[squareSubscriptionClient.DeleteAction] Square API DELETE /v2/subscriptions/%s/actions/%s\n", id, actionID)
+	resp, err := c.square.DeleteSubscriptionAction(ctx, id, actionID)
+	if err != nil {
+		return nil, err
+	}
+	if resp != nil {
+		fmt.Printf("[squareSubscriptionClient.DeleteAction] Square API DELETE /v2/subscriptions/%s/actions/%s response=%+v\n", id, actionID, resp)
+	}
+	return convertSubscription(resp, "", nil), nil
+}
+
 func convertSubscription(resp *sq.Subscription, fallbackPrice string, providedMetadata map[string]string) *SquareSubscription {
 	if resp == nil {
 		return nil
@@ -163,6 +186,7 @@ func convertSubscription(resp *sq.Subscription, fallbackPrice string, providedMe
 	}
 	status := resp.GetStatus()
 	cancelAtPeriodEnd := status != nil && *status == sq.SubscriptionStatusCanceled
+	actions := convertSubscriptionActions(resp.GetActions())
 	return &SquareSubscription{
 		ID:                 safeString(resp.GetID()),
 		Status:             subscriptionStatusString(status),
@@ -171,6 +195,7 @@ func convertSubscription(resp *sq.Subscription, fallbackPrice string, providedMe
 		StartDate:          start,
 		ChargedThroughDate: end,
 		CanceledAt:         parseDate(resp.GetCanceledDate()),
+		Actions:            actions,
 		Items: &SquareSubscriptionItemList{
 			Data: []*SquareSubscriptionItem{
 				{
@@ -224,4 +249,32 @@ func subscriptionStatusString(status *sq.SubscriptionStatus) string {
 		return ""
 	}
 	return string(*status)
+}
+
+func convertSubscriptionActions(actions []*sq.SubscriptionAction) []*SquareSubscriptionAction {
+	if len(actions) == 0 {
+		return nil
+	}
+	converted := make([]*SquareSubscriptionAction, 0, len(actions))
+	for _, action := range actions {
+		if action == nil {
+			continue
+		}
+		converted = append(converted, &SquareSubscriptionAction{
+			ID:            safeString(action.GetID()),
+			Type:          actionTypeString(action.GetType()),
+			EffectiveDate: parseDate(action.GetEffectiveDate()),
+		})
+	}
+	if len(converted) == 0 {
+		return nil
+	}
+	return converted
+}
+
+func actionTypeString(actionType *sq.SubscriptionActionType) string {
+	if actionType == nil {
+		return ""
+	}
+	return string(*actionType)
 }

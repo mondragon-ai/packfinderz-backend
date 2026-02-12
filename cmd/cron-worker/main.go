@@ -10,12 +10,14 @@ import (
 	"github.com/joho/godotenv"
 	"github.com/prometheus/client_golang/prometheus"
 
+	"github.com/angelmondragon/packfinderz-backend/internal/billing"
 	"github.com/angelmondragon/packfinderz-backend/internal/cron"
 	"github.com/angelmondragon/packfinderz-backend/internal/licenses"
 	"github.com/angelmondragon/packfinderz-backend/internal/media"
 	"github.com/angelmondragon/packfinderz-backend/internal/notifications"
 	"github.com/angelmondragon/packfinderz-backend/internal/orders"
 	"github.com/angelmondragon/packfinderz-backend/internal/stores"
+	"github.com/angelmondragon/packfinderz-backend/internal/subscriptions"
 	"github.com/angelmondragon/packfinderz-backend/pkg/config"
 	"github.com/angelmondragon/packfinderz-backend/pkg/db"
 	"github.com/angelmondragon/packfinderz-backend/pkg/logger"
@@ -23,6 +25,7 @@ import (
 	"github.com/angelmondragon/packfinderz-backend/pkg/migrate"
 	"github.com/angelmondragon/packfinderz-backend/pkg/outbox"
 	"github.com/angelmondragon/packfinderz-backend/pkg/redis"
+	"github.com/angelmondragon/packfinderz-backend/pkg/square"
 	"github.com/angelmondragon/packfinderz-backend/pkg/storage/gcs"
 )
 
@@ -44,6 +47,9 @@ func main() {
 		Level:       logger.ParseLevel(cfg.App.LogLevel),
 		WarnStack:   cfg.App.LogWarnStack,
 	})
+
+	squareClient, err := square.NewClient(context.Background(), cfg.Square, logg)
+	requireResource(ctx, logg, "square client", err)
 
 	dbClient, err := db.New(context.Background(), cfg.DB, logg)
 	requireResource(ctx, logg, "database", err)
@@ -133,6 +139,17 @@ func main() {
 	})
 	requireResource(ctx, logg, "outbox retention job", err)
 	registry.Register(outboxRetentionJob)
+
+	billingRepo := billing.NewRepository(dbClient.DB())
+	subscriptionJob, err := cron.NewSubscriptionReconcileJob(cron.SubscriptionReconcileJobParams{
+		Logger:       logg,
+		DB:           dbClient,
+		BillingRepo:  billingRepo,
+		StoreRepo:    storeRepo,
+		SquareClient: subscriptions.NewSquareClient(squareClient, cfg.Square.LocationID),
+	})
+	requireResource(ctx, logg, "subscription reconcile job", err)
+	registry.Register(subscriptionJob)
 	service, err := cron.NewService(cron.ServiceParams{
 		Logger:   logg,
 		Registry: registry,

@@ -9,6 +9,7 @@ type SquareSubscription struct {
 	CanceledAt         int64
 	ChargedThroughDate int64
 	StartDate          int64
+	Actions            []*SquareSubscriptionAction
 	Items              *SquareSubscriptionItemList
 }
 
@@ -31,14 +32,22 @@ type SquareSubscriptionParams struct {
 	PriceID         string
 	PaymentMethodID string
 	Metadata        map[string]string
+	IncludeActions  bool
 }
 
 type SquareSubscriptionCancelParams struct{}
 
 type SquareSubscriptionPauseParams struct {
-	PriceID string
+	PriceID            string
+	PauseEffectiveDate string
 }
 
 type SquareSubscriptionResumeParams struct {
 	PriceID string
+}
+
+type SquareSubscriptionAction struct {
+	ID            string
+	Type          string
+	EffectiveDate int64
 }

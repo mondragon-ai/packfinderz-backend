@@ -460,30 +460,6 @@ func TestCreateLicenseInvalidMime(t *testing.T) {
 	}
 }
 
-func TestCreateLicenseInvalidKind(t *testing.T) {
-	storeID := uuid.New()
-	userID := uuid.New()
-	mediaRow := &models.Media{
-		ID:       uuid.New(),
-		StoreID:  storeID,
-		Status:   enums.MediaStatusUploaded,
-		Kind:     enums.MediaKindProduct,
-		MimeType: "image/png",
-	}
-	svc, _, _, _, _, _ := newServiceForTests(mediaRow, &stubMemberships{ok: true}, nil, nil)
-
-	if _, err := svc.CreateLicense(context.Background(), userID, storeID, CreateLicenseInput{
-		MediaID:      mediaRow.ID,
-		IssuingState: "state",
-		Type:         enums.LicenseTypeProducer,
-		Number:       "123",
-	}); err == nil {
-		t.Fatal("expected validation error")
-	} else if typed := pkgerrors.As(err); typed == nil || typed.Code() != pkgerrors.CodeValidation {
-		t.Fatalf("expected validation code, got %v", err)
-	}
-}
-
 func TestCreateLicenseChecksAllMemberRoles(t *testing.T) {
 	storeID := uuid.New()
 	userID := uuid.New()

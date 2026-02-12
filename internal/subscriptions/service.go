@@ -2,16 +2,18 @@ package subscriptions
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
 
 	"github.com/angelmondragon/packfinderz-backend/internal/billing"
 	"github.com/angelmondragon/packfinderz-backend/pkg/db/models"
-	"github.com/angelmondragon/packfinderz-backend/pkg/enums"
 	pkgerrors "github.com/angelmondragon/packfinderz-backend/pkg/errors"
 	"github.com/google/uuid"
 	sq "github.com/square/square-go-sdk"
+	sqcore "github.com/square/square-go-sdk/core"
 	"gorm.io/gorm"
 )
 
@@ -146,6 +148,18 @@ func (s *service) Create(ctx context.Context, storeID uuid.UUID, input CreateSub
 	}
 	fmt.Printf("[subscriptions.Create] square.Create OK squareSubID=%s status=%s\n", squareSub.ID, squareSub.Status)
 	fmt.Printf("[subscriptions.Create] square response=%+v\n", squareSub)
+	squareSubID := squareSub.ID
+	refreshParams := squareSubscriptionParams(storeID, priceID, true)
+	squareSub, err = s.square.Get(ctx, squareSubID, refreshParams)
+	if err != nil {
+		fmt.Printf("[subscriptions.Create] FAIL square.Get err=%T %v\n", err, err)
+		if cancelErr := s.cancelSquare(ctx, squareSubID); cancelErr != nil {
+			fmt.Printf("[subscriptions.Create] FAIL cancelSquare err=%T %v\n", cancelErr, cancelErr)
+			return nil, false, pkgerrors.Wrap(pkgerrors.CodeDependency, cancelErr, "cancel square subscription after get failure")
+		}
+		return nil, false, pkgerrors.Wrap(pkgerrors.CodeDependency, err, "get square subscription")
+	}
+	fmt.Printf("[subscriptions.Create] square.Get refreshed response=%+v\n", squareSub)
 
 	var (
 		createdSub    *models.Subscription
@@ -247,8 +261,16 @@ func debugSquareErr(err error) {
 		es := he.GetErrors()
 		fmt.Printf("[square.err] count=%d\n", len(es))
 		for i, e := range es {
+			detail := ""
+			if e.Detail != nil {
+				detail = *e.Detail
+			}
+			field := ""
+			if e.Field != nil {
+				field = *e.Field
+			}
 			fmt.Printf("[square.err] #%d category=%s code=%s detail=%s field=%s\n",
-				i, e.Category, e.Code, e.Detail, e.Field)
+				i, e.Category, e.Code, detail, field)
 		}
 	}
 }
@@ -269,6 +291,9 @@ func (s *service) Cancel(ctx context.Context, storeID uuid.UUID) error {
 
 	squareSub, err := s.square.Cancel(ctx, active.SquareSubscriptionID, &SquareSubscriptionCancelParams{})
 	if err != nil {
+		if isSquareCancelAlreadyScheduled(err) {
+			return s.syncSquareSubscription(ctx, storeID, active.SquareSubscriptionID, active.PriceID)
+		}
 		return pkgerrors.Wrap(pkgerrors.CodeDependency, err, "cancel square subscription")
 	}
 	fmt.Printf("[subscriptions.Cancel] square cancel response=%+v\n", squareSub)
@@ -287,18 +312,18 @@ func (s *service) Cancel(ctx context.Context, storeID uuid.UUID) error {
 			return err
 		}
 		if err := txRepo.UpdateSubscription(ctx, stored); err != nil {
+			fmt.Printf("[subscriptions.persistSquareUpdate] FAIL UpdateSubscription err=%T %v\n", err, err)
 			return err
 		}
 
-		store, err := s.storeRepo.FindByIDWithTx(tx, storeID)
-		if err != nil {
-			if err == gorm.ErrRecordNotFound {
-				return pkgerrors.New(pkgerrors.CodeNotFound, "store not found")
-			}
-			return pkgerrors.Wrap(pkgerrors.CodeDependency, err, "load store")
-		}
-		store.SubscriptionActive = false
-		if err := s.storeRepo.UpdateWithTx(tx, store); err != nil {
+		// _, err = s.storeRepo.FindByIDWithTx(tx, storeID)
+		// if err != nil {
+		// 	if err == gorm.ErrRecordNotFound {
+		// 		return pkgerrors.New(pkgerrors.CodeNotFound, "store not found")
+		// 	}
+		// 	return pkgerrors.Wrap(pkgerrors.CodeDependency, err, "load store")
+		// }
+		if err := s.storeRepo.UpdateSubscriptionActiveWithTx(tx, storeID, false); err != nil {
 			fmt.Printf("[subscriptions.persistSquareUpdate] FAIL storeRepo.UpdateWithTx err=%T %v storeID=%s\n", err, err, storeID)
 			return pkgerrors.Wrap(pkgerrors.CodeDependency, err, "update store subscription flag")
 		}
@@ -327,12 +352,7 @@ func (s *service) Pause(ctx context.Context, storeID uuid.UUID) error {
 
 	fmt.Printf("[subscriptions.Pause] start storeID=%s squareID=%s status=%s\n", storeID, sub.SquareSubscriptionID, sub.Status)
 
-	live, err := s.square.Get(ctx, sub.SquareSubscriptionID, &SquareSubscriptionParams{
-		PriceID: resolvePriceID(sub.PriceID),
-		Metadata: map[string]string{
-			"store_id": storeID.String(),
-		},
-	})
+	live, err := s.square.Get(ctx, sub.SquareSubscriptionID, squareSubscriptionParams(storeID, resolvePriceID(sub.PriceID), true))
 	if err != nil {
 		return pkgerrors.Wrap(pkgerrors.CodeDependency, err, "get square subscription")
 	}
@@ -348,10 +368,15 @@ func (s *service) Pause(ctx context.Context, storeID uuid.UUID) error {
 		)
 	}
 
-	paused, err := s.square.Pause(ctx, sub.SquareSubscriptionID, &SquareSubscriptionPauseParams{
-		PriceID: resolvePriceID(sub.PriceID),
-	})
+	pauseParams := &SquareSubscriptionPauseParams{
+		PriceID:            resolvePriceID(sub.PriceID),
+		PauseEffectiveDate: pauseEffectiveDateFor(live, sub),
+	}
+	paused, err := s.square.Pause(ctx, sub.SquareSubscriptionID, pauseParams)
 	if err != nil {
+		if isSquarePauseAlreadyScheduled(err) {
+			return s.syncSquareSubscription(ctx, storeID, sub.SquareSubscriptionID, sub.PriceID)
+		}
 		return pkgerrors.Wrap(pkgerrors.CodeStateConflict, err, "pause square subscription")
 	}
 
@@ -375,17 +400,31 @@ func (s *service) Resume(ctx context.Context, storeID uuid.UUID) error {
 	if sub == nil {
 		return pkgerrors.New(pkgerrors.CodeNotFound, "subscription not found")
 	}
-	if sub.Status != enums.SubscriptionStatusPaused {
-		return pkgerrors.New(pkgerrors.CodeStateConflict, "subscription not paused")
-	}
 
 	fmt.Printf("[subscriptions.Resume] start storeID=%s squareID=%s status=%s\n", storeID, sub.SquareSubscriptionID, sub.Status)
+
+	live, err := s.square.Get(ctx, sub.SquareSubscriptionID, squareSubscriptionParams(storeID, resolvePriceID(sub.PriceID), true))
+	if err != nil {
+		return pkgerrors.Wrap(pkgerrors.CodeDependency, err, "get square subscription before resume")
+	}
+	if live == nil {
+		return pkgerrors.New(pkgerrors.CodeNotFound, "square subscription not found")
+	}
+	if strings.EqualFold(live.Status, "ACTIVE") {
+		if pause := pendingPauseAction(live.Actions); pause != nil {
+			if _, err := s.square.DeleteAction(ctx, sub.SquareSubscriptionID, pause.ID); err != nil {
+				return pkgerrors.Wrap(pkgerrors.CodeStateConflict, err, "delete scheduled pause")
+			}
+			return s.syncSquareSubscription(ctx, storeID, sub.SquareSubscriptionID, sub.PriceID)
+		}
+		return nil
+	}
 
 	squareSub, err := s.square.Resume(ctx, sub.SquareSubscriptionID, &SquareSubscriptionResumeParams{
 		PriceID: resolvePriceID(sub.PriceID),
 	})
 	if err != nil {
-		return pkgerrors.Wrap(pkgerrors.CodeDependency, err, "resume square subscription")
+		return wrapResumeError(err, "resume square subscription")
 	}
 
 	fmt.Printf("[subscriptions.Resume] square resumed state=%+v\n", squareSub)
@@ -401,6 +440,16 @@ func (s *service) GetActive(ctx context.Context, storeID uuid.UUID) (*models.Sub
 		return nil, pkgerrors.New(pkgerrors.CodeValidation, "store id is required")
 	}
 	fmt.Printf("[subscriptions.GetActive] storeID=%s\n", storeID)
+	sub, err := s.findActive(ctx, storeID)
+	if err != nil {
+		return nil, err
+	}
+	if sub == nil {
+		return nil, nil
+	}
+	if err := s.syncSquareSubscription(ctx, storeID, sub.SquareSubscriptionID, sub.PriceID); err != nil {
+		return nil, err
+	}
 	return s.findActive(ctx, storeID)
 }
 
@@ -446,24 +495,172 @@ func (s *service) persistSquareUpdate(ctx context.Context, storeID uuid.UUID, sq
 			modify(stored)
 		}
 		if err := txRepo.UpdateSubscription(ctx, stored); err != nil {
+			fmt.Printf("[subscriptions.persistSquareUpdate] FAIL UpdateSubscription err=%T %v\n", err, err)
 			return err
 		}
 
-		store, err := s.storeRepo.FindByIDWithTx(tx, storeID)
-		if err != nil {
-			if err == gorm.ErrRecordNotFound {
-				return pkgerrors.New(pkgerrors.CodeNotFound, "store not found")
-			}
-			return pkgerrors.Wrap(pkgerrors.CodeDependency, err, "load store")
-		}
-		store.SubscriptionActive = IsActiveStatus(stored.Status)
-		if err := s.storeRepo.UpdateWithTx(tx, store); err != nil {
-			fmt.Printf("[subscriptions.persistSquareUpdate] FAIL storeRepo.UpdateWithTx err=%T %v storeID=%s\n", err, err, storeID)
+		// store, err := s.storeRepo.FindByIDWithTx(tx, storeID)
+		// if err != nil {
+		// 	if err == gorm.ErrRecordNotFound {
+		// 		return pkgerrors.New(pkgerrors.CodeNotFound, "store not found")
+		// 	}
+		// 	return pkgerrors.Wrap(pkgerrors.CodeDependency, err, "load store")
+		// }
+		active := IsActiveStatus(stored.Status)
+		if err := s.storeRepo.UpdateSubscriptionActiveWithTx(tx, storeID, active); err != nil {
 			return pkgerrors.Wrap(pkgerrors.CodeDependency, err, "update store subscription flag")
 		}
 
 		return nil
 	})
+}
+
+func (s *service) syncSquareSubscription(ctx context.Context, storeID uuid.UUID, squareID string, priceID *string) error {
+	if squareID == "" {
+		return pkgerrors.New(pkgerrors.CodeValidation, "square subscription id is required")
+	}
+	squareSub, err := s.square.Get(ctx, squareID, squareSubscriptionParams(storeID, resolvePriceID(priceID), true))
+	if err != nil {
+		return pkgerrors.Wrap(pkgerrors.CodeDependency, err, "get square subscription")
+	}
+	if squareSub == nil {
+		return pkgerrors.New(pkgerrors.CodeNotFound, "square subscription not found")
+	}
+	if err := s.persistSquareUpdate(ctx, storeID, squareSub, nil); err != nil {
+		return pkgerrors.Wrap(pkgerrors.CodeDependency, err, "persist square subscription")
+	}
+	return nil
+}
+
+func squareSubscriptionParams(storeID uuid.UUID, priceID string, includeActions bool) *SquareSubscriptionParams {
+	return &SquareSubscriptionParams{
+		PriceID:        priceID,
+		Metadata:       map[string]string{"store_id": storeID.String()},
+		IncludeActions: includeActions,
+	}
+}
+
+func pendingPauseAction(actions []*SquareSubscriptionAction) *SquareSubscriptionAction {
+	if len(actions) == 0 {
+		return nil
+	}
+	for _, action := range actions {
+		if action == nil || action.ID == "" {
+			continue
+		}
+		if strings.EqualFold(strings.TrimSpace(action.Type), "PAUSE") {
+			return action
+		}
+	}
+	return nil
+}
+
+func wrapResumeError(err error, msg string) error {
+	if err == nil {
+		return nil
+	}
+	if pkgErr := pkgerrors.As(err); pkgErr != nil {
+		return pkgerrors.Wrap(pkgErr.Code(), err, msg)
+	}
+	return pkgerrors.Wrap(pkgerrors.CodeDependency, err, msg)
+}
+
+func pauseEffectiveDateFor(live *SquareSubscription, stored *models.Subscription) string {
+	if live != nil && live.ChargedThroughDate != 0 {
+		return formatSquareDate(live.ChargedThroughDate)
+	}
+	if stored != nil && !stored.CurrentPeriodEnd.IsZero() {
+		return stored.CurrentPeriodEnd.UTC().Format("2006-01-02")
+	}
+	return time.Now().UTC().Format("2006-01-02")
+}
+
+func formatSquareDate(ts int64) string {
+	return time.Unix(ts, 0).UTC().Format("2006-01-02")
+}
+
+func isSquarePauseAlreadyScheduled(err error) bool {
+	var pkgErr *pkgerrors.Error
+	if !errors.As(err, &pkgErr) {
+		return false
+	}
+	apiErr := pkgErr.Unwrap()
+	if apiErr == nil {
+		return false
+	}
+	var squareAPIErr *sqcore.APIError
+	if !errors.As(apiErr, &squareAPIErr) {
+		return false
+	}
+	inner := squareAPIErr.Unwrap()
+	if inner == nil {
+		return false
+	}
+	raw := strings.TrimSpace(inner.Error())
+	if raw == "" {
+		return false
+	}
+	var payload struct {
+		Errors []*sq.Error `json:"errors"`
+	}
+	if err := json.Unmarshal([]byte(raw), &payload); err != nil {
+		return false
+	}
+	for _, sqErr := range payload.Errors {
+		if sqErr == nil {
+			continue
+		}
+		detail := ""
+		if sqErr.Detail != nil {
+			detail = *sqErr.Detail
+		}
+		if strings.Contains(strings.ToLower(detail), "already has a pending pause date") {
+			return true
+		}
+	}
+	return false
+}
+
+func isSquareCancelAlreadyScheduled(err error) bool {
+	var pkgErr *pkgerrors.Error
+	if !errors.As(err, &pkgErr) {
+		return false
+	}
+	apiErr := pkgErr.Unwrap()
+	if apiErr == nil {
+		return false
+	}
+	var squareAPIErr *sqcore.APIError
+	if !errors.As(apiErr, &squareAPIErr) {
+		return false
+	}
+	inner := squareAPIErr.Unwrap()
+	if inner == nil {
+		return false
+	}
+	raw := strings.TrimSpace(inner.Error())
+	if raw == "" {
+		return false
+	}
+	var payload struct {
+		Errors []*sq.Error `json:"errors"`
+	}
+	if err := json.Unmarshal([]byte(raw), &payload); err != nil {
+		return false
+	}
+	for _, sqErr := range payload.Errors {
+		if sqErr == nil {
+			continue
+		}
+		detail := ""
+		if sqErr.Detail != nil {
+			detail = *sqErr.Detail
+		}
+		if strings.Contains(strings.ToLower(detail), "already has a pending cancel date") {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *service) findSubscription(ctx context.Context, storeID uuid.UUID) (*models.Subscription, error) {

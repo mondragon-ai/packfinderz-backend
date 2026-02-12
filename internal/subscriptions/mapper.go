@@ -36,6 +36,7 @@ func BuildSubscriptionFromSquare(squareSub *SquareSubscription, storeID uuid.UUI
 	}
 
 	startTS, endTS := periodFromSubscription(squareSub)
+	pauseAt, resumeAt := scheduleFromActions(squareSub.Actions)
 	var price *string
 	if strings.TrimSpace(priceID) != "" {
 		price = &priceID
@@ -50,6 +51,8 @@ func BuildSubscriptionFromSquare(squareSub *SquareSubscription, storeID uuid.UUI
 		SquareCustomerID:     trimmedPtr(customerID),
 		SquareCardID:         trimmedPtr(paymentMethodID),
 		PausedAt:             nil,
+		PauseEffectiveAt:     pauseAt,
+		ResumeEffectiveAt:    resumeAt,
 		CurrentPeriodStart:   toTimePtr(startTS),
 		CurrentPeriodEnd:     toTime(endTS),
 		CancelAtPeriodEnd:    squareSub.CancelAtPeriodEnd,
@@ -87,6 +90,9 @@ func UpdateSubscriptionFromSquare(target *models.Subscription, squareSub *Square
 	target.CancelAtPeriodEnd = squareSub.CancelAtPeriodEnd
 	target.CanceledAt = toTimePtr(squareSub.CanceledAt)
 	target.Metadata = metadata
+	pauseAt, resumeAt := scheduleFromActions(squareSub.Actions)
+	target.PauseEffectiveAt = pauseAt
+	target.ResumeEffectiveAt = resumeAt
 	if target.Status == enums.SubscriptionStatusPaused {
 		now := time.Now().UTC()
 		target.PausedAt = &now
@@ -165,6 +171,25 @@ func periodFromSubscription(sub *SquareSubscription) (int64, int64) {
 		return item.CurrentPeriodStart, item.CurrentPeriodEnd
 	}
 	return 0, 0
+}
+
+func scheduleFromActions(actions []*SquareSubscriptionAction) (*time.Time, *time.Time) {
+	if len(actions) == 0 {
+		return nil, nil
+	}
+	var pause, resume *time.Time
+	for _, action := range actions {
+		if action == nil || action.EffectiveDate == 0 {
+			continue
+		}
+		switch strings.ToUpper(strings.TrimSpace(action.Type)) {
+		case "PAUSE":
+			pause = toTimePtr(action.EffectiveDate)
+		case "RESUME":
+			resume = toTimePtr(action.EffectiveDate)
+		}
+	}
+	return pause, resume
 }
 
 func trimmedPtr(value string) *string {

@@ -204,9 +204,16 @@ func (c *Client) Resume(ctx context.Context, req *sq.ResumeSubscriptionRequest) 
 	return sub, nil
 }
 
-func (c *Client) GetSubscription(ctx context.Context, subscriptionID string) (*sq.Subscription, error) {
+func (c *Client) GetSubscription(ctx context.Context, subscriptionID string, includeActions bool) (*sq.Subscription, error) {
 	req := &sq.GetSubscriptionsRequest{SubscriptionID: subscriptionID}
-	c.log(ctx, "request", "get_subscription", map[string]any{"subscription_id": subscriptionID})
+	if includeActions {
+		include := "actions"
+		req.Include = &include
+	}
+	c.log(ctx, "request", "get_subscription", map[string]any{
+		"subscription_id": subscriptionID,
+		"include_actions": includeActions,
+	})
 
 	resp, err := c.sdk.Subscriptions.Get(ctx, req)
 	if err != nil {
@@ -216,6 +223,39 @@ func (c *Client) GetSubscription(ctx context.Context, subscriptionID string) (*s
 
 	sub := resp.GetSubscription()
 	c.log(ctx, "response", "get_subscription", map[string]any{
+		"subscription_id": stringValue(sub.GetID()),
+		"status":          subscriptionStatusString(sub.GetStatus()),
+	})
+	return sub, nil
+}
+
+// DeleteSubscriptionAction cancels a scheduled subscription action before it runs.
+func (c *Client) DeleteSubscriptionAction(ctx context.Context, subscriptionID, actionID string) (*sq.Subscription, error) {
+	if strings.TrimSpace(subscriptionID) == "" {
+		return nil, fmt.Errorf("subscription id is required")
+	}
+	if strings.TrimSpace(actionID) == "" {
+		return nil, fmt.Errorf("action id is required")
+	}
+	req := &sq.DeleteActionSubscriptionsRequest{
+		SubscriptionID: subscriptionID,
+		ActionID:       actionID,
+	}
+	c.log(ctx, "request", "delete_subscription_action", map[string]any{
+		"subscription_id": subscriptionID,
+		"action_id":       actionID,
+	})
+
+	resp, err := c.sdk.Subscriptions.DeleteAction(ctx, req)
+	if err != nil {
+		c.log(ctx, "error", "delete_subscription_action", map[string]any{"error": err.Error()})
+		return nil, c.mapSquareError(err, "delete subscription action")
+	}
+	if resp == nil {
+		return nil, nil
+	}
+	sub := resp.GetSubscription()
+	c.log(ctx, "response", "delete_subscription_action", map[string]any{
 		"subscription_id": stringValue(sub.GetID()),
 		"status":          subscriptionStatusString(sub.GetStatus()),
 	})
