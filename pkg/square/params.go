@@ -68,7 +68,7 @@ func (p CustomerCreateParams) toSquareRequest(idempotencyKey string) *sq.CreateC
 		req.EmailAddress = ptrString(trimmed)
 	}
 	if trimmed := strings.TrimSpace(p.PhoneNumber); trimmed != "" {
-		req.PhoneNumber = ptrString(trimmed)
+		req.PhoneNumber = ptrString("+1" + trimmed)
 	}
 	if trimmed := strings.TrimSpace(p.GivenName); trimmed != "" {
 		req.GivenName = ptrString(trimmed)

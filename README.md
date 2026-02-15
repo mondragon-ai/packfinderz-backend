@@ -518,7 +518,7 @@ Accepts a JSON body with `refresh_token` and the outgoing access token in the Au
 POST /api/v1/auth/switch-store
 ```
 
-Requires both the current Authorization bearer token and the existing `refresh_token`. Validates that the user belongs to `store_id`, rotates the session, and returns `200` with a new access token (in the body + `X-PF-Token`) preconfigured with `activeStoreId`.
+Requires the current Authorization bearer token while the JSON body only needs the target `store_id`. The server fetches the refresh token tied to the supplied access token ID before rotating the session, validates membership, and returns `200` with a new access token (body + `X-PF-Token`) scoped to the selected store.
 
 ### Store Management
 

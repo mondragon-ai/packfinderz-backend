@@ -20,7 +20,6 @@ type SwitchStoreInput struct {
 	UserID        uuid.UUID
 	StoreID       uuid.UUID
 	AccessTokenID string
-	RefreshToken  string
 }
 
 // SwitchStoreResult returns the tokens issued after switching stores.
@@ -42,6 +41,7 @@ type switchMembershipsRepository interface {
 
 type switchSessionRotator interface {
 	Rotate(ctx context.Context, oldAccessID, provided string) (string, string, error)
+	RefreshToken(ctx context.Context, accessID string) (string, error)
 }
 
 // SwitchStoreServiceParams bundles dependencies for the switch flow.
@@ -83,7 +83,15 @@ func (s *switchStoreService) Switch(ctx context.Context, input SwitchStoreInput)
 		return nil, pkgerrors.New(pkgerrors.CodeForbidden, "store membership inactive")
 	}
 
-	newAccessID, newRefreshToken, err := s.session.Rotate(ctx, input.AccessTokenID, input.RefreshToken)
+	refreshToken, err := s.session.RefreshToken(ctx, input.AccessTokenID)
+	if err != nil {
+		if errors.Is(err, session.ErrInvalidRefreshToken) {
+			return nil, pkgerrors.New(pkgerrors.CodeUnauthorized, "invalid session")
+		}
+		return nil, pkgerrors.Wrap(pkgerrors.CodeInternal, err, "load refresh token")
+	}
+
+	newAccessID, _, err := s.session.Rotate(ctx, input.AccessTokenID, refreshToken)
 	if err != nil {
 		if errors.Is(err, session.ErrInvalidRefreshToken) {
 			return nil, pkgerrors.New(pkgerrors.CodeUnauthorized, "invalid refresh token")
@@ -105,8 +113,7 @@ func (s *switchStoreService) Switch(ctx context.Context, input SwitchStoreInput)
 	}
 
 	result := &SwitchStoreResult{
-		AccessToken:  accessToken,
-		RefreshToken: newRefreshToken,
+		AccessToken: accessToken,
 		Store: StoreSummary{
 			ID:   membership.StoreID,
 			Name: membership.StoreName,

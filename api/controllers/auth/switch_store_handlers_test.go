@@ -40,8 +40,7 @@ func TestAuthSwitchStoreSuccess(t *testing.T) {
 	storeID := uuid.New()
 	service := &stubSwitchService{
 		result: &auth.SwitchStoreResult{
-			AccessToken:  "new-token",
-			RefreshToken: "new-refresh",
+			AccessToken: "new-token",
 			Store: auth.StoreSummary{
 				ID:   storeID,
 				Name: "Store",
@@ -50,7 +49,7 @@ func TestAuthSwitchStoreSuccess(t *testing.T) {
 		},
 	}
 
-	body := []byte(`{"store_id":"` + storeID.String() + `","refresh_token":"ref"}`)
+	body := []byte(`{"store_id":"` + storeID.String() + `"}`)
 	req := httptest.NewRequest(http.MethodPost, "/switch-store", bytes.NewReader(body))
 	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("Content-Type", "application/json")
@@ -71,9 +70,6 @@ func TestAuthSwitchStoreSuccess(t *testing.T) {
 	if err := json.NewDecoder(rec.Body).Decode(&envelope); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if envelope.Data.RefreshToken != "new-refresh" {
-		t.Fatalf("unexpected refresh token %s", envelope.Data.RefreshToken)
-	}
 }
 
 func TestAuthSwitchStoreForbidden(t *testing.T) {
@@ -85,7 +81,7 @@ func TestAuthSwitchStoreForbidden(t *testing.T) {
 	})
 	service := &stubSwitchService{err: pkgerrors.New(pkgerrors.CodeForbidden, "no membership")}
 
-	body := []byte(`{"store_id":"` + uuid.NewString() + `","refresh_token":"ref"}`)
+	body := []byte(`{"store_id":"` + uuid.NewString() + `"}`)
 	req := httptest.NewRequest(http.MethodPost, "/switch-store", bytes.NewReader(body))
 	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("Content-Type", "application/json")

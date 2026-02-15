@@ -797,7 +797,7 @@ run_switch_store_tests() {
 test_switch_store_missing_token() {
   current_assertions=()
   local payload
-  payload="{\"store_id\":\"${SECOND_STORE_ID}\",\"refresh_token\":\"${refresh_token}\"}"
+  payload="{\"store_id\":\"${SECOND_STORE_ID}\"}"
   http_json "switch_missing_token" POST "/auth/switch-store" "$payload"
   assert_status 401 "switch-store rejects missing Authorization"
   record_test_result "switch_missing_token"
@@ -806,7 +806,7 @@ test_switch_store_missing_token() {
 test_switch_store_missing_store_id() {
   current_assertions=()
   local payload
-  payload="{\"refresh_token\":\"${refresh_token}\"}"
+  payload="{}"
   http_json "switch_missing_store" POST "/auth/switch-store" "$payload" "Authorization: Bearer ${auth_token}"
   assert_status 400 "switch-store requires store_id"
   record_test_result "switch_missing_store"
@@ -815,7 +815,7 @@ test_switch_store_missing_store_id() {
 test_switch_store_invalid_store_id() {
   current_assertions=()
   local payload
-  payload="{\"store_id\":\"not-a-uuid\",\"refresh_token\":\"${refresh_token}\"}"
+  payload="{\"store_id\":\"not-a-uuid\"}"
   http_json "switch_invalid_store" POST "/auth/switch-store" "$payload" "Authorization: Bearer ${auth_token}"
   assert_status 400 "switch-store rejects invalid uuid"
   record_test_result "switch_invalid_store"
@@ -824,7 +824,7 @@ test_switch_store_invalid_store_id() {
 test_switch_store_not_member() {
   current_assertions=()
   local payload
-  payload="{\"store_id\":\"$(generate_uuid)\",\"refresh_token\":\"${refresh_token}\"}"
+  payload="{\"store_id\":\"$(generate_uuid)\"}"
   http_json "switch_not_member" POST "/auth/switch-store" "$payload" "Authorization: Bearer ${auth_token}"
   assert_status 403 "switch-store rejects unowned store"
   record_test_result "switch_not_member"
@@ -833,7 +833,7 @@ test_switch_store_not_member() {
 test_switch_store_success() {
   current_assertions=()
   local payload
-  payload="{\"store_id\":\"${SECOND_STORE_ID}\",\"refresh_token\":\"${refresh_token}\"}"
+  payload="{\"store_id\":\"${SECOND_STORE_ID}\"}"
   http_json "switch_store_success" POST "/auth/switch-store" "$payload" "Authorization: Bearer ${auth_token}"
   assert_status 200 "switch-store succeeded"
   local new_token

@@ -51,6 +51,7 @@ require (
 require (
 	github.com/apache/arrow/go/v15 v15.0.2 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
+	github.com/go-chi/cors v1.2.2 // indirect
 	github.com/goccy/go-json v0.10.2 // indirect
 	github.com/google/flatbuffers v23.5.26+incompatible // indirect
 	github.com/klauspost/compress v1.18.0 // indirect

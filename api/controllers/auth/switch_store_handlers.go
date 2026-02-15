@@ -16,8 +16,7 @@ import (
 )
 
 type switchStoreRequest struct {
-	StoreID      string `json:"store_id" validate:"required,uuid"`
-	RefreshToken string `json:"refresh_token" validate:"required"`
+	StoreID string `json:"store_id" validate:"required,uuid"`
 }
 
 // AuthSwitchStore mints a new token that targets the requested store.
@@ -56,7 +55,6 @@ func AuthSwitchStore(svc auth.SwitchStoreService, cfg config.JWTConfig, logg *lo
 			UserID:        claims.UserID,
 			StoreID:       storeID,
 			AccessTokenID: claims.ID,
-			RefreshToken:  body.RefreshToken,
 		})
 		if err != nil {
 			responses.WriteError(r.Context(), logg, w, err)
@@ -64,6 +62,10 @@ func AuthSwitchStore(svc auth.SwitchStoreService, cfg config.JWTConfig, logg *lo
 		}
 
 		w.Header().Set("X-PF-Token", result.AccessToken)
-		responses.WriteSuccess(w, result)
+		responses.WriteSuccess(w, map[string]any{
+			"store_id":   result.Store.ID,
+			"store_name": result.Store.Name,
+			"store_type": result.Store.Type,
+		})
 	}
 }

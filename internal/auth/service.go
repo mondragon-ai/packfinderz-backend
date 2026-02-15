@@ -114,7 +114,9 @@ func (s *service) Login(ctx context.Context, req LoginRequest) (*LoginResponse, 
 	var storeTypePtr *enums.StoreType
 	var role enums.MemberRole
 	if len(memberships) > 0 {
+		id := memberships[0].StoreID
 		primary := memberships[0]
+		activeStoreID = &id
 		role = primary.Role
 		storeTypeVal := primary.StoreType
 		storeTypePtr = &storeTypeVal

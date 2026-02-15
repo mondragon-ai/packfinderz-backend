@@ -133,13 +133,12 @@ curl -X POST "{{API_BASE_URL}}/api/v1/auth/logout" \
 A successful logout returns `{"status":"logged_out"}`.
 
 ## POST /api/v1/auth/switch-store
-Used when a user belongs to multiple stores and wants to target a different one. Provide the new store UUID, current refresh token, and the access token in `Authorization`. The request is validated against active memberships.
+Used when a user belongs to multiple stores and wants to target a different one. Provide only the new store UUID; the server looks up the refresh token tied to your bearer access token before rotating the session. The request is validated against active memberships.
 
 ### Request body
 ```json
 {
-  "store_id": "{{new_store_id}}",
-  "refresh_token": "{{refresh_token}}"
+  "store_id": "{{new_store_id}}"
 }
 ```
 
@@ -150,8 +149,7 @@ curl -X POST "{{API_BASE_URL}}/api/v1/auth/switch-store" \
   -H "Accept: application/json" \
   -H "Authorization: Bearer {{access_token}}" \
   -d '{
-    "store_id": "{{new_store_id}}",
-    "refresh_token": "{{refresh_token}}"
+    "store_id": "{{new_store_id}}"
   }'
 ```
 

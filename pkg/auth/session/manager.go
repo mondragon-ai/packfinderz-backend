@@ -152,3 +152,16 @@ func (m *Manager) HasSession(ctx context.Context, accessID string) (bool, error)
 	}
 	return true, nil
 }
+
+// RefreshToken returns the refresh token associated with the provided access ID.
+func (m *Manager) RefreshToken(ctx context.Context, accessID string) (string, error) {
+	if strings.TrimSpace(accessID) == "" {
+		return "", ErrInvalidRefreshToken
+	}
+	key := m.keyer.AccessSessionKey(accessID)
+	token, err := m.store.Get(ctx, key)
+	if err != nil {
+		return "", wrapNotFound(err)
+	}
+	return token, nil
+}

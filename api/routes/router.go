@@ -94,6 +94,7 @@ func NewRouter(
 	// 	logg.Info(ctx, "square client wired to API routes")
 	// }
 	r.Use(
+		middleware.CORS(),
 		middleware.Recoverer(logg),
 		middleware.RequestID(logg),
 		middleware.Logging(logg),
@@ -122,7 +123,7 @@ func NewRouter(
 		r.Post("/validate", controllers.PublicValidate(logg))
 	})
 
-	r.Route("/api/address", func(r chi.Router) {
+	r.Route("/api/v1/address", func(r chi.Router) {
 		r.Use(middleware.RateLimit())
 		r.Get("/suggest", controllers.AddressSuggest(addressService, logg))
 		r.Post("/resolve", controllers.AddressResolve(addressService, logg))
