@@ -56,10 +56,6 @@ type licensesRepository interface {
 	ListStatusesWithTx(tx *gorm.DB, storeID uuid.UUID) ([]enums.LicenseStatus, error)
 }
 
-type gcsClient interface {
-	SignedReadURL(bucket, object string, expires time.Duration) (string, error)
-}
-
 // Service exposes license creation, listing, verification, and deletion semantics.
 type Service interface {
 	CreateLicense(ctx context.Context, userID, storeID uuid.UUID, input CreateLicenseInput) (*models.License, error)
@@ -73,9 +69,7 @@ type service struct {
 	mediaRepo    mediasRepository
 	memberships  membershipsRepository
 	attachments  media.AttachmentReconciler
-	gcs          gcsClient
 	bucket       string
-	downloadTTL  time.Duration
 	storeRepo    storesRepository
 	allowedRoles []enums.MemberRole
 	tx           txRunner
@@ -93,7 +87,7 @@ type CreateLicenseInput struct {
 }
 
 // NewService builds a license service backed by the provided repositories and GCS signer.
-func NewService(repo licensesRepository, mediaRepo mediasRepository, memberships membershipsRepository, attachments media.AttachmentReconciler, gcs gcsClient, bucket string, downloadTTL time.Duration, storeRepo storesRepository, tx txRunner, publisher outboxPublisher) (Service, error) {
+func NewService(repo licensesRepository, mediaRepo mediasRepository, memberships membershipsRepository, attachments media.AttachmentReconciler, bucket string, storeRepo storesRepository, tx txRunner, publisher outboxPublisher) (Service, error) {
 	if repo == nil {
 		return nil, fmt.Errorf("license repository required")
 	}
@@ -106,14 +100,8 @@ func NewService(repo licensesRepository, mediaRepo mediasRepository, memberships
 	if attachments == nil {
 		return nil, fmt.Errorf("attachment reconciler required")
 	}
-	if gcs == nil {
-		return nil, fmt.Errorf("gcs client required")
-	}
 	if bucket == "" {
 		return nil, fmt.Errorf("gcs bucket required")
-	}
-	if downloadTTL <= 0 {
-		return nil, fmt.Errorf("download ttl must be positive")
 	}
 	if storeRepo == nil {
 		return nil, fmt.Errorf("store repository required")
@@ -129,9 +117,7 @@ func NewService(repo licensesRepository, mediaRepo mediasRepository, memberships
 		mediaRepo:   mediaRepo,
 		memberships: memberships,
 		attachments: attachments,
-		gcs:         gcs,
 		bucket:      bucket,
-		downloadTTL: downloadTTL,
 		storeRepo:   storeRepo,
 		tx:          tx,
 		publisher:   publisher,
@@ -274,12 +260,15 @@ func (s *service) ListLicenses(ctx context.Context, params ListParams) (*ListRes
 
 	items := make([]ListItem, len(rows))
 	for i, row := range rows {
-		url, err := s.buildSignedURL(row.GCSKey)
+		mediaRow, err := s.mediaRepo.FindByID(ctx, row.MediaID)
 		if err != nil {
-			return nil, err
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return nil, pkgerrors.New(pkgerrors.CodeDependency, "media metadata missing")
+			}
+			return nil, pkgerrors.Wrap(pkgerrors.CodeDependency, err, "lookup media")
 		}
 		items[i] = toListItem(row)
-		items[i].SignedURL = url
+		items[i].SignedURL = mediaRow.PublicURL
 	}
 
 	return &ListResult{
@@ -353,17 +342,6 @@ func (s *service) DeleteLicense(ctx context.Context, userID, storeID, licenseID 
 		}
 	}
 	return nil
-}
-
-func (s *service) buildSignedURL(key string) (string, error) {
-	if key == "" {
-		return "", nil
-	}
-	url, err := s.gcs.SignedReadURL(s.bucket, key, s.downloadTTL)
-	if err != nil {
-		return "", pkgerrors.Wrap(pkgerrors.CodeDependency, err, "generate signed read url")
-	}
-	return url, nil
 }
 
 func (s *service) emitLicenseStatusEvent(ctx context.Context, tx *gorm.DB, license *models.License, status enums.LicenseStatus, reason string, actor *outbox.ActorRef) error {

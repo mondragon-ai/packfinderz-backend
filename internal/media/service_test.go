@@ -81,9 +81,6 @@ type stubGCS struct {
 	lastBucket   string
 	lastObject   string
 	lastMimeType string
-	readURL      string
-	readErr      error
-	readCalls    int
 	deleteCalled bool
 	deleteErr    error
 }
@@ -96,19 +93,6 @@ func (s *stubGCS) SignedURL(bucket, object, contentType string, expires time.Dur
 		return "", s.err
 	}
 	return s.url, nil
-}
-
-func (s *stubGCS) SignedReadURL(bucket, object string, expires time.Duration) (string, error) {
-	s.readCalls++
-	if s.readErr != nil {
-		return "", s.readErr
-	}
-	s.lastBucket = bucket
-	s.lastObject = object
-	if s.readURL == "" {
-		return "https://download.example", nil
-	}
-	return s.readURL, nil
 }
 
 func (s *stubGCS) DeleteObject(ctx context.Context, bucket, object string) error {
@@ -305,14 +289,15 @@ func TestMediaServiceGenerateReadURLSuccess(t *testing.T) {
 			mediaID := uuid.New()
 			repo := &stubMediaRepo{
 				findMedia: &models.Media{
-					ID:      mediaID,
-					StoreID: storeID,
-					Status:  tc.status,
-					GCSKey:  "media/key",
+					ID:        mediaID,
+					StoreID:   storeID,
+					Status:    tc.status,
+					GCSKey:    "media/key",
+					PublicURL: "https://public.example/download",
 				},
 			}
 			members := stubMemberships{ok: true}
-			gcs := &stubGCS{readURL: "https://download.example"}
+			gcs := &stubGCS{}
 			attachments := &stubAttachmentLookup{}
 
 			svc, err := NewService(repo, members, attachments, gcs, "bucket", time.Minute, 15*time.Minute)
@@ -327,14 +312,11 @@ func TestMediaServiceGenerateReadURLSuccess(t *testing.T) {
 			if err != nil {
 				t.Fatalf("GenerateReadURL returned error: %v", err)
 			}
-			if resp.URL != "https://download.example" {
+			if resp.URL != repo.findMedia.PublicURL {
 				t.Fatalf("unexpected url %s", resp.URL)
 			}
-			if resp.ExpiresAt.Before(time.Now().Add(15*time.Minute - time.Second)) {
-				t.Fatalf("expires at too soon: %s", resp.ExpiresAt)
-			}
-			if gcs.lastBucket != "bucket" || gcs.lastObject != "media/key" {
-				t.Fatalf("unexpected gcs call %v", gcs)
+			if !resp.ExpiresAt.IsZero() {
+				t.Fatalf("expected zero expiry, got %s", resp.ExpiresAt)
 			}
 		})
 	}
@@ -404,15 +386,10 @@ func TestMediaServiceGenerateReadURLDependencyError(t *testing.T) {
 	t.Parallel()
 
 	repo := &stubMediaRepo{
-		findMedia: &models.Media{
-			ID:      uuid.New(),
-			StoreID: uuid.New(),
-			Status:  enums.MediaStatusUploaded,
-			GCSKey:  "media/key",
-		},
+		findErr: errors.New("boom"),
 	}
 	members := stubMemberships{ok: true}
-	gcs := &stubGCS{readErr: errors.New("boom")}
+	gcs := &stubGCS{}
 	attachments := &stubAttachmentLookup{}
 	svc, err := NewService(repo, members, attachments, gcs, "bucket", time.Minute, 15*time.Minute)
 	if err != nil {
@@ -420,8 +397,8 @@ func TestMediaServiceGenerateReadURLDependencyError(t *testing.T) {
 	}
 
 	if _, err := svc.GenerateReadURL(context.Background(), ReadURLParams{
-		StoreID: repo.findMedia.StoreID,
-		MediaID: repo.findMedia.ID,
+		StoreID: uuid.New(),
+		MediaID: uuid.New(),
 	}); err == nil {
 		t.Fatal("expected dependency error")
 	} else if typed := pkgerrors.As(err); typed == nil || typed.Code() != pkgerrors.CodeDependency {

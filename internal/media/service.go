@@ -36,7 +36,6 @@ type mediaRepository interface {
 
 type gcsClient interface {
 	SignedURL(bucket, object, contentType string, expires time.Duration) (string, error)
-	SignedReadURL(bucket, object string, expires time.Duration) (string, error)
 	DeleteObject(ctx context.Context, bucket, object string) error
 }
 
@@ -239,14 +238,13 @@ func (s *service) GenerateReadURL(ctx context.Context, params ReadURLParams) (*R
 		return nil, pkgerrors.New(pkgerrors.CodeConflict, "media not available for download")
 	}
 
-	url, err := s.gcs.SignedReadURL(s.bucket, mediaRow.GCSKey, s.downloadTTL)
-	if err != nil {
-		return nil, pkgerrors.Wrap(pkgerrors.CodeDependency, err, "generate download url")
+	if mediaRow.PublicURL == "" {
+		return nil, pkgerrors.New(pkgerrors.CodeDependency, "public url missing for media")
 	}
 
 	return &ReadURLOutput{
-		URL:       url,
-		ExpiresAt: time.Now().Add(s.downloadTTL),
+		URL:       mediaRow.PublicURL,
+		ExpiresAt: time.Time{},
 	}, nil
 }
 

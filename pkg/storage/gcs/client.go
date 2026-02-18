@@ -141,7 +141,6 @@ func (c *Client) Ping(ctx context.Context) error {
 		return err
 	}
 
-	// Prefer object-level check (requires storage.objects.list)
 	u := fmt.Sprintf(
 		"https://storage.googleapis.com/storage/v1/b/%s/o?maxResults=1",
 		url.PathEscape(c.defaultBucket),
@@ -161,7 +160,6 @@ func (c *Client) Ping(ctx context.Context) error {
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
-		// read a tiny bit of body for better debugging (optional)
 		b, _ := io.ReadAll(io.LimitReader(resp.Body, 2048))
 		if len(b) > 0 {
 			return fmt.Errorf("gcs object check failed: %s: %s", resp.Status, strings.TrimSpace(string(b)))
@@ -441,6 +439,20 @@ func (c *Client) SignedReadURL(bucket, object string, expires time.Duration) (st
 
 	objPath := escapeObjectPath(object)
 	return fmt.Sprintf("https://storage.googleapis.com/%s/%s?%s", bucket, objPath, values.Encode()), nil
+}
+
+// PublicURL builds a permanent public link for the provided object path.
+func PublicURL(bucket, object string) (string, error) {
+	bucket = strings.TrimSpace(bucket)
+	if bucket == "" {
+		return "", errors.New("bucket name required")
+	}
+	object = strings.TrimSpace(object)
+	if object == "" {
+		return "", errors.New("object name required")
+	}
+	objPath := escapeObjectPath(object)
+	return fmt.Sprintf("https://storage.googleapis.com/%s/%s", bucket, objPath), nil
 }
 
 // DeleteObject removes an object from the configured bucket.

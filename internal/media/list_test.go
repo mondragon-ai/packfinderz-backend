@@ -27,18 +27,16 @@ func (s *stubListRepo) List(ctx context.Context, opts listQuery) ([]models.Media
 	return s.listRows, nil
 }
 
-func newServiceWithRepo(repo mediaRepository) (*service, *stubGCS) {
-	gcs := &stubGCS{readURL: "https://download.example"}
+func newServiceWithRepo(repo mediaRepository) *service {
 	return &service{
-		repo:        repo,
-		gcs:         gcs,
-		bucket:      "bucket",
-		downloadTTL: time.Minute,
-	}, gcs
+		repo:      repo,
+		bucket:    "bucket",
+		uploadTTL: time.Minute,
+	}
 }
 
 func TestListMediaInvalidStore(t *testing.T) {
-	svc, _ := newServiceWithRepo(&stubListRepo{})
+	svc := newServiceWithRepo(&stubListRepo{})
 	if _, err := svc.ListMedia(context.Background(), ListParams{}); err == nil {
 		t.Fatal("expected error when store id missing")
 	}
@@ -52,16 +50,18 @@ func TestListMediaCursorPagination(t *testing.T) {
 			CreatedAt: now,
 			Status:    enums.MediaStatusUploaded,
 			GCSKey:    "media/one",
+			PublicURL: "https://public.example/one",
 		},
 		{
 			ID:        uuid.New(),
 			CreatedAt: now.Add(-time.Minute),
 			Status:    enums.MediaStatusUploaded,
 			GCSKey:    "media/two",
+			PublicURL: "https://public.example/two",
 		},
 	}
 	repo := &stubListRepo{listRows: rows}
-	svc, gcs := newServiceWithRepo(repo)
+	svc := newServiceWithRepo(repo)
 	storeID := uuid.New()
 
 	params := ListParams{
@@ -75,11 +75,8 @@ func TestListMediaCursorPagination(t *testing.T) {
 	if len(res.Items) != 1 {
 		t.Fatalf("expected 1 item, got %d", len(res.Items))
 	}
-	if res.Items[0].SignedURL == nil || *res.Items[0].SignedURL != gcs.readURL {
-		t.Fatalf("expected signed url %s got %v", gcs.readURL, res.Items[0].SignedURL)
-	}
-	if gcs.readCalls != 1 {
-		t.Fatalf("expected one signed url request, got %d", gcs.readCalls)
+	if res.Items[0].SignedURL == nil || *res.Items[0].SignedURL != rows[0].PublicURL {
+		t.Fatalf("expected signed url %s got %v", rows[0].PublicURL, res.Items[0].SignedURL)
 	}
 	if res.Cursor == "" {
 		t.Fatal("expected cursor for next page")
@@ -95,7 +92,7 @@ func TestListMediaCursorPagination(t *testing.T) {
 
 func TestListMediaLimitClamped(t *testing.T) {
 	repo := &stubListRepo{}
-	svc, _ := newServiceWithRepo(repo)
+	svc := newServiceWithRepo(repo)
 	storeID := uuid.New()
 
 	if _, err := svc.ListMedia(context.Background(), ListParams{
@@ -111,7 +108,7 @@ func TestListMediaLimitClamped(t *testing.T) {
 
 func TestListMediaInvalidCursor(t *testing.T) {
 	repo := &stubListRepo{}
-	svc, _ := newServiceWithRepo(repo)
+	svc := newServiceWithRepo(repo)
 	storeID := uuid.New()
 
 	if _, err := svc.ListMedia(context.Background(), ListParams{
@@ -142,24 +139,22 @@ func TestListMediaSignedURLForReadableStatus(t *testing.T) {
 			repo := &stubListRepo{
 				listRows: []models.Media{
 					{
-						ID:     uuid.New(),
-						Status: tc.status,
-						GCSKey: "media/readable",
+						ID:        uuid.New(),
+						Status:    tc.status,
+						GCSKey:    "media/readable",
+						PublicURL: "https://public.example/read",
 					},
 				},
 			}
-			svc, gcs := newServiceWithRepo(repo)
+			svc := newServiceWithRepo(repo)
 			storeID := uuid.New()
 
 			resp, err := svc.ListMedia(context.Background(), ListParams{StoreID: storeID})
 			if err != nil {
 				t.Fatalf("ListMedia returned error: %v", err)
 			}
-			if resp.Items[0].SignedURL == nil || *resp.Items[0].SignedURL != gcs.readURL {
-				t.Fatalf("expected signed url %s got %v", gcs.readURL, resp.Items[0].SignedURL)
-			}
-			if gcs.readCalls != 1 {
-				t.Fatalf("expected one signed url request, got %d", gcs.readCalls)
+			if resp.Items[0].SignedURL == nil || *resp.Items[0].SignedURL != repo.listRows[0].PublicURL {
+				t.Fatalf("expected signed url %s got %v", repo.listRows[0].PublicURL, resp.Items[0].SignedURL)
 			}
 		})
 	}
@@ -175,7 +170,7 @@ func TestListMediaSkipsSignedURLForUnreadableStatus(t *testing.T) {
 			},
 		},
 	}
-	svc, gcs := newServiceWithRepo(repo)
+	svc := newServiceWithRepo(repo)
 	storeID := uuid.New()
 
 	resp, err := svc.ListMedia(context.Background(), ListParams{StoreID: storeID})
@@ -185,26 +180,25 @@ func TestListMediaSkipsSignedURLForUnreadableStatus(t *testing.T) {
 	if resp.Items[0].SignedURL != nil {
 		t.Fatalf("expected no signed url for unreadable media, got %v", resp.Items[0].SignedURL)
 	}
-	if gcs.readCalls != 0 {
-		t.Fatalf("expected no signed url requests, got %d", gcs.readCalls)
-	}
 }
 
 func TestListMediaSignedURLOnlyForReturnedRows(t *testing.T) {
 	rows := []models.Media{
 		{
-			ID:     uuid.New(),
-			Status: enums.MediaStatusUploaded,
-			GCSKey: "media/a",
+			ID:        uuid.New(),
+			Status:    enums.MediaStatusUploaded,
+			GCSKey:    "media/a",
+			PublicURL: "https://public.example/a",
 		},
 		{
-			ID:     uuid.New(),
-			Status: enums.MediaStatusUploaded,
-			GCSKey: "media/b",
+			ID:        uuid.New(),
+			Status:    enums.MediaStatusUploaded,
+			GCSKey:    "media/b",
+			PublicURL: "https://public.example/b",
 		},
 	}
 	repo := &stubListRepo{listRows: rows}
-	svc, gcs := newServiceWithRepo(repo)
+	svc := newServiceWithRepo(repo)
 	storeID := uuid.New()
 
 	resp, err := svc.ListMedia(context.Background(), ListParams{
@@ -217,7 +211,10 @@ func TestListMediaSignedURLOnlyForReturnedRows(t *testing.T) {
 	if len(resp.Items) != 1 {
 		t.Fatalf("expected 1 item, got %d", len(resp.Items))
 	}
-	if gcs.readCalls != 1 {
-		t.Fatalf("expected 1 signed url request, got %d", gcs.readCalls)
+	if len(resp.Items) != 1 {
+		t.Fatalf("expected 1 item, got %d", len(resp.Items))
+	}
+	if resp.Items[0].SignedURL == nil || *resp.Items[0].SignedURL != rows[0].PublicURL {
+		t.Fatalf("expected signed url %s got %v", rows[0].PublicURL, resp.Items[0].SignedURL)
 	}
 }

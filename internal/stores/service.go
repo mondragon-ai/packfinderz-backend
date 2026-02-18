@@ -36,6 +36,10 @@ type membershipsRepository interface {
 	CountMembersWithRoles(ctx context.Context, storeID uuid.UUID, roles ...enums.MemberRole) (int64, error)
 }
 
+type mediaLookup interface {
+	FindByID(ctx context.Context, id uuid.UUID) (*models.Media, error)
+}
+
 type usersRepository interface {
 	FindByEmail(ctx context.Context, email string) (*models.User, error)
 	Create(ctx context.Context, dto users.CreateUserDTO) (*models.User, error)
@@ -63,6 +67,7 @@ type ServiceParams struct {
 	PasswordCfg          config.PasswordConfig
 	TransactionRunner    txRunner
 	AttachmentReconciler media.AttachmentReconciler
+	MediaRepo            mediaLookup
 }
 
 type service struct {
@@ -72,6 +77,7 @@ type service struct {
 	passwordCfg          config.PasswordConfig
 	tx                   txRunner
 	attachmentReconciler media.AttachmentReconciler
+	media                mediaLookup
 }
 
 // NewService builds a store service with the provided repositories.
@@ -91,6 +97,9 @@ func NewService(params ServiceParams) (Service, error) {
 	if params.AttachmentReconciler == nil {
 		return nil, fmt.Errorf("attachment reconciler required")
 	}
+	if params.MediaRepo == nil {
+		return nil, fmt.Errorf("media repository required")
+	}
 	return &service{
 		repo:                 params.Repo,
 		memberships:          params.Memberships,
@@ -98,6 +107,7 @@ func NewService(params ServiceParams) (Service, error) {
 		passwordCfg:          params.PasswordCfg,
 		tx:                   params.TransactionRunner,
 		attachmentReconciler: params.AttachmentReconciler,
+		media:                params.MediaRepo,
 	}, nil
 }
 
@@ -235,9 +245,19 @@ func (s *service) Update(ctx context.Context, userID, storeID uuid.UUID, input U
 		}
 		if input.LogoMediaID.Valid {
 			store.LogoMediaID = copyUUIDPtr(input.LogoMediaID.Value)
+			url, err := s.mediaPublicURL(ctx, store.ID, input.LogoMediaID.Value)
+			if err != nil {
+				return err
+			}
+			store.LogoURL = url
 		}
 		if input.BannerMediaID.Valid {
 			store.BannerMediaID = copyUUIDPtr(input.BannerMediaID.Value)
+			url, err := s.mediaPublicURL(ctx, store.ID, input.BannerMediaID.Value)
+			if err != nil {
+				return err
+			}
+			store.BannerURL = url
 		}
 		if input.Ratings != nil {
 			if *input.Ratings == nil {
@@ -419,6 +439,34 @@ func cloneCategories(value []string) pq.StringArray {
 	res := make(pq.StringArray, len(value))
 	copy(res, value)
 	return res
+}
+
+func (s *service) mediaPublicURL(ctx context.Context, storeID uuid.UUID, mediaID *uuid.UUID) (*string, error) {
+	if mediaID == nil {
+		return nil, nil
+	}
+	mediaRow, err := s.media.FindByID(ctx, *mediaID)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, pkgerrors.New(pkgerrors.CodeValidation, "media not found")
+		}
+		return nil, pkgerrors.Wrap(pkgerrors.CodeDependency, err, "load media")
+	}
+	if mediaRow.StoreID != storeID {
+		return nil, pkgerrors.New(pkgerrors.CodeValidation, "media belongs to different store")
+	}
+	if !isReadableMediaStatus(mediaRow.Status) {
+		return nil, pkgerrors.New(pkgerrors.CodeConflict, "media not ready")
+	}
+	if strings.TrimSpace(mediaRow.PublicURL) == "" {
+		return nil, pkgerrors.New(pkgerrors.CodeConflict, "media not ready")
+	}
+	url := mediaRow.PublicURL
+	return &url, nil
+}
+
+func isReadableMediaStatus(status enums.MediaStatus) bool {
+	return status == enums.MediaStatusUploaded || status == enums.MediaStatusReady
 }
 
 func copyUUIDPtr(id *uuid.UUID) *uuid.UUID {

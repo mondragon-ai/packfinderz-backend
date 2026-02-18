@@ -91,7 +91,7 @@ func (s *switchStoreService) Switch(ctx context.Context, input SwitchStoreInput)
 		return nil, pkgerrors.Wrap(pkgerrors.CodeInternal, err, "load refresh token")
 	}
 
-	newAccessID, _, err := s.session.Rotate(ctx, input.AccessTokenID, refreshToken)
+	newAccessID, newRefreshToken, err := s.session.Rotate(ctx, input.AccessTokenID, refreshToken)
 	if err != nil {
 		if errors.Is(err, session.ErrInvalidRefreshToken) {
 			return nil, pkgerrors.New(pkgerrors.CodeUnauthorized, "invalid refresh token")
@@ -113,7 +113,8 @@ func (s *switchStoreService) Switch(ctx context.Context, input SwitchStoreInput)
 	}
 
 	result := &SwitchStoreResult{
-		AccessToken: accessToken,
+		AccessToken:  accessToken,
+		RefreshToken: newRefreshToken,
 		Store: StoreSummary{
 			ID:   membership.StoreID,
 			Name: membership.StoreName,

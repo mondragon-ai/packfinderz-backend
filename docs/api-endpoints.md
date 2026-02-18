@@ -39,3 +39,18 @@ curl -X POST "{{API_BASE_URL}}/api/v1/notifications/read-all" \
   -H "Authorization: Bearer {{ACCESS_TOKEN}}" \
   -H "Idempotency-Key: {{UNIQUE_KEY}}"
 ```
+
+# Auth (store switching)
+
+Switching stores relies on the scoped JWT sent with the request (`Authorization: Bearer {{ACCESS_TOKEN}}`). The handler extracts `store_id` from the body, reuses the access token’s `jti`/refresh mapping, and returns a fresh access token via the `X-PF-Token` header plus a `refresh_token` value in the JSON payload. The body only requires the new store ID, there is no refresh token input because the JWT already identifies the session.
+
+### `POST /api/v1/auth/switch-store`
+
+```bash
+curl -X POST "{{API_BASE_URL}}/api/v1/auth/switch-store" \
+  -H "Authorization: Bearer {{ACCESS_TOKEN}}" \
+  -H "Content-Type: application/json" \
+  -d '{"store_id":"{{NEW_STORE_ID}}"}'
+```
+
+Successful calls update the `X-PF-Token` response header with the new access token and return JSON like `{"data":{"store_id":"...","store_name":"...","store_type":"vendor","refresh_token":"..."}}`.

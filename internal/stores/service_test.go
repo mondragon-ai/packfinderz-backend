@@ -18,13 +18,28 @@ import (
 )
 
 func newStoreService(repo storeRepository, members stubMembershipsRepo, usersRepo usersRepository) (Service, error) {
-	svc, _, err := newStoreServiceWithAttachmentStub(repo, members, usersRepo, nil)
+	svc, _, err := newStoreServiceWithAttachmentStub(repo, members, usersRepo, nil, nil)
 	return svc, err
 }
 
-func newStoreServiceWithAttachmentStub(repo storeRepository, members stubMembershipsRepo, usersRepo usersRepository, reconciler *stubAttachmentReconciler) (Service, *stubAttachmentReconciler, error) {
+func newStoreServiceWithAttachmentStub(repo storeRepository, members stubMembershipsRepo, usersRepo usersRepository, reconciler *stubAttachmentReconciler, mediaRepo mediaLookup) (Service, *stubAttachmentReconciler, error) {
 	if reconciler == nil {
 		reconciler = &stubAttachmentReconciler{}
+	}
+	if mediaRepo == nil {
+		storeID := uuid.Nil
+		if sr, ok := repo.(*stubStoreRepo); ok && sr.store != nil {
+			storeID = sr.store.ID
+		}
+		defaultMedia := &models.Media{
+			ID:        uuid.New(),
+			StoreID:   storeID,
+			Status:    enums.MediaStatusUploaded,
+			PublicURL: "https://example.com/default",
+		}
+		mediaRepo = &stubMediaRepo{
+			defaultMedia: defaultMedia,
+		}
 	}
 	svc, err := NewService(ServiceParams{
 		Repo:                 repo,
@@ -33,6 +48,7 @@ func newStoreServiceWithAttachmentStub(repo storeRepository, members stubMembers
 		PasswordCfg:          config.PasswordConfig{},
 		TransactionRunner:    stubTxRunner{},
 		AttachmentReconciler: reconciler,
+		MediaRepo:            mediaRepo,
 	})
 	return svc, reconciler, err
 }
@@ -127,7 +143,7 @@ func TestServiceUpdateSuccess(t *testing.T) {
 	store := baseStore()
 	repo := &stubStoreRepo{store: store}
 	att := &stubAttachmentReconciler{}
-	svc, _, err := newStoreServiceWithAttachmentStub(repo, stubMembershipsRepo{allowed: true}, &stubUsersRepo{}, att)
+	svc, _, err := newStoreServiceWithAttachmentStub(repo, stubMembershipsRepo{allowed: true}, &stubUsersRepo{}, att, nil)
 	if err != nil {
 		t.Fatalf("new service: %v", err)
 	}
@@ -184,6 +200,50 @@ func TestServiceUpdateSuccess(t *testing.T) {
 	}
 	if len(bannerCall.newIDs) != 0 {
 		t.Fatalf("expected no banner changes got %v", bannerCall.newIDs)
+	}
+}
+
+func TestServiceUpdatePopulatesMediaURLs(t *testing.T) {
+	store := baseStore()
+	repo := &stubStoreRepo{store: store}
+	att := &stubAttachmentReconciler{}
+	logoID := uuid.New()
+	bannerID := uuid.New()
+	mediaRepo := &stubMediaRepo{
+		entries: map[uuid.UUID]*models.Media{
+			logoID: {
+				ID:        logoID,
+				StoreID:   store.ID,
+				Status:    enums.MediaStatusUploaded,
+				PublicURL: "https://logo.example/logo.png",
+			},
+			bannerID: {
+				ID:        bannerID,
+				StoreID:   store.ID,
+				Status:    enums.MediaStatusUploaded,
+				PublicURL: "https://banner.example/banner.png",
+			},
+		},
+	}
+	svc, _, err := newStoreServiceWithAttachmentStub(repo, stubMembershipsRepo{allowed: true}, &stubUsersRepo{}, att, mediaRepo)
+	if err != nil {
+		t.Fatalf("new service: %v", err)
+	}
+
+	input := UpdateStoreInput{
+		LogoMediaID:   types.NullableUUID{Valid: true, Value: &logoID},
+		BannerMediaID: types.NullableUUID{Valid: true, Value: &bannerID},
+	}
+
+	dto, err := svc.Update(context.Background(), uuid.New(), store.ID, input)
+	if err != nil {
+		t.Fatalf("update store: %v", err)
+	}
+	if dto.LogoURL == nil || *dto.LogoURL != "https://logo.example/logo.png" {
+		t.Fatalf("expected logo url set got %v", dto.LogoURL)
+	}
+	if dto.BannerURL == nil || *dto.BannerURL != "https://banner.example/banner.png" {
+		t.Fatalf("expected banner url set got %v", dto.BannerURL)
 	}
 }
 
@@ -540,6 +600,27 @@ func (s stubMembershipsRepo) CountMembersWithRoles(ctx context.Context, storeID 
 
 func (s stubMembershipsRepo) DeleteMembership(ctx context.Context, storeID, userID uuid.UUID) error {
 	return s.deleteErr
+}
+
+type stubMediaRepo struct {
+	entries      map[uuid.UUID]*models.Media
+	defaultMedia *models.Media
+	err          error
+}
+
+func (s *stubMediaRepo) FindByID(ctx context.Context, id uuid.UUID) (*models.Media, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+	if s.entries != nil {
+		if media, ok := s.entries[id]; ok {
+			return media, nil
+		}
+	}
+	if s.defaultMedia != nil {
+		return s.defaultMedia, nil
+	}
+	return nil, gorm.ErrRecordNotFound
 }
 
 type stubUsersRepo struct {

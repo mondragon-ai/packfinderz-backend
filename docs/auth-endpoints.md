@@ -206,7 +206,7 @@ curl -i -X PUT \
 
 
 ### GET /api/v1/media
-Fetches paginated metadata for the store’s media uploads. The JSON response includes `items` (each with `signed_url` populated only when the status is `uploaded` or `ready`) plus a `cursor` for the next page. Default `limit` is 25, capped at 100; omit the query to use the default.
+Fetches paginated metadata for the store’s media uploads. The JSON response includes `items` (each with `signed_url` populated only when the status is `uploaded` or `ready`; `signed_url` now mirrors the stable `public_url` stored with the media row) plus a `cursor` for the next page. Default `limit` is 25, capped at 100; omit the query to use the default.
 
 #### Supported query parameters
 - `limit` (integer greater than zero, max 100) – override the number of items per page.
@@ -228,7 +228,7 @@ curl -G "{{API_BASE_URL}}/api/v1/media" \
   --data-urlencode "search=spinach"
 ```
 
-Keep the `cursor` value returned alongside `items` to fetch the next page. Each item contains `id`, `kind`, `status`, timestamps, and `signed_url` when available.
+Keep the `cursor` value returned alongside `items` to fetch the next page. Each item contains `id`, `kind`, `status`, timestamps, and `signed_url` (a permanent `storage.googleapis.com` link) when available.
 
 ### DELETE /api/v1/media/{mediaId}
 Deletes the media row for the active store if the asset is in a deletable status (`uploaded` or `ready`). The route returns HTTP 204 on success. Provide a valid UUID.
@@ -1393,7 +1393,7 @@ curl -G "{{API_BASE_URL}}/api/v1/licenses" \
   --data-urlencode "cursor={{optional_cursor}}"
 ```
 
-Each item exposes `id`, `store_id`, `user_id`, `status` (`pending`, `verified`, `rejected`, or `expired`), `media_id`, `issuing_state`, `issue_date`, `expiration_date`, `type`, `number`, `created_at`, `updated_at`, and `signed_url` (pre-signed GCS URL for the license file, when available).
+Each item exposes `id`, `store_id`, `user_id`, `status` (`pending`, `verified`, `rejected`, or `expired`), `media_id`, `issuing_state`, `issue_date`, `expiration_date`, `type`, `number`, `created_at`, `updated_at`, and `signed_url` (the stored public `storage.googleapis.com` link for the license file, when available).
 
 ### DELETE /api/v1/licenses/{licenseId}
 Removes a rejected or expired license so the store can re-submit compliance assets. Only `owner`/`manager` roles may delete, and the endpoint returns `403 Forbidden` if the license belongs to another store or `409 Conflict` when the status is still `pending` or `verified`.

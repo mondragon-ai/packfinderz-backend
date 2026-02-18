@@ -18,6 +18,7 @@ type Media struct {
 	GCSKey              string            `gorm:"column:gcs_key;not null;unique"`
 	FileName            string            `gorm:"column:file_name;not null"`
 	MimeType            string            `gorm:"column:mime_type;not null"`
+	PublicURL           string            `gorm:"column:public_url"`
 	OCR                 *string           `gorm:"column:ocr"`
 	SizeBytes           int64             `gorm:"column:size_bytes;not null"`
 	IsCompressed        bool              `gorm:"column:is_compressed;not null;default:false"`

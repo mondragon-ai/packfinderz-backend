@@ -57,6 +57,7 @@ type ProductSummary struct {
 	CreatedAt           time.Time `json:"created_at"`
 	UpdatedAt           time.Time `json:"updated_at"`
 	MaxQty              int       `json:"max_qty"`
+	ThumbnailURL        *string   `json:"thumbnail_url,omitempty"`
 }
 
 // ProductListResult wraps a page of product summaries plus the cursor for the next page.

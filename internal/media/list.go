@@ -131,11 +131,10 @@ func (s *service) buildReadURL(media models.Media) (string, error) {
 	if !isReadableStatus(media.Status) {
 		return "", nil
 	}
-	url, err := s.gcs.SignedReadURL(s.bucket, media.GCSKey, s.downloadTTL)
-	if err != nil {
-		return "", pkgerrors.Wrap(pkgerrors.CodeDependency, err, "generate signed read url")
+	if media.PublicURL == "" {
+		return "", nil
 	}
-	return url, nil
+	return media.PublicURL, nil
 }
 
 func stringPtr(value string) *string {

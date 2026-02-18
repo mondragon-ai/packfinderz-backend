@@ -192,6 +192,7 @@ func main() {
 		PasswordCfg:          cfg.Password,
 		TransactionRunner:    dbClient,
 		AttachmentReconciler: attachmentReconciler,
+		MediaRepo:            mediaRepo,
 	})
 	requireResource(ctx, logg, "store service", err)
 
@@ -244,9 +245,7 @@ func main() {
 		mediaRepo,
 		membershipsRepo,
 		attachmentReconciler,
-		gcsClient,
 		cfg.GCS.BucketName,
-		cfg.GCS.DownloadURLExpiry,
 		storeRepo,
 		dbClient,
 		outboxPublisher,

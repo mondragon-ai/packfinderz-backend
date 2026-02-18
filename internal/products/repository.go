@@ -271,8 +271,16 @@ func (r *Repository) ListProductSummaries(ctx context.Context, query productList
 			"p.store_id",
 			"p.max_qty",
 			promoExistsClause + " AS has_promo",
+			"pm_thumb.url AS thumbnail_url",
 		}, ", ")).
-		Joins("JOIN stores s ON s.id = p.store_id")
+		Joins("JOIN stores s ON s.id = p.store_id").
+		Joins(`LEFT JOIN LATERAL (
+  SELECT url
+  FROM product_media pm
+  WHERE pm.product_id = p.id
+  ORDER BY pm.position ASC, pm.created_at ASC
+  LIMIT 1
+) pm_thumb ON true`)
 
 	filter := query.Filters
 	if filter.Category != nil {
@@ -369,6 +377,7 @@ type productSummaryRecord struct {
 	StoreID             uuid.UUID
 	CreatedAt           time.Time
 	UpdatedAt           time.Time
+	ThumbnailURL        sql.NullString
 	MaxQty              int
 }
 
@@ -389,6 +398,7 @@ func (r productSummaryRecord) toSummary() ProductSummary {
 		VendorStoreID:       r.StoreID,
 		CreatedAt:           r.CreatedAt,
 		UpdatedAt:           r.UpdatedAt,
+		ThumbnailURL:        nullStringPtr(r.ThumbnailURL),
 		MaxQty:              r.MaxQty,
 	}
 }

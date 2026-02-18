@@ -747,10 +747,20 @@ func (s *service) buildProductMediaRows(ctx context.Context, storeID, productID 
 			ProductID: productID,
 			GCSKey:    mediaRow.GCSKey,
 			MediaID:   &mediaRow.ID,
+			URL:       nonEmptyStringPtr(mediaRow.PublicURL),
 			Position:  idx,
 		})
 	}
 	return rows, nil
+}
+
+func nonEmptyStringPtr(value string) *string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return nil
+	}
+	copy := value
+	return &copy
 }
 
 func (s *service) fetchStoreScopedMedia(ctx context.Context, storeID, mediaID uuid.UUID, expected enums.MediaKind) (*models.Media, error) {

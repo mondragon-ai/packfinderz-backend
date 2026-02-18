@@ -13,6 +13,7 @@ import (
 	"github.com/angelmondragon/packfinderz-backend/pkg/db/models"
 	"github.com/angelmondragon/packfinderz-backend/pkg/enums"
 	"github.com/angelmondragon/packfinderz-backend/pkg/logger"
+	gcsclient "github.com/angelmondragon/packfinderz-backend/pkg/storage/gcs"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
@@ -24,7 +25,7 @@ const (
 
 type repository interface {
 	FindByGCSKey(ctx context.Context, gcsKey string) (*models.Media, error)
-	MarkUploaded(ctx context.Context, id uuid.UUID, uploadedAt time.Time) error
+	MarkUploaded(ctx context.Context, id uuid.UUID, uploadedAt time.Time, publicURL string) error
 }
 
 // Consumer processes GCS OBJECT_FINALIZE notifications from Pub/Sub.
@@ -135,7 +136,16 @@ func (c *Consumer) process(ctx context.Context, msg *pubsub.Message) processResu
 	}
 
 	uploadedAt := c.now()
-	if err := c.repo.MarkUploaded(ctx, mediaRow.ID, uploadedAt); err != nil {
+	bucket := firstNonEmpty(attrs.BucketID, gcsBucket(&gcs))
+	publicURL, urlErr := gcsclient.PublicURL(bucket, gcs.Name)
+	if urlErr != nil {
+		fields["bucket"] = bucket
+		logCtx = c.logg.WithFields(ctx, fields)
+		c.logg.Error(logCtx, "build public url", urlErr)
+		return processResult{ack: true}
+	}
+
+	if err := c.repo.MarkUploaded(ctx, mediaRow.ID, uploadedAt, publicURL); err != nil {
 		return c.handleDBError(logCtx, err)
 	}
 

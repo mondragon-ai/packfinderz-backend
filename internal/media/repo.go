@@ -107,14 +107,18 @@ func (r *Repository) FindByGCSKey(ctx context.Context, gcsKey string) (*models.M
 	return &m, nil
 }
 
-// MarkUploaded marks the media row as uploaded and records the provided timestamp.
-func (r *Repository) MarkUploaded(ctx context.Context, id uuid.UUID, uploadedAt time.Time) error {
+// MarkUploaded marks the media row as uploaded, records the provided timestamp, and stores the public URL when available.
+func (r *Repository) MarkUploaded(ctx context.Context, id uuid.UUID, uploadedAt time.Time, publicURL string) error {
+	updates := map[string]any{
+		"status":      enums.MediaStatusUploaded,
+		"uploaded_at": uploadedAt,
+	}
+	if strings.TrimSpace(publicURL) != "" {
+		updates["public_url"] = publicURL
+	}
 	return r.db.WithContext(ctx).Model(&models.Media{}).
 		Where("id = ?", id).
-		Updates(map[string]any{
-			"status":      enums.MediaStatusUploaded,
-			"uploaded_at": uploadedAt,
-		}).Error
+		Updates(updates).Error
 }
 
 // MarkDeleted marks the media as deleted with a timestamp.

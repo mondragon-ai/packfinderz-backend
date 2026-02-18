@@ -24,7 +24,7 @@
 - `Client.AccessToken()`, `.Environment()`, and `.SigningSecret()` expose the normalized metadata consumed by `internal/subscriptions`, billing, and the Square webhook handler (`pkg/square/client.go:33-82`).
 
 ## pkg/storage/gcs
-- `Client` loads credentials (JSON/service account/metadata), keeps a cached token source, pings the bucket, and exposes `SignedURL`, `SignedReadURL`, `DeleteObject`, and bucket helpers that embed service-account signing logic (pkg/storage/gcs/client.go:35-506).
+- `Client` loads credentials (JSON/service account/metadata), keeps a cached token source, pings the bucket, and exposes `SignedURL`, `DeleteObject`, and a `PublicURL` helper that builds the permanent `storage.googleapis.com` link so media/license consumers can reuse a stored public URL instead of generating a new signed GET URL each time (pkg/storage/gcs/client.go:35-506).
 
 ## pkg/bigquery
 - `NewClient(ctx, config.GCPConfig, config.BigQueryConfig, logger)` bootstraps the shared BigQuery client, loads credentials from JSON or `GOOGLE_APPLICATION_CREDENTIALS`, and requires `PACKFINDERZ_BIGQUERY_DATASET` (default `packfinderz`) plus the `PACKFINDERZ_BIGQUERY_MARKETPLACE_TABLE`/`PACKFINDERZ_BIGQUERY_AD_TABLE` names before continuing (`pkg/bigquery/client.go`:27-108; `pkg/config/config.go`:179-187).
