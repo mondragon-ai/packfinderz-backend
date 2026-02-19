@@ -47,10 +47,6 @@ func mustCreateTestStore(t *testing.T, tx *gorm.DB, ownerID uuid.UUID) *models.S
 			Lat:        36.153984,
 			Lng:        -95.992775,
 		},
-		Geom: types.GeographyPoint{
-			Lat: 36.153984,
-			Lng: -95.992775,
-		},
 	}
 	if err := tx.Create(store).Error; err != nil {
 		t.Fatalf("create store: %v", err)

@@ -12,29 +12,30 @@ import (
 
 // StoreDTO exposes safe tenant data in API responses.
 type StoreDTO struct {
-	ID                   uuid.UUID            `json:"id"`
-	Type                 enums.StoreType      `json:"type"`
-	CompanyName          string               `json:"company_name"`
-	DBAName              *string              `json:"dba_name,omitempty"`
-	Description          *string              `json:"description,omitempty"`
-	Phone                *string              `json:"phone,omitempty"`
-	Email                *string              `json:"email,omitempty"`
-	KYCStatus            enums.KYCStatus      `json:"kyc_status"`
-	SubscriptionActive   bool                 `json:"subscription_active"`
-	DeliveryRadiusMeters int                  `json:"delivery_radius_meters"`
-	Address              types.Address        `json:"address"`
-	Geom                 types.GeographyPoint `json:"geom"`
-	Social               *types.Social        `json:"social,omitempty"`
-	BannerURL            *string              `json:"banner_url,omitempty"`
-	LogoURL              *string              `json:"logo_url,omitempty"`
-	BannerMediaID        *uuid.UUID           `json:"banner_media_id,omitempty"`
-	LogoMediaID          *uuid.UUID           `json:"logo_media_id,omitempty"`
-	Ratings              map[string]int       `json:"ratings,omitempty"`
-	Categories           []string             `json:"categories,omitempty"`
-	OwnerID              uuid.UUID            `json:"owner"`
-	LastActiveAt         *time.Time           `json:"last_active_at,omitempty"`
-	CreatedAt            time.Time            `json:"created_at"`
-	UpdatedAt            time.Time            `json:"updated_at"`
+	ID                   uuid.UUID         `json:"id"`
+	Type                 enums.StoreType   `json:"type"`
+	CompanyName          string            `json:"company_name"`
+	DBAName              *string           `json:"dba_name,omitempty"`
+	Description          *string           `json:"description,omitempty"`
+	Phone                *string           `json:"phone,omitempty"`
+	Email                *string           `json:"email,omitempty"`
+	KYCStatus            enums.KYCStatus   `json:"kyc_status"`
+	SubscriptionActive   bool              `json:"subscription_active"`
+	DeliveryRadiusMeters int               `json:"delivery_radius_meters"`
+	Address              types.Address     `json:"address"`
+	Social               *types.Social     `json:"social,omitempty"`
+	BannerURL            *string           `json:"banner_url,omitempty"`
+	LogoURL              *string           `json:"logo_url,omitempty"`
+	BannerMediaID        *uuid.UUID        `json:"banner_media_id,omitempty"`
+	LogoMediaID          *uuid.UUID        `json:"logo_media_id,omitempty"`
+	Ratings              map[string]int    `json:"ratings,omitempty"`
+	Categories           []string          `json:"categories,omitempty"`
+	OwnerID              uuid.UUID         `json:"owner"`
+	Badge                *enums.StoreBadge `json:"badge,omitempty"`
+	LastActiveAt         *time.Time        `json:"last_active_at,omitempty"`
+	LastLoggedInAt       *time.Time        `json:"last_logged_in_at,omitempty"`
+	CreatedAt            time.Time         `json:"created_at"`
+	UpdatedAt            time.Time         `json:"updated_at"`
 }
 
 // CreateStoreDTO holds creation-time data for a new store.
@@ -49,8 +50,8 @@ type CreateStoreDTO struct {
 	SubscriptionActive   *bool
 	DeliveryRadiusMeters *int
 	Address              types.Address
-	Geom                 types.GeographyPoint
 	Social               *types.Social
+	Badge                *enums.StoreBadge
 	OwnerID              uuid.UUID
 }
 
@@ -72,12 +73,19 @@ func FromModel(m *models.Store) *StoreDTO {
 		SubscriptionActive:   m.SubscriptionActive,
 		DeliveryRadiusMeters: m.DeliveryRadiusMeters,
 		Address:              m.Address,
-		Geom:                 m.Geom,
 		Social:               m.Social,
 		OwnerID:              m.OwnerID,
 		LastActiveAt:         m.LastActiveAt,
 		CreatedAt:            m.CreatedAt,
 		UpdatedAt:            m.UpdatedAt,
+	}
+
+	if m.Badge != nil {
+		badge := *m.Badge
+		dto.Badge = &badge
+	}
+	if m.LastLoggedInAt != nil {
+		dto.LastLoggedInAt = m.LastLoggedInAt
 	}
 
 	if m.Social != nil {
@@ -125,7 +133,6 @@ func (c CreateStoreDTO) ToModel() *models.Store {
 		SubscriptionActive:   false,
 		DeliveryRadiusMeters: 0,
 		Address:              c.Address,
-		Geom:                 c.Geom,
 		Social:               nil,
 		OwnerID:              c.OwnerID,
 	}
@@ -143,8 +150,19 @@ func (c CreateStoreDTO) ToModel() *models.Store {
 		cpy := *c.Social
 		model.Social = &cpy
 	}
+	if c.Badge != nil {
+		model.Badge = cloneStoreBadgePtr(c.Badge)
+	}
 
 	return model
+}
+
+func cloneStoreBadgePtr(value *enums.StoreBadge) *enums.StoreBadge {
+	if value == nil {
+		return nil
+	}
+	cpy := *value
+	return &cpy
 }
 
 func cloneUUIDPtr(id *uuid.UUID) *uuid.UUID {

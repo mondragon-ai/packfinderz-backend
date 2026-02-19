@@ -29,10 +29,15 @@ type SwitchStoreResult struct {
 	Store        StoreSummary
 }
 
+type storeLastLoginUpdater interface {
+	UpdateLastLoggedInAt(ctx context.Context, storeID uuid.UUID) error
+}
+
 type switchStoreService struct {
-	memberships switchMembershipsRepository
-	session     switchSessionRotator
-	jwtCfg      config.JWTConfig
+	memberships  switchMembershipsRepository
+	session      switchSessionRotator
+	jwtCfg       config.JWTConfig
+	storeUpdater storeLastLoginUpdater
 }
 
 type switchMembershipsRepository interface {
@@ -49,6 +54,7 @@ type SwitchStoreServiceParams struct {
 	MembershipsRepo switchMembershipsRepository
 	SessionManager  switchSessionRotator
 	JWTConfig       config.JWTConfig
+	StoreRepo       storeLastLoginUpdater
 }
 
 // NewSwitchStoreService constructs the service.
@@ -59,10 +65,14 @@ func NewSwitchStoreService(params SwitchStoreServiceParams) (SwitchStoreService,
 	if params.SessionManager == nil {
 		return nil, errors.New("session manager required")
 	}
+	if params.StoreRepo == nil {
+		return nil, errors.New("store repository required")
+	}
 	return &switchStoreService{
-		memberships: params.MembershipsRepo,
-		session:     params.SessionManager,
-		jwtCfg:      params.JWTConfig,
+		memberships:  params.MembershipsRepo,
+		session:      params.SessionManager,
+		jwtCfg:       params.JWTConfig,
+		storeUpdater: params.StoreRepo,
 	}, nil
 }
 
@@ -81,6 +91,10 @@ func (s *switchStoreService) Switch(ctx context.Context, input SwitchStoreInput)
 	}
 	if membership.Status != enums.MembershipStatusActive {
 		return nil, pkgerrors.New(pkgerrors.CodeForbidden, "store membership inactive")
+	}
+
+	if err := s.storeUpdater.UpdateLastLoggedInAt(ctx, input.StoreID); err != nil {
+		return nil, pkgerrors.Wrap(pkgerrors.CodeInternal, err, "update store last login")
 	}
 
 	refreshToken, err := s.session.RefreshToken(ctx, input.AccessTokenID)

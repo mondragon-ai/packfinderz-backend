@@ -39,7 +39,6 @@ func (r *Repository) Create(ctx context.Context, dto CreateStoreDTO) (*models.St
 func (r *Repository) FindByID(ctx context.Context, id uuid.UUID) (*models.Store, error) {
 	var store models.Store
 	if err := r.db.WithContext(ctx).
-		Omit("geom").
 		Where("id = ?", id).
 		First(&store).Error; err != nil {
 		return nil, err
@@ -93,7 +92,7 @@ func (r *Repository) FindByIDWithTx(tx *gorm.DB, id uuid.UUID) (*models.Store, e
 		return nil, gorm.ErrInvalidTransaction
 	}
 	var store models.Store
-	if err := tx.Omit("geom").First(&store, "id = ?", id).Error; err != nil {
+	if err := tx.First(&store, "id = ?", id).Error; err != nil {
 		return nil, err
 	}
 	return &store, nil
@@ -143,6 +142,26 @@ func (r *Repository) UpdateStatusWithTx(tx *gorm.DB, storeID uuid.UUID, newStatu
 		Where("id = ?", storeID).
 		Update("kyc_status", newStatus).Error; err != nil {
 		return err
+	}
+	return nil
+}
+
+func (r *Repository) UpdateLastLoggedInAt(ctx context.Context, storeID uuid.UUID) error {
+	if storeID == uuid.Nil {
+		return fmt.Errorf("storeID is required")
+	}
+	res := r.db.WithContext(ctx).
+		Model(&models.Store{}).
+		Where("id = ?", storeID).
+		Updates(map[string]any{
+			"last_logged_in_at": time.Now().UTC(),
+			"updated_at":        time.Now(),
+		})
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
+		return gorm.ErrRecordNotFound
 	}
 	return nil
 }

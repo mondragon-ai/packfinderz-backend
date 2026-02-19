@@ -135,6 +135,7 @@ func main() {
 		MembershipsRepo: membershipsRepo,
 		SessionManager:  sessionManager,
 		JWTConfig:       cfg.JWT,
+		StoreRepo:       storeRepo,
 	})
 	requireResource(ctx, logg, "switch store service", err)
 

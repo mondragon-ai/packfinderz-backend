@@ -36,7 +36,8 @@ CREATE TABLE IF NOT EXISTS stores (
   subscription_active INTEGER NOT NULL DEFAULT 0,
   delivery_radius_meters INTEGER NOT NULL DEFAULT 0,
   address TEXT NOT NULL,
-  geom TEXT NOT NULL,
+  badge TEXT,
+  last_logged_in_at DATETIME,
   social TEXT,
   banner_url TEXT,
   logo_url TEXT,
@@ -157,10 +158,6 @@ func newStore(t *testing.T, db *gorm.DB, name string, st enums.StoreType) *model
 			Country:    "US",
 			Lat:        35.2226,
 			Lng:        -97.4395,
-		},
-		Geom: types.GeographyPoint{
-			Lat: 35.2226,
-			Lng: -97.4395,
 		},
 	}
 	require.NoError(t, db.Create(store).Error)

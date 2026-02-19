@@ -139,7 +139,7 @@ Routes under `/api/v1/stores` require the standard `/api` auth + store context g
 
 ### `GET /api/v1/stores/me`
 
-Returns the active store’s profile. The response matches `stores.StoreDTO`, exposing company info, contact channels, address, ratings, etc.
+Returns the active store’s profile. The response matches `stores.StoreDTO`, exposing company info, contact channels, curated badge status, address, ratings, and timestamps such as `last_logged_in_at`.
 
 ```bash
 curl "{{API_BASE_URL}}/api/v1/stores/me" \
@@ -178,6 +178,8 @@ Response example:
       "cannabis"
     ],
     "owner": "owner-uuid",
+    "badge": "quality_verified",
+    "last_logged_in_at": "2024-04-01T12:34:56Z",
     "created_at": "...",
     "updated_at": "..."
   }
@@ -188,19 +190,75 @@ Response example:
 
 Allows updating writable store fields. All attributes are optional—send only the values that should change. Valid fields match `storeUpdateRequest` structures and include:
 
-- `company_name` (min 1 char)
-- `description`, `phone`, `email`
-- `social` object per `pkg/types.Social`
-- `banner_url`, `logo_url`
-- `banner_media_id`, `logo_media_id` (nullable UUID)
-- `ratings` map
-- `categories` array
+- `company_name` (min 1 char, display/company name)
+- `description`, `phone`, `email` (contact info; email must be valid)
+- `social` object per `pkg/types.Social` (keys: `twitter`, `facebook`, `instagram`, `linkedin`, `youtube`, `website`; nullable strings to clear)
+- `banner_url`, `logo_url` (public URLs that override the persisted attachments)
+- `banner_media_id`, `logo_media_id` (nullable UUID for pre-uploaded assets; send `null` to remove)
+- `ratings` map (string keys → ints; send `{}` to clear ratings)
+- `categories` array (string tags; send `[]` to clear)
+- `badge` (`store_badge` enum; provide a known value to apply a curated badge)
+
+Example request showing every writable field:
+
+```json
+{
+  "company_name": "Acme Goods",
+  "description": "Farm-to-table grocer & delivery hub in the Mission.",
+  "phone": "+15551234567",
+  "email": "hello@acme.gro",
+  "social": {
+    "twitter": "https://twitter.com/acmegoods",
+    "facebook": "https://facebook.com/acmegoods",
+    "instagram": "https://instagram.com/acmegoods",
+    "linkedin": "https://linkedin.com/company/acme",
+    "youtube": "https://youtube.com/@acmegoods",
+    "website": "https://acme.goods"
+  },
+  "banner_url": "https://cdn.packfinderz.com/banners/acme-store.jpg",
+  "logo_url": "https://cdn.packfinderz.com/logos/acme.png",
+  "badge": "quality_verified",
+  "banner_media_id": "2e3f5a00-7cb3-4b41-8f14-1f2abc3d4e5f",
+  "logo_media_id": null,
+  "ratings": {
+    "service": 4,
+    "selection": 5,
+    "delivery": 3
+  },
+  "categories": [
+    "groceries",
+    "delivery",
+    "produce"
+  ]
+}
+```
 
 ```bash
 curl -X PUT "{{API_BASE_URL}}/api/v1/stores/me" \
   -H "Authorization: Bearer {{ACCESS_TOKEN}}" \
   -H "Content-Type: application/json" \
-  -d '{"company_name":"Acme Goods","email":"new@acme.local","categories":["groceries"]}'
+  -d '{
+    "company_name": "Acme Goods",
+    "description": "Farm-to-table grocer & delivery hub in the Mission.",
+    "phone": "+15551234567",
+    "email": "hello@acme.gro",
+    "social": {
+      "twitter": "https://twitter.com/acmegoods",
+      "facebook": "https://facebook.com/acmegoods",
+      "instagram": "https://instagram.com/acmegoods",
+      "linkedin": "https://linkedin.com/company/acme",
+      "youtube": "https://youtube.com/@acmegoods",
+      "website": "https://acme.goods"
+    },
+    "badge": "quality_verified",
+    "banner_media_id": "2e3f5a00-7cb3-4b41-8f14-1f2abc3d4e5f",
+    "logo_media_id": null,
+    "categories": [
+      "groceries",
+      "delivery",
+      "produce"
+    ]
+  }'
 ```
 
 Response uses the same `StoreDTO` as `GET /stores/me`.
@@ -237,7 +295,14 @@ Response example:
 
 ### `POST /api/v1/stores/me/users/invite`
 
-Invites a new user with a store role. Validates email and role (`owner`, `admin`, `manager`, etc.). Request DTO:
+Invites a new user with a store role. Owners/managers must include an `Idempotency-Key` header to avoid duplicate invites. The body follows `storeInviteRequest` and requires:
+
+- `email` (required, normalized to lowercase)
+- `first_name` (required)
+- `last_name` (required)
+- `role` (required, one of `owner`, `admin`, `manager`, `viewer`, `agent`, `staff`, `ops`)
+
+Example request with every required field:
 
 ```json
 {
@@ -252,7 +317,13 @@ Invites a new user with a store role. Validates email and role (`owner`, `admin`
 curl -X POST "{{API_BASE_URL}}/api/v1/stores/me/users/invite" \
   -H "Authorization: Bearer {{ACCESS_TOKEN}}" \
   -H "Content-Type: application/json" \
-  -d '{"email":"invitee@example.com","first_name":"New","last_name":"User","role":"manager"}'
+  -H "Idempotency-Key: {{IDEMPOTENCY_KEY}}" \
+  -d '{
+    "email": "invitee@example.com",
+    "first_name": "New",
+    "last_name": "User",
+    "role": "manager"
+  }'
 ```
 
 Response includes the created `memberships.StoreUserDTO` and the temporary password when generated:

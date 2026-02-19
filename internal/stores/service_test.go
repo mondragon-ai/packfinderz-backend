@@ -500,10 +500,6 @@ func baseStore() *models.Store {
 			Lat:        35.4676,
 			Lng:        -97.5164,
 		},
-		Geom: types.GeographyPoint{
-			Lat: 35.4676,
-			Lng: -97.5164,
-		},
 		OwnerID:     uuid.New(),
 		CreatedAt:   time.Now(),
 		UpdatedAt:   time.Now(),

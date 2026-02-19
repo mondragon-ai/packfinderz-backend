@@ -61,9 +61,10 @@ type storeUpdateRequest struct {
 	LogoMediaID   types.NullableUUID `json:"logo_media_id,omitempty"`
 	Ratings       *map[string]int    `json:"ratings,omitempty"`
 	Categories    *[]string          `json:"categories,omitempty"`
+	Badge         *string            `json:"badge,omitempty"`
 }
 
-func (r storeUpdateRequest) toInput() stores.UpdateStoreInput {
+func (r storeUpdateRequest) toInput() (stores.UpdateStoreInput, error) {
 	return stores.UpdateStoreInput{
 		CompanyName:   r.CompanyName,
 		Description:   r.Description,
@@ -76,7 +77,7 @@ func (r storeUpdateRequest) toInput() stores.UpdateStoreInput {
 		LogoMediaID:   r.LogoMediaID,
 		Ratings:       r.Ratings,
 		Categories:    r.Categories,
-	}
+	}, nil
 }
 
 // StoreUpdate adjusts the allowed mutable fields for the active store.
@@ -117,7 +118,13 @@ func StoreUpdate(svc stores.Service, logg *logger.Logger) http.HandlerFunc {
 			return
 		}
 
-		profile, err := svc.Update(r.Context(), uid, sid, payload.toInput())
+		input, err := payload.toInput()
+		if err != nil {
+			responses.WriteError(r.Context(), logg, w, err)
+			return
+		}
+
+		profile, err := svc.Update(r.Context(), uid, sid, input)
 		if err != nil {
 			responses.WriteError(r.Context(), logg, w, err)
 			return

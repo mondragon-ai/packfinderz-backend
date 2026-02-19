@@ -173,11 +173,7 @@ func (s *registerService) Register(ctx context.Context, req RegisterRequest) err
 			CompanyName: req.CompanyName,
 			DBAName:     req.DBAName,
 			Address:     req.Address,
-			Geom: types.GeographyPoint{
-				Lat: req.Address.Lat,
-				Lng: req.Address.Lng,
-			},
-			OwnerID: user.ID,
+			OwnerID:     user.ID,
 		})
 		if err != nil {
 			return pkgerrors.Wrap(pkgerrors.CodeInternal, err, "create store")
