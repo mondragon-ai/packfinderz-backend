@@ -133,6 +133,161 @@ Response body:
 }
 ```
 
+## Stores
+
+Routes under `/api/v1/stores` require the standard `/api` auth + store context guards. `middleware.StoreContext` extracts the buyer or vendor store ID from the token, so only requests backed by an `activeStoreId` can reach these handlers.
+
+### `GET /api/v1/stores/me`
+
+Returns the active store’s profile. The response matches `stores.StoreDTO`, exposing company info, contact channels, address, ratings, etc.
+
+```bash
+curl "{{API_BASE_URL}}/api/v1/stores/me" \
+  -H "Authorization: Bearer {{ACCESS_TOKEN}}"
+```
+
+Response example:
+
+```json
+{
+  "data": {
+    "id": "store-uuid",
+    "type": "buyer",
+    "company_name": "Acme Groceries",
+    "description": "Locally owned",
+    "phone": "+15555551234",
+    "email": "care@acme.local",
+    "kyc_status": "verified",
+    "subscription_active": true,
+    "delivery_radius_meters": 10000,
+    "address": {
+      "line1": "123 Market Street",
+      "city": "Testville",
+      "state": "CA",
+      "postal_code": "94103",
+      "country": "US"
+    },
+    "social": null,
+    "banner_url": null,
+    "logo_url": null,
+    "ratings": {
+      "service": 5
+    },
+    "categories": [
+      "groceries",
+      "cannabis"
+    ],
+    "owner": "owner-uuid",
+    "created_at": "...",
+    "updated_at": "..."
+  }
+}
+```
+
+### `PUT /api/v1/stores/me`
+
+Allows updating writable store fields. All attributes are optional—send only the values that should change. Valid fields match `storeUpdateRequest` structures and include:
+
+- `company_name` (min 1 char)
+- `description`, `phone`, `email`
+- `social` object per `pkg/types.Social`
+- `banner_url`, `logo_url`
+- `banner_media_id`, `logo_media_id` (nullable UUID)
+- `ratings` map
+- `categories` array
+
+```bash
+curl -X PUT "{{API_BASE_URL}}/api/v1/stores/me" \
+  -H "Authorization: Bearer {{ACCESS_TOKEN}}" \
+  -H "Content-Type: application/json" \
+  -d '{"company_name":"Acme Goods","email":"new@acme.local","categories":["groceries"]}'
+```
+
+Response uses the same `StoreDTO` as `GET /stores/me`.
+
+### `GET /api/v1/stores/me/users`
+
+Returns the active store’s membership roster (`memberships.StoreUserDTO`). Owners/managers may filter (server-side) by role/status; the handler simply returns whatever the service provides.
+
+```bash
+curl "{{API_BASE_URL}}/api/v1/stores/me/users" \
+  -H "Authorization: Bearer {{ACCESS_TOKEN}}"
+```
+
+Response example:
+
+```json
+{
+  "data": [
+    {
+      "membership_id": "membership-uuid",
+      "store_id": "store-uuid",
+      "user_id": "user-uuid",
+      "email": "owner@example.com",
+      "first_name": "Owner",
+      "last_name": "One",
+      "role": "owner",
+      "membership_status": "active",
+      "created_at": "...",
+      "last_login_at": "..."
+    }
+  ]
+}
+```
+
+### `POST /api/v1/stores/me/users/invite`
+
+Invites a new user with a store role. Validates email and role (`owner`, `admin`, `manager`, etc.). Request DTO:
+
+```json
+{
+  "email": "invitee@example.com",
+  "first_name": "New",
+  "last_name": "User",
+  "role": "manager"
+}
+```
+
+```bash
+curl -X POST "{{API_BASE_URL}}/api/v1/stores/me/users/invite" \
+  -H "Authorization: Bearer {{ACCESS_TOKEN}}" \
+  -H "Content-Type: application/json" \
+  -d '{"email":"invitee@example.com","first_name":"New","last_name":"User","role":"manager"}'
+```
+
+Response includes the created `memberships.StoreUserDTO` and the temporary password when generated:
+
+```json
+{
+  "data": {
+    "user": {
+      "membership_id": "...",
+      "store_id": "...",
+      "user_id": "...",
+      "email": "invitee@example.com",
+      "first_name": "New",
+      "last_name": "User",
+      "role": "manager",
+      "membership_status": "invited",
+      "created_at": "...",
+      "last_login_at": null
+    },
+    "temporary_password": "temp1234"
+  }
+}
+```
+
+### `DELETE /api/v1/stores/me/users/{userId}`
+
+Removes a membership by UUID. The path parameter must be a valid UUID; missing or invalid IDs return HTTP 422/400.
+
+```bash
+curl -X DELETE "{{API_BASE_URL}}/api/v1/stores/me/users/{{USER_ID}}" \
+  -H "Authorization: Bearer {{ACCESS_TOKEN}}"
+```
+
+Response body for success: `{"data":null}`.
+
 ### `POST /api/v1/wishlist/items`
 
 Adds a product to the wishlist. Idempotency is handled at the DB level (`ON CONFLICT DO NOTHING`), so repeat calls return success even when the row already exists.

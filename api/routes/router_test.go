@@ -10,9 +10,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
+	"gorm.io/gorm"
+
+	"github.com/angelmondragon/packfinderz-backend/api/middleware"
 	"github.com/angelmondragon/packfinderz-backend/internal/analytics/types"
 	"github.com/angelmondragon/packfinderz-backend/internal/auth"
-	"github.com/angelmondragon/packfinderz-backend/internal/cart"
+	cart "github.com/angelmondragon/packfinderz-backend/internal/cart"
 	"github.com/angelmondragon/packfinderz-backend/internal/checkout"
 	"github.com/angelmondragon/packfinderz-backend/internal/licenses"
 	"github.com/angelmondragon/packfinderz-backend/internal/media"
@@ -24,6 +28,7 @@ import (
 	"github.com/angelmondragon/packfinderz-backend/internal/stores"
 	subscriptionsvc "github.com/angelmondragon/packfinderz-backend/internal/subscriptions"
 	"github.com/angelmondragon/packfinderz-backend/internal/users"
+	"github.com/angelmondragon/packfinderz-backend/internal/wishlist"
 	pkgAuth "github.com/angelmondragon/packfinderz-backend/pkg/auth"
 	"github.com/angelmondragon/packfinderz-backend/pkg/auth/session"
 	"github.com/angelmondragon/packfinderz-backend/pkg/config"
@@ -32,15 +37,11 @@ import (
 	"github.com/angelmondragon/packfinderz-backend/pkg/logger"
 	"github.com/angelmondragon/packfinderz-backend/pkg/pagination"
 	"github.com/angelmondragon/packfinderz-backend/pkg/redis"
-	"github.com/google/uuid"
-	"gorm.io/gorm"
 )
 
 type stubPinger struct{}
 
-func (stubPinger) Ping(context.Context) error {
-	return nil
-}
+func (stubPinger) Ping(context.Context) error { return nil }
 
 type stubAuthService struct{}
 
@@ -58,31 +59,32 @@ func (stubAdminRegisterService) Register(ctx context.Context, req auth.AdminRegi
 	return nil, fmt.Errorf("not implemented")
 }
 
+// Membership checker stub: implement both method names in case the middleware interface differs.
 type stubMembershipsRepo struct{}
 
 func (stubMembershipsRepo) UserHasRole(ctx context.Context, userID, storeID uuid.UUID, roles ...enums.MemberRole) (bool, error) {
 	return true, nil
 }
 
+func (stubMembershipsRepo) HasRole(ctx context.Context, userID, storeID uuid.UUID, roles ...enums.MemberRole) (bool, error) {
+	return true, nil
+}
+
+var _ middleware.MembershipChecker = (*stubMembershipsRepo)(nil)
+
 type stubRegisterService struct{}
 
-func (stubRegisterService) Register(ctx context.Context, req auth.RegisterRequest) error {
-	return nil
-}
+func (stubRegisterService) Register(ctx context.Context, req auth.RegisterRequest) error { return nil }
 
 type stubSessionManager struct{}
 
 func (stubSessionManager) HasSession(ctx context.Context, accessID string) (bool, error) {
 	return true, nil
 }
-
 func (stubSessionManager) Rotate(ctx context.Context, oldAccessID, provided string) (string, string, error) {
 	return "", "", nil
 }
-
-func (stubSessionManager) Revoke(ctx context.Context, accessID string) error {
-	return nil
-}
+func (stubSessionManager) Revoke(ctx context.Context, accessID string) error { return nil }
 
 type stubSwitchService struct{}
 
@@ -133,6 +135,11 @@ func (s stubStoreService) RemoveUser(ctx context.Context, actorID uuid.UUID, sto
 	panic("unimplemented")
 }
 
+// Update implements [stores.Service].
+func (s stubStoreService) Update(ctx context.Context, userID uuid.UUID, storeID uuid.UUID, input stores.UpdateStoreInput) (*stores.StoreDTO, error) {
+	panic("unimplemented")
+}
+
 type stubSquareCustomerUpdater struct{}
 
 func (stubSquareCustomerUpdater) UpdateSquareCustomerID(ctx context.Context, storeID uuid.UUID, customerID *string) error {
@@ -143,11 +150,6 @@ type stubSquareCustomerService struct{}
 
 func (stubSquareCustomerService) EnsureCustomer(ctx context.Context, input squarecustomers.Input) (string, error) {
 	return "stub-customer", nil
-}
-
-// Update implements [stores.Service].
-func (s stubStoreService) Update(ctx context.Context, userID uuid.UUID, storeID uuid.UUID, input stores.UpdateStoreInput) (*stores.StoreDTO, error) {
-	panic("unimplemented")
 }
 
 type stubAnalyticsService struct {
@@ -214,7 +216,6 @@ func (s stubNotificationsService) List(ctx context.Context, params notifications
 func (stubNotificationsService) MarkRead(ctx context.Context, storeID, notificationID uuid.UUID) error {
 	return nil
 }
-
 func (stubNotificationsService) MarkAllRead(ctx context.Context, storeID uuid.UUID) (int64, error) {
 	return 0, nil
 }
@@ -224,19 +225,9 @@ type stubSubscriptionsService struct{}
 func (stubSubscriptionsService) Create(ctx context.Context, storeID uuid.UUID, input subscriptionsvc.CreateSubscriptionInput) (*models.Subscription, bool, error) {
 	return nil, false, nil
 }
-
-func (stubSubscriptionsService) Cancel(ctx context.Context, storeID uuid.UUID) error {
-	return nil
-}
-
-func (stubSubscriptionsService) Pause(ctx context.Context, storeID uuid.UUID) error {
-	return nil
-}
-
-func (stubSubscriptionsService) Resume(ctx context.Context, storeID uuid.UUID) error {
-	return nil
-}
-
+func (stubSubscriptionsService) Cancel(ctx context.Context, storeID uuid.UUID) error { return nil }
+func (stubSubscriptionsService) Pause(ctx context.Context, storeID uuid.UUID) error  { return nil }
+func (stubSubscriptionsService) Resume(ctx context.Context, storeID uuid.UUID) error { return nil }
 func (stubSubscriptionsService) GetActive(ctx context.Context, storeID uuid.UUID) (*models.Subscription, error) {
 	return nil, nil
 }
@@ -270,6 +261,7 @@ func (s stubProductService) DeleteProduct(ctx context.Context, userID uuid.UUID,
 
 type stubCartService struct{}
 
+// QuoteCart implements [cart.Service].
 func (s stubCartService) QuoteCart(ctx context.Context, buyerStoreID uuid.UUID, input cart.QuoteCartInput) (*models.CartRecord, error) {
 	panic("unimplemented")
 }
@@ -288,63 +280,43 @@ type stubOrdersRepo struct {
 	detail        func(ctx context.Context, orderID uuid.UUID) (*ordersrepo.OrderDetail, error)
 }
 
-// FindVendorOrderByCheckoutGroupAndVendor implements [orders.Repository].
 func (s *stubOrdersRepo) FindVendorOrderByCheckoutGroupAndVendor(ctx context.Context, checkoutGroupID uuid.UUID, vendorStoreID uuid.UUID) (*models.VendorOrder, error) {
 	panic("unimplemented")
 }
-
-// FindPendingOrdersBefore implements [orders.Repository].
 func (s *stubOrdersRepo) FindPendingOrdersBefore(ctx context.Context, cutoff time.Time) ([]models.VendorOrder, error) {
 	panic("unimplemented")
 }
-
-// FindOrderLineItem implements [orders.Repository].
 func (s *stubOrdersRepo) FindOrderLineItem(ctx context.Context, lineItemID uuid.UUID) (*models.OrderLineItem, error) {
 	panic("unimplemented")
 }
-
-// UpdateOrderLineItemStatus implements [orders.Repository].
 func (s *stubOrdersRepo) UpdateOrderLineItemStatus(ctx context.Context, lineItemID uuid.UUID, status enums.LineItemStatus, notes *string) error {
 	panic("unimplemented")
 }
-
-// UpdateVendorOrder implements [orders.Repository].
 func (s *stubOrdersRepo) UpdateVendorOrder(ctx context.Context, orderID uuid.UUID, updates map[string]any) error {
 	panic("unimplemented")
 }
-
 func (s *stubOrdersRepo) UpdatePaymentIntent(ctx context.Context, orderID uuid.UUID, updates map[string]any) error {
 	panic("unimplemented")
 }
-
 func (s *stubOrdersRepo) UpdateOrderAssignment(ctx context.Context, assignmentID uuid.UUID, updates map[string]any) error {
 	panic("unimplemented")
 }
-
-func (s *stubOrdersRepo) WithTx(tx *gorm.DB) ordersrepo.Repository {
-	return s
-}
-
+func (s *stubOrdersRepo) WithTx(tx *gorm.DB) ordersrepo.Repository { return s }
 func (s *stubOrdersRepo) CreateVendorOrder(ctx context.Context, order *models.VendorOrder) (*models.VendorOrder, error) {
 	panic("unimplemented")
 }
-
 func (s *stubOrdersRepo) CreateOrderLineItems(ctx context.Context, items []models.OrderLineItem) error {
 	panic("unimplemented")
 }
-
 func (s *stubOrdersRepo) CreatePaymentIntent(ctx context.Context, intent *models.PaymentIntent) (*models.PaymentIntent, error) {
 	panic("unimplemented")
 }
-
 func (s *stubOrdersRepo) FindVendorOrdersByCheckoutGroup(ctx context.Context, checkoutGroupID uuid.UUID) ([]models.VendorOrder, error) {
 	panic("unimplemented")
 }
-
 func (s *stubOrdersRepo) FindOrderLineItemsByOrder(ctx context.Context, orderID uuid.UUID) ([]models.OrderLineItem, error) {
 	panic("unimplemented")
 }
-
 func (s *stubOrdersRepo) FindPaymentIntentByOrder(ctx context.Context, orderID uuid.UUID) (*models.PaymentIntent, error) {
 	panic("unimplemented")
 }
@@ -405,22 +377,15 @@ type stubOrdersService struct {
 	agentDeliver func(ctx context.Context, input ordersrepo.AgentDeliverInput) error
 }
 
-// CancelOrder implements [orders.Service].
 func (s stubOrdersService) CancelOrder(ctx context.Context, input ordersrepo.BuyerCancelInput) error {
 	panic("unimplemented")
 }
-
-// NudgeVendor implements [orders.Service].
 func (s stubOrdersService) NudgeVendor(ctx context.Context, input ordersrepo.BuyerNudgeInput) error {
 	panic("unimplemented")
 }
-
-// RetryOrder implements [orders.Service].
 func (s stubOrdersService) RetryOrder(ctx context.Context, input ordersrepo.BuyerRetryInput) (*ordersrepo.BuyerRetryResult, error) {
 	panic("unimplemented")
 }
-
-// LineItemDecision implements [orders.Service].
 func (s stubOrdersService) LineItemDecision(ctx context.Context, input ordersrepo.LineItemDecisionInput) error {
 	panic("unimplemented")
 }
@@ -431,46 +396,37 @@ func (s stubOrdersService) VendorDecision(ctx context.Context, input ordersrepo.
 	}
 	return nil
 }
-
 func (s stubOrdersService) AgentPickup(ctx context.Context, input ordersrepo.AgentPickupInput) error {
 	if s.agentPickup != nil {
 		return s.agentPickup(ctx, input)
 	}
 	return nil
 }
-
 func (s stubOrdersService) AgentDeliver(ctx context.Context, input ordersrepo.AgentDeliverInput) error {
 	if s.agentDeliver != nil {
 		return s.agentDeliver(ctx, input)
 	}
 	return nil
 }
-
 func (s stubOrdersService) AgentCashCollected(ctx context.Context, input ordersrepo.AgentCashCollectedInput) error {
 	return nil
 }
-
 func (s stubOrdersService) ConfirmPayout(ctx context.Context, input ordersrepo.ConfirmPayoutInput) error {
 	return nil
 }
 
 type stubCheckoutService struct{}
 
-// Execute implements [checkout.Service].
 func (s stubCheckoutService) Execute(ctx context.Context, buyerStoreID uuid.UUID, cartID uuid.UUID, input checkout.CheckoutInput) (*models.CheckoutGroup, error) {
 	panic("unimplemented")
 }
 
 type stubCheckoutRepo struct{}
 
-func (stubCheckoutRepo) WithTx(tx *gorm.DB) checkout.Repository {
-	return stubCheckoutRepo{}
-}
-
+func (stubCheckoutRepo) WithTx(tx *gorm.DB) checkout.Repository { return stubCheckoutRepo{} }
 func (stubCheckoutRepo) FindByCheckoutGroupID(ctx context.Context, checkoutGroupID uuid.UUID) (*models.CheckoutGroup, error) {
 	return nil, nil
 }
-
 func (stubCheckoutRepo) FindByCartID(ctx context.Context, cartID uuid.UUID) (*models.CheckoutGroup, error) {
 	return nil, nil
 }
@@ -513,16 +469,17 @@ func newTestRouter(cfg *config.Config) http.Handler {
 		stubCheckoutRepo{},
 		stubCartService{},
 		stubNotificationsService{},
+		(wishlist.Service)(nil),
 		&stubOrdersRepo{},
 		stubOrdersService{},
 		stubSubscriptionsService{},
-		nil,
-		nil,
-		nil,
-		nil,
-		nil,
-		nil,
-		nil,
+		nil, // paymentmethods.Service
+		nil, // billingcontrollers.ChargesService
+		nil, // billingcontrollers.BillingPlanService
+		nil, // *square.Client
+		nil, // *squarewebhook.Service
+		nil, // *squarewebhook.IdempotencyGuard
+		nil, // address.Service
 	)
 }
 
@@ -786,16 +743,17 @@ func TestAgentAssignedOrdersRequiresAgentRole(t *testing.T) {
 		stubCheckoutRepo{},
 		stubCartService{},
 		stubNotificationsService{},
+		(wishlist.Service)(nil),
 		repo,
 		stubOrdersService{},
 		stubSubscriptionsService{},
-		nil,
-		nil,
-		nil,
-		nil,
-		nil,
-		nil,
-		nil,
+		nil, // paymentmethods.Service
+		nil, // billingcontrollers.ChargesService
+		nil, // billingcontrollers.BillingPlanService
+		nil, // *square.Client
+		nil, // *squarewebhook.Service
+		nil, // *squarewebhook.IdempotencyGuard
+		nil, // address.Service
 	)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/agent/orders", nil)
@@ -859,16 +817,17 @@ func TestAgentAssignedOrderDetailRequiresAgentRole(t *testing.T) {
 		stubCheckoutRepo{},
 		stubCartService{},
 		stubNotificationsService{},
+		(wishlist.Service)(nil),
 		repo,
 		stubOrdersService{},
 		stubSubscriptionsService{},
-		nil,
-		nil,
-		nil,
-		nil,
-		nil,
-		nil,
-		nil,
+		nil, // paymentmethods.Service
+		nil, // billingcontrollers.ChargesService
+		nil, // billingcontrollers.BillingPlanService
+		nil, // *square.Client
+		nil, // *squarewebhook.Service
+		nil, // *squarewebhook.IdempotencyGuard
+		nil, // address.Service
 	)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/agent/orders/"+uuid.NewString(), nil)
@@ -908,16 +867,17 @@ func TestAgentPickupRequiresAgentRole(t *testing.T) {
 		stubCheckoutRepo{},
 		stubCartService{},
 		stubNotificationsService{},
+		(wishlist.Service)(nil),
 		repo,
 		stubOrdersService{},
 		stubSubscriptionsService{},
-		nil,
-		nil,
-		nil,
-		nil,
-		nil,
-		nil,
-		nil,
+		nil, // paymentmethods.Service
+		nil, // billingcontrollers.ChargesService
+		nil, // billingcontrollers.BillingPlanService
+		nil, // *square.Client
+		nil, // *squarewebhook.Service
+		nil, // *squarewebhook.IdempotencyGuard
+		nil, // address.Service
 	)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/agent/orders/"+uuid.NewString()+"/pickup", nil)
@@ -972,16 +932,17 @@ func TestAgentDeliverRequiresAgentRole(t *testing.T) {
 		stubCheckoutRepo{},
 		stubCartService{},
 		stubNotificationsService{},
+		(wishlist.Service)(nil),
 		repo,
 		stubOrdersService{},
 		stubSubscriptionsService{},
-		nil,
-		nil,
-		nil,
-		nil,
-		nil,
-		nil,
-		nil,
+		nil, // paymentmethods.Service
+		nil, // billingcontrollers.ChargesService
+		nil, // billingcontrollers.BillingPlanService
+		nil, // *square.Client
+		nil, // *squarewebhook.Service
+		nil, // *squarewebhook.IdempotencyGuard
+		nil, // address.Service
 	)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/agent/orders/"+uuid.NewString()+"/deliver", nil)
@@ -1007,6 +968,7 @@ func TestAgentDeliverRequiresAgentRole(t *testing.T) {
 		t.Fatalf("expected 200 for agent deliver got %d", resp.Code)
 	}
 }
+
 func TestPublicValidateRejectsBadJSON(t *testing.T) {
 	router := newTestRouter(testConfig())
 	req := httptest.NewRequest(http.MethodPost, "/api/public/validate", strings.NewReader("{"))
