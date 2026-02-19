@@ -26,6 +26,7 @@ import (
 	"github.com/angelmondragon/packfinderz-backend/internal/subscriptions"
 	"github.com/angelmondragon/packfinderz-backend/internal/users"
 	squarewebhook "github.com/angelmondragon/packfinderz-backend/internal/webhooks/square"
+	wishlist "github.com/angelmondragon/packfinderz-backend/internal/wishlist"
 	"github.com/angelmondragon/packfinderz-backend/pkg/auth/session"
 	"github.com/angelmondragon/packfinderz-backend/pkg/bigquery"
 	"github.com/angelmondragon/packfinderz-backend/pkg/config"
@@ -200,6 +201,14 @@ func main() {
 	productService, err := products.NewService(productRepo, dbClient, storeRepo, membershipsRepo, mediaRepo, attachmentReconciler, mediaService)
 	requireResource(ctx, logg, "product service", err)
 
+	wishlistRepo := wishlist.NewRepository(dbClient.DB())
+	wishlistService, err := wishlist.NewService(wishlist.ServiceParams{
+		WishlistRepo: wishlistRepo,
+		ProductRepo:  productRepo,
+		StoreRepo:    storeRepo,
+	})
+	requireResource(ctx, logg, "wishlist service", err)
+
 	cartRepo := cart.NewRepository(dbClient.DB())
 	cartTokenValidator, err := cart.NewJWTAttributionTokenValidator(cfg.JWT)
 	requireResource(ctx, logg, "cart token validator", err)
@@ -294,6 +303,7 @@ func main() {
 			checkoutRepo,
 			cartService,
 			notificationsService,
+			wishlistService,
 			ordersRepo,
 			ordersService,
 			subscriptionsService,

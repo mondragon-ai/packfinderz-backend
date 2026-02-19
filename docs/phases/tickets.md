@@ -351,11 +351,21 @@
   **Goal:** Bash scripts to test happy and failure paths of endpoints
   * [x] Ticket [PF-268]: Media Upload flow: all media types and reject mime types
   * [x] Ticket [PF-269]: Update products + add media images
+
+* **Phase 14 — PATCHES**
   * [x] Ticket [PF-270]: Sub patches + reading media products + tests
   * [x] Ticket [PF-271]: Cancel, resume, and pause subs + cron job clean up for active status
   * [x] Ticket [PF-272]: PATCH - Update store switch & handle create customer registration sqauare
   * [x] Ticket [PF-273]: PATCH - Media public URLs
+  * [x] Ticket [PF-274]: REFACTOR - Pagination
 
+## Phase W — Wishlist**
+  **Goal:** Implement the full wishlist feature — GORM model, Goose migration, repo, service, controller, and routes — so buyers can save and manage products they're interested in.
+
+  * [x] Ticket [PF-XXX]: Goose migration — create ONLY `wishlists` table (`id`, `store_id`, `created_at`) with `unique(store_id)` index and FK to `stores(id) ON DELETE CASCADE` & GORM models inside `pkg/db/models/wishlist.go` matching the migration shapes with proper struct tags and associations
+  * [ ] Ticket [PF-XXX]: Repo — `internal/wishlist/repo.go` implementing `GetOrCreateWishlist(storeID)`, `AddItem(wishlistID, productID)`, `RemoveItem(wishlistID, productID)`, `ListItems(wishlistID, cursor/limit)` returning `WishlistItem` rows with product data preloaded (from products tables to mirror the BrowseProducts endpoints), and `ListItemIDs(wishlistID)` returning only product IDs for fast heart-icon rendering & DTOs — `internal/wishlist/types.go` defining `WishlistDTO`, `WishlistItemDTO` (with `ProductSummary` projection), and `WishlistIDsDTO`
+  * [ ] Ticket [PF-XXX]: Service — `internal/wishlist/service.go` implementing `GetWishlist`, `GetWishlistIDs`, `AddItem` (idempotent upsert, enforces buyer store type), and `RemoveItem`, injecting the repo and delegating business rules (store-type guard, product existence check)
+  * [ ] Ticket [PF-XXX]: Controller — `api/controllers/wishlist.go` with handlers for `GET /api/v1/wishlist`, `GET /api/v1/wishlist/ids`, `POST /api/v1/wishlist/items` (requires `Idempotency-Key`), and `DELETE /api/v1/wishlist/items/{productId}`; parse/validate inputs, call service, write canonical response envelope &  Routes + wire-up — mount wishlist routes in `api/routes/router.go` under the authenticated `/api/v1` group with store context middleware; wire `wishlist.Repository` → `wishlist.Service` → controller in the DI bootstrap so all four endpoints are live
 
 ---
 
@@ -563,3 +573,8 @@
   * [ ] Ticket [PF-344]: Write replay and recovery runbooks (DLQ replay, idempotency expectations)
   * [ ] Ticket [PF-345]: Add/standardize feature flags for risky rollouts
   * [ ] Ticket [PF-346]: Perform backup/restore drills and document procedure
+
+
+I am 2 weeks into my reverse cut + creatine. i know i will gain weight but today im at 71.6. Yesterday i drank 3-4 skol beats alcohal, but aside from the carbs being higher than normal i felt pretty hidrated... WHY is it so muhc? I did have a 1/4 of extacy as well. Do i need to lower calories?? Im gainign too fat. Look at the two images. the daily lgos and the second is the weekly averages. 
+
+

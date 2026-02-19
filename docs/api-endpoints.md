@@ -40,6 +40,147 @@ curl -X POST "{{API_BASE_URL}}/api/v1/notifications/read-all" \
   -H "Idempotency-Key: {{UNIQUE_KEY}}"
 ```
 
+## Wishlist
+
+All `/api/v1/wishlist` routes require the `Authorization: Bearer {{ACCESS_TOKEN}}` header and run inside the `/api` group guarded by `middleware.StoreContext`. The active store ID is inferred from the token, so missing or invalid store claims return HTTP 403/401 before your controller runs.
+
+### `GET /api/v1/wishlist`
+
+Reads the buyer store’s wishlist and returns a cursor page of `WishlistItemDTO` rows (`product` + `created_at`). Supports cursor pagination with the same parameters as the product browse response:
+
+- `limit` – optional positive integer; defaults to 25 and caps at 100 via `pagination.NormalizeLimit`.
+- `cursor` – optional base64 cursor representing `(created_at, id)` for bookmark-style paging.
+
+```bash
+curl -G "{{API_BASE_URL}}/api/v1/wishlist" \
+  -H "Authorization: Bearer {{ACCESS_TOKEN}}" \
+  --data-urlencode "limit=25" \
+  --data-urlencode "cursor={{NEXT_CURSOR}}"
+```
+
+Response DTO example:
+
+```json
+{
+  "data": {
+    "items": [
+      {
+        "product": {
+          "id": "uuid",
+          "sku": "...",
+          "title": "...",
+          "subtitle": "...",
+          "category": "...",
+          "classification": "...",
+          "unit": "...",
+          "price_cents": 1000,
+          "compare_at_price_cents": null,
+          "thc_percent": null,
+          "cbd_percent": null,
+          "has_promo": false,
+          "vendor_store_id": "uuid",
+          "created_at": "2025-01-01T00:00:00Z",
+          "updated_at": "...",
+          "max_qty": 5,
+          "thumbnail_url": null
+        },
+        "created_at": "2025-01-01T01:23:45Z"
+      }
+    ],
+    "pagination": {
+      "page": 1,
+      "total": 42,
+      "current": "{{REQUEST_CURSOR}}",
+      "first": "{{FIRST_CURSOR}}",
+      "last": "{{LAST_CURSOR}}",
+      "prev": "{{REQUEST_CURSOR}}",
+      "next": "{{NEXT_CURSOR}}"
+    }
+  }
+}
+```
+
+### `GET /api/v1/wishlist/ids`
+
+Returns the product UUIDs a buyer store likes. The endpoint now supports the same cursor pagination inputs as the browse page (`limit` + `cursor`), and the response includes identical `pagination` metadata.
+
+```bash
+curl -G "{{API_BASE_URL}}/api/v1/wishlist/ids" \
+  -H "Authorization: Bearer {{ACCESS_TOKEN}}" \
+  --data-urlencode "limit=25" \
+  --data-urlencode "cursor={{NEXT_CURSOR}}"
+```
+
+Response body:
+
+```json
+{
+  "data": {
+    "product_ids": [
+      "uuid-1",
+      "uuid-2"
+    ],
+    "pagination": {
+      "page": 1,
+      "total": 42,
+      "current": "{{REQUEST_CURSOR}}",
+      "first": "{{FIRST_CURSOR}}",
+      "last": "{{LAST_CURSOR}}",
+      "prev": "{{REQUEST_CURSOR}}",
+      "next": "{{NEXT_CURSOR}}"
+    }
+  }
+}
+```
+
+### `POST /api/v1/wishlist/items`
+
+Adds a product to the wishlist. Idempotency is handled at the DB level (`ON CONFLICT DO NOTHING`), so repeat calls return success even when the row already exists.
+
+Request DTO:
+
+```json
+{
+  "product_id": "uuid"
+}
+```
+
+```bash
+curl -X POST "{{API_BASE_URL}}/api/v1/wishlist/items" \
+  -H "Authorization: Bearer {{ACCESS_TOKEN}}" \
+  -H "Content-Type: application/json" \
+  -d '{"product_id":"{{PRODUCT_ID}}"}'
+```
+
+Response body:
+
+```json
+{
+  "data": {
+    "added": true
+  }
+}
+```
+
+### `DELETE /api/v1/wishlist/items/{productId}`
+
+Removes the liked product for the store. Missing rows still return success (`{"removed": true}`).
+
+```bash
+curl -X DELETE "{{API_BASE_URL}}/api/v1/wishlist/items/{{PRODUCT_ID}}" \
+  -H "Authorization: Bearer {{ACCESS_TOKEN}}"
+```
+
+Response body:
+
+```json
+{
+  "data": {
+    "removed": true
+  }
+}
+```
+
 # Auth (store switching)
 
 Switching stores relies on the scoped JWT sent with the request (`Authorization: Bearer {{ACCESS_TOKEN}}`). The handler extracts `store_id` from the body, reuses the access token’s `jti`/refresh mapping, and returns a fresh access token via the `X-PF-Token` header plus a `refresh_token` value in the JSON payload. The body only requires the new store ID, there is no refresh token input because the JWT already identifies the session.

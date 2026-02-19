@@ -30,6 +30,7 @@ import (
 	"github.com/angelmondragon/packfinderz-backend/internal/stores"
 	subscriptionsvc "github.com/angelmondragon/packfinderz-backend/internal/subscriptions"
 	squarewebhook "github.com/angelmondragon/packfinderz-backend/internal/webhooks/square"
+	"github.com/angelmondragon/packfinderz-backend/internal/wishlist"
 	"github.com/angelmondragon/packfinderz-backend/pkg/auth/session"
 	"github.com/angelmondragon/packfinderz-backend/pkg/bigquery"
 	"github.com/angelmondragon/packfinderz-backend/pkg/config"
@@ -77,6 +78,7 @@ func NewRouter(
 	checkoutRepo checkoutsvc.Repository,
 	cartService cart.Service,
 	notificationsService notifications.Service,
+	wishlistService wishlist.Service,
 	ordersRepo orders.Repository,
 	ordersSvc orders.Service,
 	subscriptionsService subscriptionsvc.Service,
@@ -209,6 +211,13 @@ func NewRouter(
 				r.Get("/", controllers.ListNotifications(notificationsService, logg))
 				r.Post("/{notificationId}/read", controllers.MarkNotificationRead(notificationsService, logg))
 				r.Post("/read-all", controllers.MarkAllNotificationsRead(notificationsService, logg))
+			})
+
+			r.Route("/v1/wishlist", func(r chi.Router) {
+				r.Get("/", controllers.WishlistList(wishlistService, logg))
+				r.Get("/ids", controllers.WishlistIDs(wishlistService, logg))
+				r.Post("/items", controllers.WishlistAddItem(wishlistService, logg))
+				r.Delete("/items/{productId}", controllers.WishlistRemoveItem(wishlistService, logg))
 			})
 
 			r.Get("/v1/products", controllers.BrowseProducts(productService, storeService, logg))
