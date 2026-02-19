@@ -18,11 +18,11 @@ import (
 )
 
 func newStoreService(repo storeRepository, members stubMembershipsRepo, usersRepo usersRepository) (Service, error) {
-	svc, _, err := newStoreServiceWithAttachmentStub(repo, members, usersRepo, nil, nil)
+	svc, _, err := newStoreServiceWithAttachmentStub(repo, members, usersRepo, nil, nil, nil)
 	return svc, err
 }
 
-func newStoreServiceWithAttachmentStub(repo storeRepository, members stubMembershipsRepo, usersRepo usersRepository, reconciler *stubAttachmentReconciler, mediaRepo mediaLookup) (Service, *stubAttachmentReconciler, error) {
+func newStoreServiceWithAttachmentStub(repo storeRepository, members stubMembershipsRepo, usersRepo usersRepository, reconciler *stubAttachmentReconciler, mediaRepo mediaLookup, licenseRepo licenseRepository) (Service, *stubAttachmentReconciler, error) {
 	if reconciler == nil {
 		reconciler = &stubAttachmentReconciler{}
 	}
@@ -41,6 +41,9 @@ func newStoreServiceWithAttachmentStub(repo storeRepository, members stubMembers
 			defaultMedia: defaultMedia,
 		}
 	}
+	if licenseRepo == nil {
+		licenseRepo = &stubLicenseRepo{}
+	}
 	svc, err := NewService(ServiceParams{
 		Repo:                 repo,
 		Memberships:          members,
@@ -49,6 +52,7 @@ func newStoreServiceWithAttachmentStub(repo storeRepository, members stubMembers
 		TransactionRunner:    stubTxRunner{},
 		AttachmentReconciler: reconciler,
 		MediaRepo:            mediaRepo,
+		LicenseRepo:          licenseRepo,
 	})
 	return svc, reconciler, err
 }
@@ -139,11 +143,122 @@ func TestServiceGetByIDDependencyError(t *testing.T) {
 	}
 }
 
+func TestServiceGetManagerViewIncludesOwnerAndLicenses(t *testing.T) {
+	store := baseStore()
+	repo := &stubStoreRepo{store: store}
+	user := &models.User{
+		ID:        store.OwnerID,
+		FirstName: "Owner",
+		LastName:  "Keeper",
+		Email:     "owner@example.com",
+		LastLoginAt: func() *time.Time {
+			t := time.Now().UTC()
+			return &t
+		}(),
+	}
+	licenseRepo := &stubLicenseRepo{
+		list: []models.License{
+			{Number: "LIC-001", Type: enums.LicenseTypeProducer},
+			{Number: "LIC-002", Type: enums.LicenseTypeMerchant},
+		},
+	}
+	membershipsRepo := stubMembershipsRepo{
+		allowed: true,
+		existingMembership: &models.StoreMembership{
+			StoreID: store.ID,
+			UserID:  user.ID,
+			Role:    enums.MemberRoleOwner,
+		},
+	}
+	usersRepo := &stubUsersRepo{
+		user: user,
+		byID: user,
+	}
+	svc, _, err := newStoreServiceWithAttachmentStub(repo, membershipsRepo, usersRepo, nil, nil, licenseRepo)
+	if err != nil {
+		t.Fatalf("new service: %v", err)
+	}
+
+	dto, err := svc.GetManagerView(context.Background(), store.ID)
+	if err != nil {
+		t.Fatalf("get manager view: %v", err)
+	}
+	if dto.Owner.Email != user.Email {
+		t.Fatalf("expected owner email %s got %s", user.Email, dto.Owner.Email)
+	}
+	if dto.Owner.Role == nil || *dto.Owner.Role != enums.MemberRoleOwner.String() {
+		t.Fatalf("expected owner role owner got %v", dto.Owner.Role)
+	}
+	if len(dto.Licenses) != 2 {
+		t.Fatalf("expected 2 licenses got %d", len(dto.Licenses))
+	}
+	if dto.Licenses[0].Number != "LIC-001" {
+		t.Fatalf("unexpected license number %s", dto.Licenses[0].Number)
+	}
+}
+
+func TestServiceGetManagerViewNoLicenses(t *testing.T) {
+	store := baseStore()
+	repo := &stubStoreRepo{store: store}
+	user := &models.User{
+		ID:        store.OwnerID,
+		FirstName: "Owner",
+		LastName:  "Keeper",
+		Email:     "owner@example.com",
+	}
+	usersRepo := &stubUsersRepo{
+		user: user,
+		byID: user,
+	}
+	membershipsRepo := stubMembershipsRepo{
+		allowed: true,
+	}
+	svc, _, err := newStoreServiceWithAttachmentStub(repo, membershipsRepo, usersRepo, nil, nil, &stubLicenseRepo{})
+	if err != nil {
+		t.Fatalf("new service: %v", err)
+	}
+
+	dto, err := svc.GetManagerView(context.Background(), store.ID)
+	if err != nil {
+		t.Fatalf("get manager view: %v", err)
+	}
+	if len(dto.Licenses) != 0 {
+		t.Fatalf("expected empty licenses slice got %v", dto.Licenses)
+	}
+}
+
+func TestServiceGetManagerViewWithoutMembershipRole(t *testing.T) {
+	store := baseStore()
+	repo := &stubStoreRepo{store: store}
+	user := &models.User{
+		ID:        store.OwnerID,
+		FirstName: "Owner",
+		LastName:  "Keeper",
+		Email:     "owner@example.com",
+	}
+	usersRepo := &stubUsersRepo{
+		user: user,
+		byID: user,
+	}
+	svc, _, err := newStoreServiceWithAttachmentStub(repo, stubMembershipsRepo{allowed: true}, usersRepo, nil, nil, &stubLicenseRepo{})
+	if err != nil {
+		t.Fatalf("new service: %v", err)
+	}
+
+	dto, err := svc.GetManagerView(context.Background(), store.ID)
+	if err != nil {
+		t.Fatalf("get manager view: %v", err)
+	}
+	if dto.Owner.Role != nil {
+		t.Fatalf("expected nil owner role got %v", dto.Owner.Role)
+	}
+}
+
 func TestServiceUpdateSuccess(t *testing.T) {
 	store := baseStore()
 	repo := &stubStoreRepo{store: store}
 	att := &stubAttachmentReconciler{}
-	svc, _, err := newStoreServiceWithAttachmentStub(repo, stubMembershipsRepo{allowed: true}, &stubUsersRepo{}, att, nil)
+	svc, _, err := newStoreServiceWithAttachmentStub(repo, stubMembershipsRepo{allowed: true}, &stubUsersRepo{}, att, nil, nil)
 	if err != nil {
 		t.Fatalf("new service: %v", err)
 	}
@@ -225,7 +340,7 @@ func TestServiceUpdatePopulatesMediaURLs(t *testing.T) {
 			},
 		},
 	}
-	svc, _, err := newStoreServiceWithAttachmentStub(repo, stubMembershipsRepo{allowed: true}, &stubUsersRepo{}, att, mediaRepo)
+	svc, _, err := newStoreServiceWithAttachmentStub(repo, stubMembershipsRepo{allowed: true}, &stubUsersRepo{}, att, mediaRepo, nil)
 	if err != nil {
 		t.Fatalf("new service: %v", err)
 	}
@@ -619,6 +734,18 @@ func (s *stubMediaRepo) FindByID(ctx context.Context, id uuid.UUID) (*models.Med
 	return nil, gorm.ErrRecordNotFound
 }
 
+type stubLicenseRepo struct {
+	list []models.License
+	err  error
+}
+
+func (s *stubLicenseRepo) ListByStoreID(ctx context.Context, storeID uuid.UUID) ([]models.License, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+	return s.list, nil
+}
+
 type stubUsersRepo struct {
 	user      *models.User
 	findErr   error
@@ -626,6 +753,7 @@ type stubUsersRepo struct {
 	createErr error
 	updateErr error
 	nextID    uuid.UUID
+	byID      *models.User
 }
 
 func (s *stubUsersRepo) FindByEmail(ctx context.Context, email string) (*models.User, error) {
@@ -633,6 +761,19 @@ func (s *stubUsersRepo) FindByEmail(ctx context.Context, email string) (*models.
 		return nil, s.findErr
 	}
 	if s.user != nil {
+		return s.user, nil
+	}
+	return nil, gorm.ErrRecordNotFound
+}
+
+func (s *stubUsersRepo) FindByID(ctx context.Context, id uuid.UUID) (*models.User, error) {
+	if s.findErr != nil {
+		return nil, s.findErr
+	}
+	if s.byID != nil && s.byID.ID == id {
+		return s.byID, nil
+	}
+	if s.user != nil && s.user.ID == id {
 		return s.user, nil
 	}
 	return nil, gorm.ErrRecordNotFound

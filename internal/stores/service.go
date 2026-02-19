@@ -27,6 +27,10 @@ type storeRepository interface {
 	UpdateWithTx(tx *gorm.DB, store *models.Store) error
 }
 
+type licenseRepository interface {
+	ListByStoreID(ctx context.Context, storeID uuid.UUID) ([]models.License, error)
+}
+
 type membershipsRepository interface {
 	UserHasRole(ctx context.Context, userID, storeID uuid.UUID, roles ...enums.MemberRole) (bool, error)
 	ListStoreUsers(ctx context.Context, storeID uuid.UUID) ([]memberships.StoreUserDTO, error)
@@ -42,6 +46,7 @@ type mediaLookup interface {
 
 type usersRepository interface {
 	FindByEmail(ctx context.Context, email string) (*models.User, error)
+	FindByID(ctx context.Context, id uuid.UUID) (*models.User, error)
 	Create(ctx context.Context, dto users.CreateUserDTO) (*models.User, error)
 	UpdatePasswordHash(ctx context.Context, id uuid.UUID, hash string) error
 }
@@ -49,6 +54,7 @@ type usersRepository interface {
 // Service exposes store operations.
 type Service interface {
 	GetByID(ctx context.Context, id uuid.UUID) (*StoreDTO, error)
+	GetManagerView(ctx context.Context, id uuid.UUID) (*StoreDTO, error)
 	Update(ctx context.Context, userID, storeID uuid.UUID, input UpdateStoreInput) (*StoreDTO, error)
 	ListUsers(ctx context.Context, userID, storeID uuid.UUID) ([]memberships.StoreUserDTO, error)
 	InviteUser(ctx context.Context, inviterID, storeID uuid.UUID, input InviteUserInput) (*memberships.StoreUserDTO, string, error)
@@ -68,6 +74,7 @@ type ServiceParams struct {
 	TransactionRunner    txRunner
 	AttachmentReconciler media.AttachmentReconciler
 	MediaRepo            mediaLookup
+	LicenseRepo          licenseRepository
 }
 
 type service struct {
@@ -78,6 +85,7 @@ type service struct {
 	tx                   txRunner
 	attachmentReconciler media.AttachmentReconciler
 	media                mediaLookup
+	licenseRepo          licenseRepository
 }
 
 // NewService builds a store service with the provided repositories.
@@ -100,6 +108,9 @@ func NewService(params ServiceParams) (Service, error) {
 	if params.MediaRepo == nil {
 		return nil, fmt.Errorf("media repository required")
 	}
+	if params.LicenseRepo == nil {
+		return nil, fmt.Errorf("license repository required")
+	}
 	return &service{
 		repo:                 params.Repo,
 		memberships:          params.Memberships,
@@ -108,6 +119,7 @@ func NewService(params ServiceParams) (Service, error) {
 		tx:                   params.TransactionRunner,
 		attachmentReconciler: params.AttachmentReconciler,
 		media:                params.MediaRepo,
+		licenseRepo:          params.LicenseRepo,
 	}, nil
 }
 
@@ -197,6 +209,56 @@ func (s *service) GetByID(ctx context.Context, id uuid.UUID) (*StoreDTO, error) 
 		return nil, pkgerrors.Wrap(pkgerrors.CodeDependency, err, "load store")
 	}
 	return FromModel(store), nil
+}
+
+func (s *service) GetManagerView(ctx context.Context, id uuid.UUID) (*StoreDTO, error) {
+	store, err := s.repo.FindByID(ctx, id)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, pkgerrors.New(pkgerrors.CodeNotFound, "store not found")
+		}
+		return nil, pkgerrors.Wrap(pkgerrors.CodeDependency, err, "load store")
+	}
+
+	owner, err := s.users.FindByID(ctx, store.OwnerID)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, pkgerrors.New(pkgerrors.CodeDependency, "owner not found")
+		}
+		return nil, pkgerrors.Wrap(pkgerrors.CodeDependency, err, "load owner")
+	}
+
+	ownerFullName := strings.TrimSpace(owner.FirstName + " " + owner.LastName)
+	ownerDTO := OwnerSummaryDTO{
+		ID:           owner.ID,
+		FullName:     ownerFullName,
+		Email:        owner.Email,
+		LastActiveAt: owner.LastLoginAt,
+	}
+
+	if membership, err := s.memberships.GetMembership(ctx, owner.ID, store.ID); err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, pkgerrors.Wrap(pkgerrors.CodeDependency, err, "load owner membership")
+	} else if membership != nil {
+		role := membership.Role.String()
+		ownerDTO.Role = &role
+	}
+
+	licenses, err := s.licenseRepo.ListByStoreID(ctx, store.ID)
+	if err != nil {
+		return nil, pkgerrors.Wrap(pkgerrors.CodeDependency, err, "load store licenses")
+	}
+	licenseDTOs := make([]StoreLicenseDTO, 0, len(licenses))
+	for _, license := range licenses {
+		licenseDTOs = append(licenseDTOs, StoreLicenseDTO{
+			Number: license.Number,
+			Type:   license.Type,
+		})
+	}
+
+	dto := FromModel(store)
+	dto.Owner = ownerDTO
+	dto.Licenses = licenseDTOs
+	return dto, nil
 }
 
 func (s *service) Update(ctx context.Context, userID, storeID uuid.UUID, input UpdateStoreInput) (*StoreDTO, error) {

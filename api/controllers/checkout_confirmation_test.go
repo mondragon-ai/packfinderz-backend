@@ -169,6 +169,10 @@ func (s stubCheckoutStoreService) GetByID(ctx context.Context, id uuid.UUID) (*s
 	return s.store, nil
 }
 
+func (s stubCheckoutStoreService) GetManagerView(ctx context.Context, id uuid.UUID) (*stores.StoreDTO, error) {
+	return s.GetByID(ctx, id)
+}
+
 func (s stubCheckoutStoreService) Update(ctx context.Context, userID, storeID uuid.UUID, input stores.UpdateStoreInput) (*stores.StoreDTO, error) {
 	panic("not implemented")
 }

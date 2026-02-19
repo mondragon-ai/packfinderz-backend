@@ -187,6 +187,7 @@ func main() {
 	requireResource(ctx, logg, "media service", err)
 	attachmentReconciler, err := media.NewAttachmentReconciler(mediaAttachmentRepo, mediaRepo)
 	requireResource(ctx, logg, "attachment reconciler", err)
+	licenseRepo := licenses.NewRepository(dbClient.DB())
 	storeService, err := stores.NewService(stores.ServiceParams{
 		Repo:                 storeRepo,
 		Memberships:          membershipsRepo,
@@ -195,6 +196,7 @@ func main() {
 		TransactionRunner:    dbClient,
 		AttachmentReconciler: attachmentReconciler,
 		MediaRepo:            mediaRepo,
+		LicenseRepo:          licenseRepo,
 	})
 	requireResource(ctx, logg, "store service", err)
 
@@ -251,7 +253,7 @@ func main() {
 	checkoutRepo := checkoutsvc.NewRepository(dbClient.DB(), ordersRepo)
 
 	licenseService, err := licenses.NewService(
-		licenses.NewRepository(dbClient.DB()),
+		licenseRepo,
 		mediaRepo,
 		membershipsRepo,
 		attachmentReconciler,

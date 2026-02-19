@@ -2,15 +2,22 @@
 DROP INDEX IF EXISTS stores_geom_gist_idx;
 ALTER TABLE IF EXISTS stores DROP COLUMN IF EXISTS geom;
 
+
+-- +goose StatementBegin
 DO $$
 BEGIN
   CREATE TYPE store_badge AS ENUM ('top_brand', 'quality_verified');
 EXCEPTION WHEN duplicate_object THEN NULL;
 END$$;
 
+
+
+-- +goose StatementEnd
+
 ALTER TABLE stores
   ADD COLUMN IF NOT EXISTS last_logged_in_at timestamptz NULL,
   ADD COLUMN IF NOT EXISTS badge store_badge NULL;
+
 
 -- +goose Down
 ALTER TABLE stores DROP COLUMN IF EXISTS badge;

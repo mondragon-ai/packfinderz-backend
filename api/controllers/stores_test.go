@@ -465,6 +465,10 @@ func (s stubStoreService) GetByID(_ context.Context, _ uuid.UUID) (*stores.Store
 	return s.dto, s.err
 }
 
+func (s stubStoreService) GetManagerView(_ context.Context, _ uuid.UUID) (*stores.StoreDTO, error) {
+	return s.dto, s.err
+}
+
 func (s stubStoreService) Update(_ context.Context, _ uuid.UUID, _ uuid.UUID, _ stores.UpdateStoreInput) (*stores.StoreDTO, error) {
 	return s.updateResp, s.updateErr
 }

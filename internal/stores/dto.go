@@ -34,8 +34,23 @@ type StoreDTO struct {
 	Badge                *enums.StoreBadge `json:"badge,omitempty"`
 	LastActiveAt         *time.Time        `json:"last_active_at,omitempty"`
 	LastLoggedInAt       *time.Time        `json:"last_logged_in_at,omitempty"`
+	Owner                OwnerSummaryDTO   `json:"owner_detail"`
+	Licenses             []StoreLicenseDTO `json:"licenses,omitempty"`
 	CreatedAt            time.Time         `json:"created_at"`
 	UpdatedAt            time.Time         `json:"updated_at"`
+}
+
+type OwnerSummaryDTO struct {
+	ID           uuid.UUID  `json:"id"`
+	FullName     string     `json:"full_name"`
+	Email        string     `json:"email"`
+	LastActiveAt *time.Time `json:"last_active_at,omitempty"`
+	Role         *string    `json:"role,omitempty"`
+}
+
+type StoreLicenseDTO struct {
+	Number string            `json:"number"`
+	Type   enums.LicenseType `json:"type"`
 }
 
 // CreateStoreDTO holds creation-time data for a new store.

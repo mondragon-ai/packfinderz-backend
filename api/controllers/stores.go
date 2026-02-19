@@ -38,7 +38,7 @@ func StoreProfile(svc stores.Service, logg *logger.Logger) http.HandlerFunc {
 			return
 		}
 
-		profile, err := svc.GetByID(r.Context(), id)
+		profile, err := svc.GetManagerView(r.Context(), id)
 		if err != nil {
 			responses.WriteError(r.Context(), logg, w, err)
 			return

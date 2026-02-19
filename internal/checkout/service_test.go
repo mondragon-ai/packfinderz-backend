@@ -1198,6 +1198,10 @@ func (s *stubStoreService) GetByID(ctx context.Context, id uuid.UUID) (*stores.S
 	return nil, gorm.ErrRecordNotFound
 }
 
+func (s *stubStoreService) GetManagerView(ctx context.Context, id uuid.UUID) (*stores.StoreDTO, error) {
+	return s.GetByID(ctx, id)
+}
+
 func (*stubStoreService) Update(ctx context.Context, userID, storeID uuid.UUID, input stores.UpdateStoreInput) (*stores.StoreDTO, error) {
 	return nil, errors.New("not implemented")
 }

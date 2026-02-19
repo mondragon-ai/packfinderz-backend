@@ -421,3 +421,8 @@ curl -X POST "{{API_BASE_URL}}/api/v1/auth/switch-store" \
 ```
 
 Successful calls update the `X-PF-Token` response header with the new access token and return JSON like `{"data":{"store_id":"...","store_name":"...","store_type":"vendor","refresh_token":"..."}}`.
+
+
+
+---
+

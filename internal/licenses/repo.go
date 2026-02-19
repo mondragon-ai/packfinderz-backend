@@ -46,6 +46,18 @@ func (r *Repository) List(ctx context.Context, opts listQuery) ([]models.License
 	return rows, nil
 }
 
+func (r *Repository) ListByStoreID(ctx context.Context, storeID uuid.UUID) ([]models.License, error) {
+	var rows []models.License
+	if err := r.db.WithContext(ctx).
+		Model(&models.License{}).
+		Select("number", "type").
+		Where("store_id = ?", storeID).
+		Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	return rows, nil
+}
+
 func (r *Repository) FindByID(ctx context.Context, id uuid.UUID) (*models.License, error) {
 	var row models.License
 	if err := r.db.WithContext(ctx).First(&row, "id = ?", id).Error; err != nil {
