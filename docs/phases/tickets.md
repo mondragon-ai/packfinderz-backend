@@ -351,6 +351,10 @@
   **Goal:** Bash scripts to test happy and failure paths of endpoints
   * [x] Ticket [PF-268]: Media Upload flow: all media types and reject mime types
   * [x] Ticket [PF-269]: Update products + add media images
+  * [x] Ticket [PF-270]: Sub patches + reading media products + tests
+  * [x] Ticket [PF-271]: Cancel, resume, and pause subs + cron job clean up for active status
+  * [x] Ticket [PF-272]: PATCH - Update store switch & handle create customer registration sqauare
+  * [x] Ticket [PF-273]: PATCH - Media public URLs
 
 
 ---

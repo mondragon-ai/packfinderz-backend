@@ -156,14 +156,14 @@ func TestRepositoryListProductSummaries(t *testing.T) {
 	if len(firstVendorPage.Products) != 1 || firstVendorPage.Products[0].ID != promo.ID {
 		t.Fatalf("expected newest promo product first, got %v", firstVendorPage.Products)
 	}
-	if firstVendorPage.NextCursor == "" {
+	if firstVendorPage.Pagination.Next == "" {
 		t.Fatalf("expected next cursor for vendor pagination")
 	}
 
 	secondVendorPage, err := repo.ListProductSummaries(ctx, productListQuery{
 		Pagination: pagination.Params{
 			Limit:  1,
-			Cursor: firstVendorPage.NextCursor,
+			Cursor: firstVendorPage.Pagination.Next,
 		},
 		Filters:       ProductListFilters{},
 		VendorStoreID: &storeA.ID,

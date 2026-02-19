@@ -3,6 +3,7 @@ package product
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -236,6 +237,89 @@ type productListQuery struct {
 	Filters        ProductListFilters
 	RequestedState string
 	VendorStoreID  *uuid.UUID
+	Page           int
+}
+
+const promoExistsClause = "EXISTS (SELECT 1 FROM product_volume_discounts d WHERE d.product_id = p.id)"
+
+func (r *Repository) baseProductListQuery(ctx context.Context) *gorm.DB {
+	return r.db.WithContext(ctx).
+		Table("products p").
+		Joins("JOIN stores s ON s.id = p.store_id")
+}
+
+func applyProductListFilters(q *gorm.DB, query productListQuery) *gorm.DB {
+	filter := query.Filters
+	if filter.Category != nil {
+		q = q.Where("p.category = ?", *filter.Category)
+	}
+	if filter.Classification != nil {
+		q = q.Where("p.classification = ?", *filter.Classification)
+	}
+	if filter.PriceMinCents != nil {
+		q = q.Where("p.price_cents >= ?", *filter.PriceMinCents)
+	}
+	if filter.PriceMaxCents != nil {
+		q = q.Where("p.price_cents <= ?", *filter.PriceMaxCents)
+	}
+	if filter.THCMin != nil {
+		q = q.Where("p.thc_percent >= ?", *filter.THCMin)
+	}
+	if filter.THCMax != nil {
+		q = q.Where("p.thc_percent <= ?", *filter.THCMax)
+	}
+	if filter.CBDMin != nil {
+		q = q.Where("p.cbd_percent >= ?", *filter.CBDMin)
+	}
+	if filter.CBDMax != nil {
+		q = q.Where("p.cbd_percent <= ?", *filter.CBDMax)
+	}
+	if filter.HasPromo != nil {
+		if *filter.HasPromo {
+			q = q.Where(promoExistsClause)
+		} else {
+			q = q.Where("NOT " + promoExistsClause)
+		}
+	}
+	if search := strings.TrimSpace(filter.Query); search != "" {
+		pattern := "%" + strings.ToLower(search) + "%"
+		q = q.Where("(LOWER(p.title) LIKE ? OR LOWER(p.sku) LIKE ?)", pattern, pattern)
+	}
+
+	if query.VendorStoreID != nil {
+		q = q.Where("p.store_id = ?", *query.VendorStoreID)
+	} else {
+		q = q.Where("s.type = ?", enums.StoreTypeVendor)
+		q = q.Where("s.kyc_status = ?", enums.KYCStatusVerified)
+		q = q.Where("s.subscription_active = ?", true)
+		q = q.Where("p.is_active = ?", true)
+		if query.RequestedState != "" {
+			q = q.Where("(s.address).state = ?", query.RequestedState)
+		}
+	}
+	return q
+}
+
+func (r *Repository) fetchProductBoundaryCursor(ctx context.Context, query productListQuery, ascending bool) (string, error) {
+	var row struct {
+		CreatedAt time.Time
+		ID        uuid.UUID
+	}
+	qb := applyProductListFilters(r.baseProductListQuery(ctx), query).
+		Select("p.created_at", "p.id")
+	if ascending {
+		qb = qb.Order("p.created_at ASC").Order("p.id ASC")
+	} else {
+		qb = qb.Order("p.created_at DESC").Order("p.id DESC")
+	}
+	qb = qb.Limit(1)
+	if err := qb.First(&row).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return "", nil
+		}
+		return "", err
+	}
+	return pagination.EncodeCursor(pagination.Cursor{CreatedAt: row.CreatedAt, ID: row.ID}), nil
 }
 
 func (r *Repository) ListProductSummaries(ctx context.Context, query productListQuery) (*ProductListResult, error) {
@@ -250,10 +334,7 @@ func (r *Repository) ListProductSummaries(ctx context.Context, query productList
 		return nil, err
 	}
 
-	promoExistsClause := "EXISTS (SELECT 1 FROM product_volume_discounts d WHERE d.product_id = p.id)"
-
-	qb := r.db.WithContext(ctx).
-		Table("products p").
+	dataQuery := applyProductListFilters(r.baseProductListQuery(ctx), query).
 		Select(strings.Join([]string{
 			"p.id",
 			"p.sku",
@@ -271,74 +352,25 @@ func (r *Repository) ListProductSummaries(ctx context.Context, query productList
 			"p.store_id",
 			"p.max_qty",
 			promoExistsClause + " AS has_promo",
-			"pm_thumb.url AS thumbnail_url",
+			"pm_thumb.thumbnail_url AS thumbnail_url",
 		}, ", ")).
-		Joins("JOIN stores s ON s.id = p.store_id").
 		Joins(`LEFT JOIN LATERAL (
-  SELECT url
+  SELECT COALESCE(pm.url, m.public_url) AS thumbnail_url
   FROM product_media pm
+  LEFT JOIN media m ON pm.media_id = m.id
   WHERE pm.product_id = p.id
   ORDER BY pm.position ASC, pm.created_at ASC
   LIMIT 1
 ) pm_thumb ON true`)
 
-	filter := query.Filters
-	if filter.Category != nil {
-		qb = qb.Where("p.category = ?", *filter.Category)
-	}
-	if filter.Classification != nil {
-		qb = qb.Where("p.classification = ?", *filter.Classification)
-	}
-	if filter.PriceMinCents != nil {
-		qb = qb.Where("p.price_cents >= ?", *filter.PriceMinCents)
-	}
-	if filter.PriceMaxCents != nil {
-		qb = qb.Where("p.price_cents <= ?", *filter.PriceMaxCents)
-	}
-	if filter.THCMin != nil {
-		qb = qb.Where("p.thc_percent >= ?", *filter.THCMin)
-	}
-	if filter.THCMax != nil {
-		qb = qb.Where("p.thc_percent <= ?", *filter.THCMax)
-	}
-	if filter.CBDMin != nil {
-		qb = qb.Where("p.cbd_percent >= ?", *filter.CBDMin)
-	}
-	if filter.CBDMax != nil {
-		qb = qb.Where("p.cbd_percent <= ?", *filter.CBDMax)
-	}
-	if filter.HasPromo != nil {
-		if *filter.HasPromo {
-			qb = qb.Where(promoExistsClause)
-		} else {
-			qb = qb.Where("NOT " + promoExistsClause)
-		}
-	}
-	if search := strings.TrimSpace(filter.Query); search != "" {
-		pattern := "%" + strings.ToLower(search) + "%"
-		qb = qb.Where("(LOWER(p.title) LIKE ? OR LOWER(p.sku) LIKE ?)", pattern, pattern)
-	}
-
-	if query.VendorStoreID != nil {
-		qb = qb.Where("p.store_id = ?", *query.VendorStoreID)
-	} else {
-		qb = qb.Where("s.type = ?", enums.StoreTypeVendor)
-		qb = qb.Where("s.kyc_status = ?", enums.KYCStatusVerified)
-		qb = qb.Where("s.subscription_active = ?", true)
-		qb = qb.Where("p.is_active = ?", true)
-		if query.RequestedState != "" {
-			qb = qb.Where("(s.address).state = ?", query.RequestedState)
-		}
-	}
-
 	if cursor != nil {
-		qb = qb.Where("(p.created_at < ?) OR (p.created_at = ? AND p.id < ?)", cursor.CreatedAt, cursor.CreatedAt, cursor.ID)
+		dataQuery = dataQuery.Where("(p.created_at < ?) OR (p.created_at = ? AND p.id < ?)", cursor.CreatedAt, cursor.CreatedAt, cursor.ID)
 	}
 
-	qb = qb.Order("p.created_at DESC").Order("p.id DESC").Limit(limitWithBuffer)
+	dataQuery = dataQuery.Order("p.created_at DESC").Order("p.id DESC").Limit(limitWithBuffer)
 
 	var records []productSummaryRecord
-	if err := qb.Scan(&records).Error; err != nil {
+	if err := dataQuery.Scan(&records).Error; err != nil {
 		return nil, err
 	}
 
@@ -355,9 +387,42 @@ func (r *Repository) ListProductSummaries(ctx context.Context, query productList
 		summaries = append(summaries, record.toSummary())
 	}
 
+	var totalCount int64
+	if err := applyProductListFilters(r.baseProductListQuery(ctx), query).Count(&totalCount).Error; err != nil {
+		return nil, err
+	}
+
+	firstCursor, err := r.fetchProductBoundaryCursor(ctx, query, false)
+	if err != nil {
+		return nil, err
+	}
+	lastCursor, err := r.fetchProductBoundaryCursor(ctx, query, true)
+	if err != nil {
+		return nil, err
+	}
+
+	currentCursor := strings.TrimSpace(query.Pagination.Cursor)
+	prevCursor := ""
+	if currentCursor != "" {
+		prevCursor = currentCursor
+	}
+
+	page := query.Page
+	if page < 1 || currentCursor == "" {
+		page = 1
+	}
+
 	return &ProductListResult{
-		Products:   summaries,
-		NextCursor: nextCursor,
+		Products: summaries,
+		Pagination: ProductPagination{
+			Page:    page,
+			Total:   int(totalCount),
+			Current: currentCursor,
+			First:   firstCursor,
+			Last:    lastCursor,
+			Prev:    prevCursor,
+			Next:    nextCursor,
+		},
 	}, nil
 }
 

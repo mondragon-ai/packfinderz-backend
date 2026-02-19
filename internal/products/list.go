@@ -27,4 +27,5 @@ type ListProductsInput struct {
 	RequestedState string
 	Filters        ProductListFilters
 	Pagination     pagination.Params
+	Page           int
 }

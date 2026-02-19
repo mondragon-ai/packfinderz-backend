@@ -191,7 +191,11 @@ func TestBrowseProducts(t *testing.T) {
 				Products: []productsvc.ProductSummary{
 					{ID: uuid.New()},
 				},
-				NextCursor: "next-cursor",
+				Pagination: productsvc.ProductPagination{
+					Page:  1,
+					Total: 1,
+					Next:  "next-cursor",
+				},
 			},
 		}
 		handler := BrowseProducts(stubSvc, stubStoreService{}, logg)
@@ -207,8 +211,8 @@ func TestBrowseProducts(t *testing.T) {
 		if err := json.NewDecoder(rec.Body).Decode(&envelope); err != nil {
 			t.Fatalf("decode response: %v", err)
 		}
-		if envelope.Data.NextCursor != "next-cursor" {
-			t.Fatalf("expected next cursor, got %s", envelope.Data.NextCursor)
+		if envelope.Data.Pagination.Next != "next-cursor" {
+			t.Fatalf("expected next cursor, got %s", envelope.Data.Pagination.Next)
 		}
 		if len(envelope.Data.Products) != 1 {
 			t.Fatalf("expected product summary, got %d", len(envelope.Data.Products))

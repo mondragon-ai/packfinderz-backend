@@ -453,6 +453,13 @@ func (s *service) DeleteProduct(ctx context.Context, userID, storeID, productID 
 }
 
 func (s *service) ListProducts(ctx context.Context, input ListProductsInput) (*ProductListResult, error) {
+	page := input.Page
+	if page < 1 {
+		page = 1
+	}
+	if strings.TrimSpace(input.Pagination.Cursor) == "" {
+		page = 1
+	}
 	switch input.StoreType {
 	case enums.StoreTypeBuyer:
 		requested := strings.TrimSpace(input.RequestedState)
@@ -464,13 +471,19 @@ func (s *service) ListProducts(ctx context.Context, input ListProductsInput) (*P
 			Pagination:     input.Pagination,
 			Filters:        input.Filters,
 			RequestedState: requested,
+			Page:           page,
 		})
 	case enums.StoreTypeVendor:
+		requested := strings.TrimSpace(input.RequestedState)
+		if requested == "" {
+			return nil, pkgerrors.New(pkgerrors.CodeValidation, "state is required")
+		}
 		vendorID := input.StoreID
 		return s.repo.ListProductSummaries(ctx, productListQuery{
 			Pagination:    input.Pagination,
 			Filters:       input.Filters,
 			VendorStoreID: &vendorID,
+			Page:          page,
 		})
 	default:
 		return nil, pkgerrors.New(pkgerrors.CodeForbidden, "unsupported store type")

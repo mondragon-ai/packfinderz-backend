@@ -61,9 +61,20 @@ type ProductSummary struct {
 }
 
 // ProductListResult wraps a page of product summaries plus the cursor for the next page.
+type ProductPagination struct {
+	Page    int    `json:"page"`
+	Total   int    `json:"total"`
+	Current string `json:"current,omitempty"`
+	First   string `json:"first,omitempty"`
+	Last    string `json:"last,omitempty"`
+	Prev    string `json:"prev,omitempty"`
+	Next    string `json:"next,omitempty"`
+}
+
+// ProductListResult wraps a page of product summaries plus pagination metadata.
 type ProductListResult struct {
-	Products   []ProductSummary `json:"products"`
-	NextCursor string           `json:"next_cursor,omitempty"`
+	Products   []ProductSummary  `json:"products"`
+	Pagination ProductPagination `json:"pagination"`
 }
 
 // InventoryDTO exposes inventory counts.

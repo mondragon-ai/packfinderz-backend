@@ -2,6 +2,7 @@ package controllers
 
 import (
 	"fmt"
+	"math"
 	"net/http"
 	"strconv"
 	"strings"
@@ -429,6 +430,11 @@ func BrowseProducts(svc productsvc.Service, storeSvc stores.Service, logg *logge
 			responses.WriteError(r.Context(), logg, w, err)
 			return
 		}
+		page, err := validators.ParseQueryInt(r, "page", 1, 1, int(math.MaxInt32))
+		if err != nil {
+			responses.WriteError(r.Context(), logg, w, err)
+			return
+		}
 		cursor := strings.TrimSpace(r.URL.Query().Get("cursor"))
 		requestedState := strings.ToUpper(strings.TrimSpace(r.URL.Query().Get("state")))
 
@@ -478,6 +484,7 @@ func BrowseProducts(svc productsvc.Service, storeSvc stores.Service, logg *logge
 				Limit:  limit,
 				Cursor: cursor,
 			},
+			Page: page,
 		}
 		if storeType != enums.StoreTypeBuyer {
 			input.RequestedState = ""
@@ -559,6 +566,11 @@ func VendorProductList(svc productsvc.Service, logg *logger.Logger) http.Handler
 			responses.WriteError(r.Context(), logg, w, err)
 			return
 		}
+		page, err := validators.ParseQueryInt(r, "page", 1, 1, int(math.MaxInt32))
+		if err != nil {
+			responses.WriteError(r.Context(), logg, w, err)
+			return
+		}
 		cursor := strings.TrimSpace(r.URL.Query().Get("cursor"))
 
 		filters, err := decodeProductFilters(r)
@@ -575,6 +587,7 @@ func VendorProductList(svc productsvc.Service, logg *logger.Logger) http.Handler
 				Limit:  limit,
 				Cursor: cursor,
 			},
+			Page: page,
 		})
 		if err != nil {
 			responses.WriteError(r.Context(), logg, w, pkgerrors.Wrap(pkgerrors.CodeDependency, err, "list products"))

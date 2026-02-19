@@ -7,6 +7,7 @@ import (
 )
 
 var defaultCORSOrigins = []string{
+	"http://localhost:3001",                                           // local dev
 	"http://localhost:3000",                                           // local dev
 	"https://packfinderz-62265cad6213.herokuapp.com",                  // backend API
 	"https://pack-finderz.vercel.app",                                 // Vercel domain
