@@ -182,6 +182,7 @@ func (s *service) CreateProduct(ctx context.Context, userID, storeID uuid.UUID, 
 			CBDPercent:          input.CBDPercent,
 			MaxQty:              input.MaxQty,
 			COAMediaID:          input.COAMediaID,
+			COAAdded:            input.COAMediaID != nil,
 		}
 
 		created, err := txRepo.CreateProduct(ctx, product)
@@ -359,6 +360,7 @@ func (s *service) UpdateProduct(ctx context.Context, userID, storeID, productID 
 		if input.COAMediaIDSet {
 			product.COAMediaID = input.COAMediaID
 		}
+		product.COAAdded = product.COAMediaID != nil
 
 		applyUpdateToProduct(product, input)
 		if _, err := txRepo.UpdateProduct(ctx, product); err != nil {

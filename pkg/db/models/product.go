@@ -24,6 +24,7 @@ type Product struct {
 	Strain              *string                      `gorm:"column:strain"`
 	Classification      *enums.ProductClassification `gorm:"column:classification;type:classification"`
 	COAMediaID          *uuid.UUID                   `gorm:"column:coa_media_id;type:uuid"`
+	COAAdded            bool                         `gorm:"column:coa_added;not null;default:false"`
 	Unit                enums.ProductUnit            `gorm:"column:unit;type:unit;not null"`
 	MOQ                 int                          `gorm:"column:moq;not null;default:1"`
 	PriceCents          int                          `gorm:"column:price_cents;not null"`

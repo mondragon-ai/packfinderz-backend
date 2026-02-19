@@ -343,10 +343,12 @@ func (r *Repository) ListProductSummaries(ctx context.Context, query productList
 			"p.category",
 			"p.classification",
 			"p.unit",
+			"p.moq",
 			"p.price_cents",
 			"p.compare_at_price_cents",
 			"p.thc_percent",
 			"p.cbd_percent",
+			"p.coa_added",
 			"p.created_at",
 			"p.updated_at",
 			"p.store_id",
@@ -434,12 +436,14 @@ type productSummaryRecord struct {
 	Category            string
 	Classification      sql.NullString
 	Unit                string
+	MOQ                 int
 	PriceCents          int
 	CompareAtPriceCents sql.NullInt64
 	THCPercent          sql.NullFloat64
 	CBDPercent          sql.NullFloat64
 	HasPromo            bool
 	StoreID             uuid.UUID
+	COAAdded            bool
 	CreatedAt           time.Time
 	UpdatedAt           time.Time
 	ThumbnailURL        sql.NullString
@@ -455,12 +459,14 @@ func (r productSummaryRecord) toSummary() ProductSummary {
 		Category:            r.Category,
 		Classification:      nullStringPtr(r.Classification),
 		Unit:                r.Unit,
+		MOQ:                 r.MOQ,
 		PriceCents:          r.PriceCents,
 		CompareAtPriceCents: nullIntPtr(r.CompareAtPriceCents),
 		THCPercent:          nullFloatPtr(r.THCPercent),
 		CBDPercent:          nullFloatPtr(r.CBDPercent),
 		HasPromo:            r.HasPromo,
 		VendorStoreID:       r.StoreID,
+		COAAdded:            r.COAAdded,
 		CreatedAt:           r.CreatedAt,
 		UpdatedAt:           r.UpdatedAt,
 		ThumbnailURL:        nullStringPtr(r.ThumbnailURL),

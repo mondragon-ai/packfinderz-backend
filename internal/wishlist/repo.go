@@ -65,6 +65,7 @@ func (r *Repository) ListItems(ctx context.Context, storeID uuid.UUID, cursor st
 		"p.category",
 		"p.classification",
 		"p.unit",
+		"p.moq",
 		"p.price_cents",
 		"p.compare_at_price_cents",
 		"p.thc_percent",
@@ -74,6 +75,7 @@ func (r *Repository) ListItems(ctx context.Context, storeID uuid.UUID, cursor st
 		"p.store_id AS vendor_store_id",
 		"p.max_qty",
 		promoExistsClause + " AS has_promo",
+		"p.coa_added AS coa_added",
 		"pm_thumb.thumbnail_url AS thumbnail_url",
 	}
 
@@ -287,12 +289,14 @@ type wishlistProductSummaryRecord struct {
 	Category            string          `gorm:"column:category"`
 	Classification      sql.NullString  `gorm:"column:classification"`
 	Unit                string          `gorm:"column:unit"`
+	MOQ                 int             `gorm:"column:moq"`
 	PriceCents          int             `gorm:"column:price_cents"`
 	CompareAtPriceCents sql.NullInt64   `gorm:"column:compare_at_price_cents"`
 	THCPercent          sql.NullFloat64 `gorm:"column:thc_percent"`
 	CBDPercent          sql.NullFloat64 `gorm:"column:cbd_percent"`
 	HasPromo            bool            `gorm:"column:has_promo"`
 	VendorStoreID       uuid.UUID       `gorm:"column:vendor_store_id"`
+	COAAdded            bool            `gorm:"column:coa_added"`
 	CreatedAt           time.Time       `gorm:"column:product_created_at"`
 	UpdatedAt           time.Time       `gorm:"column:product_updated_at"`
 	ThumbnailURL        sql.NullString  `gorm:"column:thumbnail_url"`
@@ -315,12 +319,14 @@ func (r wishlistProductSummaryRecord) toSummary() products.ProductSummary {
 		Category:            r.Category,
 		Classification:      nullStringPtr(r.Classification),
 		Unit:                r.Unit,
+		MOQ:                 r.MOQ,
 		PriceCents:          r.PriceCents,
 		CompareAtPriceCents: nullIntPtr(r.CompareAtPriceCents),
 		THCPercent:          nullFloatPtr(r.THCPercent),
 		CBDPercent:          nullFloatPtr(r.CBDPercent),
 		HasPromo:            r.HasPromo,
 		VendorStoreID:       r.VendorStoreID,
+		COAAdded:            r.COAAdded,
 		CreatedAt:           r.CreatedAt,
 		UpdatedAt:           r.UpdatedAt,
 		MaxQty:              r.MaxQty,
