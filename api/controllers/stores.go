@@ -1,6 +1,7 @@
 package controllers
 
 import (
+	"encoding/json"
 	"net/http"
 	"strings"
 
@@ -55,13 +56,9 @@ type storeUpdateRequest struct {
 	Phone         *string            `json:"phone,omitempty"`
 	Email         *string            `json:"email,omitempty" validate:"omitempty,email"`
 	Social        *types.Social      `json:"social,omitempty"`
-	BannerURL     *string            `json:"banner_url,omitempty"`
-	LogoURL       *string            `json:"logo_url,omitempty"`
 	BannerMediaID types.NullableUUID `json:"banner_media_id,omitempty"`
 	LogoMediaID   types.NullableUUID `json:"logo_media_id,omitempty"`
-	Ratings       *map[string]int    `json:"ratings,omitempty"`
 	Categories    *[]string          `json:"categories,omitempty"`
-	Badge         *string            `json:"badge,omitempty"`
 }
 
 func (r storeUpdateRequest) toInput() (stores.UpdateStoreInput, error) {
@@ -71,11 +68,8 @@ func (r storeUpdateRequest) toInput() (stores.UpdateStoreInput, error) {
 		Phone:         r.Phone,
 		Email:         r.Email,
 		Social:        r.Social,
-		BannerURL:     r.BannerURL,
-		LogoURL:       r.LogoURL,
 		BannerMediaID: r.BannerMediaID,
 		LogoMediaID:   r.LogoMediaID,
-		Ratings:       r.Ratings,
 		Categories:    r.Categories,
 	}, nil
 }
@@ -116,6 +110,45 @@ func StoreUpdate(svc stores.Service, logg *logger.Logger) http.HandlerFunc {
 		if err := validators.DecodeJSONBody(r, &payload); err != nil {
 			responses.WriteError(r.Context(), logg, w, err)
 			return
+		}
+
+		if logg != nil {
+			fields := map[string]any{
+				"store_id":       sid.String(),
+				"user_id":        uid.String(),
+				"has_social":     payload.Social != nil,
+				"has_categories": payload.Categories != nil,
+				"social_type": func() any {
+					if payload.Social == nil {
+						return nil
+					}
+					return "types.Social"
+				}(),
+				"categories_type": func() any {
+					if payload.Categories == nil {
+						return nil
+					}
+					return "[]string"
+				}(),
+			}
+
+			if payload.Social != nil {
+				if b, e := json.Marshal(payload.Social); e == nil {
+					fields["social_json"] = string(b)
+				} else {
+					fields["social_marshal_err"] = e.Error()
+				}
+			}
+			if payload.Categories != nil {
+				if b, e := json.Marshal(payload.Categories); e == nil {
+					fields["categories_json"] = string(b)
+				} else {
+					fields["categories_marshal_err"] = e.Error()
+				}
+			}
+
+			ctx2 := logg.WithFields(r.Context(), fields)
+			logg.Info(ctx2, "stores.update.payload")
 		}
 
 		input, err := payload.toInput()

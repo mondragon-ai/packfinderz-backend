@@ -54,6 +54,9 @@ require (
 	github.com/go-chi/cors v1.2.2 // indirect
 	github.com/goccy/go-json v0.10.2 // indirect
 	github.com/google/flatbuffers v23.5.26+incompatible // indirect
+	github.com/jackc/chunkreader/v2 v2.0.1 // indirect
+	github.com/jackc/pgio v1.0.0 // indirect
+	github.com/jackc/pgproto3/v2 v2.3.3 // indirect
 	github.com/klauspost/compress v1.18.0 // indirect
 	github.com/klauspost/cpuid/v2 v2.2.5 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
@@ -85,6 +88,7 @@ require (
 	github.com/google/s2a-go v0.1.9 // indirect
 	github.com/googleapis/enterprise-certificate-proxy v0.3.11 // indirect
 	github.com/googleapis/gax-go/v2 v2.16.0 // indirect
+	github.com/jackc/pgconn v1.14.3
 	github.com/mattn/go-sqlite3 v1.14.22 // indirect
 	github.com/mfridman/interpolate v0.0.2 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect

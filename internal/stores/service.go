@@ -2,6 +2,7 @@ package stores
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -10,9 +11,11 @@ import (
 	"github.com/angelmondragon/packfinderz-backend/internal/memberships"
 	"github.com/angelmondragon/packfinderz-backend/internal/users"
 	"github.com/angelmondragon/packfinderz-backend/pkg/config"
+	"github.com/angelmondragon/packfinderz-backend/pkg/db"
 	"github.com/angelmondragon/packfinderz-backend/pkg/db/models"
 	"github.com/angelmondragon/packfinderz-backend/pkg/enums"
 	pkgerrors "github.com/angelmondragon/packfinderz-backend/pkg/errors"
+	"github.com/angelmondragon/packfinderz-backend/pkg/logger"
 	"github.com/angelmondragon/packfinderz-backend/pkg/security"
 	"github.com/angelmondragon/packfinderz-backend/pkg/types"
 	"github.com/google/uuid"
@@ -75,6 +78,7 @@ type ServiceParams struct {
 	AttachmentReconciler media.AttachmentReconciler
 	MediaRepo            mediaLookup
 	LicenseRepo          licenseRepository
+	Logg                 *logger.Logger
 }
 
 type service struct {
@@ -86,6 +90,7 @@ type service struct {
 	attachmentReconciler media.AttachmentReconciler
 	media                mediaLookup
 	licenseRepo          licenseRepository
+	Logg                 *logger.Logger
 }
 
 // NewService builds a store service with the provided repositories.
@@ -111,6 +116,9 @@ func NewService(params ServiceParams) (Service, error) {
 	if params.LicenseRepo == nil {
 		return nil, fmt.Errorf("license repository required")
 	}
+	if params.Logg == nil {
+		return nil, fmt.Errorf("license repository required")
+	}
 	return &service{
 		repo:                 params.Repo,
 		memberships:          params.Memberships,
@@ -120,6 +128,7 @@ func NewService(params ServiceParams) (Service, error) {
 		attachmentReconciler: params.AttachmentReconciler,
 		media:                params.MediaRepo,
 		licenseRepo:          params.LicenseRepo,
+		Logg:                 params.Logg,
 	}, nil
 }
 
@@ -208,7 +217,7 @@ func (s *service) GetByID(ctx context.Context, id uuid.UUID) (*StoreDTO, error) 
 		}
 		return nil, pkgerrors.Wrap(pkgerrors.CodeDependency, err, "load store")
 	}
-	return FromModel(store), nil
+	return FromModel(store, nil), nil
 }
 
 func (s *service) GetManagerView(ctx context.Context, id uuid.UUID) (*StoreDTO, error) {
@@ -236,26 +245,26 @@ func (s *service) GetManagerView(ctx context.Context, id uuid.UUID) (*StoreDTO, 
 		LastActiveAt: owner.LastLoginAt,
 	}
 
-	if membership, err := s.memberships.GetMembership(ctx, owner.ID, store.ID); err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
-		return nil, pkgerrors.Wrap(pkgerrors.CodeDependency, err, "load owner membership")
-	} else if membership != nil {
-		role := membership.Role.String()
-		ownerDTO.Role = &role
-	}
+	// if membership, err := s.memberships.GetMembership(ctx, owner.ID, store.ID); err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+	// 	return nil, pkgerrors.Wrap(pkgerrors.CodeDependency, err, "load owner membership")
+	// } else if membership != nil {
+	// 	role := membership.Role.String()
+	// 	ownerDTO.Role = &role
+	// }
 
 	licenses, err := s.licenseRepo.ListByStoreID(ctx, store.ID)
 	if err != nil {
 		return nil, pkgerrors.Wrap(pkgerrors.CodeDependency, err, "load store licenses")
 	}
-	licenseDTOs := make([]StoreLicenseDTO, 0, len(licenses))
-	for _, license := range licenses {
-		licenseDTOs = append(licenseDTOs, StoreLicenseDTO{
+	licenseDTOs := make([]StoreLicenseDTO, len(licenses))
+	for i, license := range licenses {
+		licenseDTOs[i] = StoreLicenseDTO{
 			Number: license.Number,
 			Type:   license.Type,
-		})
+		}
 	}
 
-	dto := FromModel(store)
+	dto := FromModel(store, &ownerDTO)
 	dto.Owner = ownerDTO
 	dto.Licenses = licenseDTOs
 	return dto, nil
@@ -263,6 +272,7 @@ func (s *service) GetManagerView(ctx context.Context, id uuid.UUID) (*StoreDTO, 
 
 func (s *service) Update(ctx context.Context, userID, storeID uuid.UUID, input UpdateStoreInput) (*StoreDTO, error) {
 	allowedRoles := []enums.MemberRole{enums.MemberRoleOwner, enums.MemberRoleManager}
+
 	ok, err := s.memberships.UserHasRole(ctx, userID, storeID, allowedRoles...)
 	if err != nil {
 		return nil, pkgerrors.Wrap(pkgerrors.CodeDependency, err, "check membership")
@@ -271,8 +281,13 @@ func (s *service) Update(ctx context.Context, userID, storeID uuid.UUID, input U
 		return nil, pkgerrors.New(pkgerrors.CodeForbidden, "insufficient store role")
 	}
 
+	step := "start"
 	var updated *models.Store
+
 	if err := s.tx.WithTx(ctx, func(tx *gorm.DB) error {
+		tx = tx.Debug()
+
+		step = "load_store"
 		store, err := s.repo.FindByIDWithTx(tx, storeID)
 		if err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -284,6 +299,7 @@ func (s *service) Update(ctx context.Context, userID, storeID uuid.UUID, input U
 		oldLogo := store.LogoMediaID
 		oldBanner := store.BannerMediaID
 
+		// Apply patch
 		if input.CompanyName != nil {
 			store.CompanyName = *input.CompanyName
 		}
@@ -332,23 +348,111 @@ func (s *service) Update(ctx context.Context, userID, storeID uuid.UUID, input U
 			store.Categories = cloneCategories(*input.Categories)
 		}
 
+		step = "debug_json_fields"
+		if s.Logg != nil {
+			fields := map[string]any{
+				"step":           step,
+				"store_id":       store.ID,
+				"user_id":        userID,
+				"has_social":     store.Social != nil,
+				"has_ratings":    store.Ratings != nil,
+				"has_categories": store.Categories != nil,
+			}
+
+			if store.Social != nil {
+				if b, e := json.Marshal(store.Social); e != nil {
+					fields["social_marshal_err"] = e.Error()
+					fields["social_type"] = fmt.Sprintf("%T", store.Social)
+				} else {
+					fields["social_json"] = string(b)
+					fields["social_type"] = fmt.Sprintf("%T", store.Social)
+				}
+			}
+
+			if store.Ratings != nil {
+				if b, e := json.Marshal(store.Ratings); e != nil {
+					fields["ratings_marshal_err"] = e.Error()
+					fields["ratings_type"] = fmt.Sprintf("%T", store.Ratings)
+				} else {
+					fields["ratings_json"] = string(b)
+					fields["ratings_type"] = fmt.Sprintf("%T", store.Ratings)
+				}
+			}
+
+			if store.Categories != nil {
+				if b, e := json.Marshal(store.Categories); e != nil {
+					fields["categories_marshal_err"] = e.Error()
+					fields["categories_type"] = fmt.Sprintf("%T", store.Categories)
+				} else {
+					fields["categories_json"] = string(b)
+					fields["categories_type"] = fmt.Sprintf("%T", store.Categories)
+				}
+			}
+
+			if s.Logg != nil {
+				ctx2 := s.Logg.WithFields(ctx, fields)
+				s.Logg.Info(ctx2, "stores.update.debug_fields")
+			}
+		}
+
+		step = "reconcile_logo"
 		if err := s.reconcileAttachment(ctx, tx, models.AttachmentEntityStoreLogo, store.ID, store.ID, oldLogo, store.LogoMediaID); err != nil {
 			return err
 		}
+
+		step = "reconcile_banner"
 		if err := s.reconcileAttachment(ctx, tx, models.AttachmentEntityStoreBanner, store.ID, store.ID, oldBanner, store.BannerMediaID); err != nil {
 			return err
 		}
 
+		step = "save_store"
 		if err := s.repo.UpdateWithTx(tx, store); err != nil {
-			return pkgerrors.Wrap(pkgerrors.CodeDependency, err, "update store")
+			return db.MapPGError(err)
 		}
 
 		updated = store
 		return nil
 	}); err != nil {
+		if pe := pkgerrors.As(err); pe != nil {
+			pe.WithDetails(map[string]any{
+				"step": step,
+			})
+		}
 		return nil, err
 	}
-	return FromModel(updated), nil
+
+	owner, err := s.users.FindByID(ctx, updated.OwnerID)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, pkgerrors.New(pkgerrors.CodeDependency, "owner not found")
+		}
+		return nil, pkgerrors.Wrap(pkgerrors.CodeDependency, err, "load owner")
+	}
+
+	ownerFullName := strings.TrimSpace(owner.FirstName + " " + owner.LastName)
+	ownerDTO := OwnerSummaryDTO{
+		ID:           owner.ID,
+		FullName:     ownerFullName,
+		Email:        owner.Email,
+		LastActiveAt: owner.LastLoginAt,
+	}
+
+	licenses, err := s.licenseRepo.ListByStoreID(ctx, updated.ID)
+	if err != nil {
+		return nil, pkgerrors.Wrap(pkgerrors.CodeDependency, err, "load store licenses")
+	}
+	licenseDTOs := make([]StoreLicenseDTO, 0, len(licenses))
+	for _, license := range licenses {
+		licenseDTOs = append(licenseDTOs, StoreLicenseDTO{
+			Number: license.Number,
+			Type:   license.Type,
+		})
+	}
+
+	dto := FromModel(updated, &ownerDTO)
+	dto.Owner = ownerDTO
+	dto.Licenses = licenseDTOs
+	return dto, nil
 }
 
 func (s *service) ListUsers(ctx context.Context, userID, storeID uuid.UUID) ([]memberships.StoreUserDTO, error) {

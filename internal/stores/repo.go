@@ -106,7 +106,12 @@ func (r *Repository) UpdateWithTx(tx *gorm.DB, store *models.Store) error {
 	if store == nil {
 		return fmt.Errorf("store is required")
 	}
-	return tx.Save(store).Error
+
+	err := tx.Save(store).Error
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 func (r *Repository) UpdateSubscriptionActiveWithTx(tx *gorm.DB, storeID uuid.UUID, active bool) error {

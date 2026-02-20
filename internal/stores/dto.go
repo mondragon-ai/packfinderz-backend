@@ -33,7 +33,6 @@ type StoreDTO struct {
 	OwnerID              uuid.UUID         `json:"owner"`
 	Badge                *enums.StoreBadge `json:"badge,omitempty"`
 	LastActiveAt         *time.Time        `json:"last_active_at,omitempty"`
-	LastLoggedInAt       *time.Time        `json:"last_logged_in_at,omitempty"`
 	Owner                OwnerSummaryDTO   `json:"owner_detail"`
 	Licenses             []StoreLicenseDTO `json:"licenses,omitempty"`
 	CreatedAt            time.Time         `json:"created_at"`
@@ -71,7 +70,7 @@ type CreateStoreDTO struct {
 }
 
 // FromModel maps the persisted store into a DTO.
-func FromModel(m *models.Store) *StoreDTO {
+func FromModel(m *models.Store, u *OwnerSummaryDTO) *StoreDTO {
 	if m == nil {
 		return nil
 	}
@@ -95,12 +94,14 @@ func FromModel(m *models.Store) *StoreDTO {
 		UpdatedAt:            m.UpdatedAt,
 	}
 
+	if u != nil && u.LastActiveAt != nil {
+		la := *u.LastActiveAt
+		dto.LastActiveAt = &la
+	}
+
 	if m.Badge != nil {
 		badge := *m.Badge
 		dto.Badge = &badge
-	}
-	if m.LastLoggedInAt != nil {
-		dto.LastLoggedInAt = m.LastLoggedInAt
 	}
 
 	if m.Social != nil {

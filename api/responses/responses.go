@@ -19,6 +19,7 @@ func WriteSuccess(w http.ResponseWriter, data any) {
 func WriteSuccessStatus(w http.ResponseWriter, status int, data any) {
 	writeJSON(w, status, types.SuccessEnvelope{Data: data})
 }
+
 func WriteError(ctx context.Context, logg *logger.Logger, w http.ResponseWriter, err error) {
 	if err == nil {
 		err = errors.New("unknown error")
@@ -32,7 +33,6 @@ func WriteError(ctx context.Context, logg *logger.Logger, w http.ResponseWriter,
 	meta := pkgerrors.MetadataFor(typed.Code())
 
 	msg := meta.PublicMessage
-
 	switch typed.Code() {
 	case pkgerrors.CodeValidation,
 		pkgerrors.CodeForbidden,
@@ -61,7 +61,29 @@ func WriteError(ctx context.Context, logg *logger.Logger, w http.ResponseWriter,
 	}
 
 	if logg != nil {
-		ctx = logg.WithField(ctx, "error_code", string(typed.Code()))
+		dump := pkgerrors.Dump(err)
+
+		fields := map[string]any{
+			"error":         dump.TopMessage,
+			"error_code":    dump.Code,
+			"error_chain":   dump.Chain,
+			"pg_code":       dump.PGCode,
+			"pg_detail":     dump.PGDetail,
+			"pg_message":    dump.PGMessage,
+			"pg_table":      dump.PGTable,
+			"pg_column":     dump.PGColumn,
+			"pg_constraint": dump.PGConstraint,
+		}
+
+		if d := typed.Details(); d != nil {
+			if dm, ok := d.(map[string]any); ok {
+				if step, ok := dm["step"]; ok {
+					fields["step"] = step
+				}
+			}
+		}
+
+		ctx = logg.WithFields(ctx, fields)
 		logg.Error(ctx, "request.error", err)
 	}
 

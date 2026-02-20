@@ -16,7 +16,6 @@ type Social struct {
 	Website   *string `json:"website,omitempty"`
 }
 
-// Value marshals Social into a Postgres composite literal.
 func (s Social) Value() (driver.Value, error) {
 	parts := []string{
 		quoteCompositeNullable(s.Twitter),
@@ -26,11 +25,9 @@ func (s Social) Value() (driver.Value, error) {
 		quoteCompositeNullable(s.YouTube),
 		quoteCompositeNullable(s.Website),
 	}
-
-	return "(" + joinCompositeParts(parts) + ")", nil
+	return "(" + strings.Join(parts, ",") + ")", nil
 }
 
-// Scan decodes the Postgres composite literal.
 func (s *Social) Scan(value interface{}) error {
 	if value == nil {
 		*s = Social{}
@@ -55,8 +52,4 @@ func (s *Social) Scan(value interface{}) error {
 	s.Website = newCompositeNullable(fields[5])
 
 	return nil
-}
-
-func joinCompositeParts(parts []string) string {
-	return strings.Join(parts, ",")
 }

@@ -197,6 +197,7 @@ func main() {
 		AttachmentReconciler: attachmentReconciler,
 		MediaRepo:            mediaRepo,
 		LicenseRepo:          licenseRepo,
+		Logg:                 logg,
 	})
 	requireResource(ctx, logg, "store service", err)
 
