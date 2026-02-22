@@ -75,8 +75,6 @@ func NewService(repo CartRepository, tx txRunner, store storeLoader, productRepo
 		tokenValidator: tokenValidator,
 	}, nil
 }
-
-// QuoteCart builds a runnable quote intent from the minimal request shape and persists the computed quote snapshot in an atomic transaction.
 func (s *service) QuoteCart(ctx context.Context, buyerStoreID uuid.UUID, input QuoteCartInput) (*models.CartRecord, error) {
 	if buyerStoreID == uuid.Nil {
 		return nil, pkgerrors.New(pkgerrors.CodeValidation, "buyer store id is required")
@@ -106,20 +104,36 @@ func (s *service) QuoteCart(ctx context.Context, buyerStoreID uuid.UUID, input Q
 	}
 
 	vendorGroups := aggregateVendorGroups(pipeline)
+
 	subtotalCents := 0
+	discountsCents := 0
+	totalCents := 0
+
 	for _, group := range vendorGroups {
 		subtotalCents += group.SubtotalCents
+		discountsCents += group.DiscountsCents
+		totalCents += group.TotalCents
 	}
-	discountsCents := 0
-	totalCents := subtotalCents - discountsCents
+
+	if subtotalCents < 0 {
+		subtotalCents = 0
+	}
+	if discountsCents < 0 {
+		discountsCents = 0
+	}
+	if discountsCents > subtotalCents {
+		discountsCents = subtotalCents
+	}
 	if totalCents < 0 {
 		totalCents = 0
 	}
+
 	shippingAddress := store.Address
 	validUntil := time.Now().Add(15 * time.Minute)
 	currency := enums.CurrencyUSD
 
 	adTokens := s.filterAdTokens(input.AdTokens)
+
 	payload := cartRecordPayload{
 		ShippingAddress: &shippingAddress,
 		Currency:        currency,
@@ -188,16 +202,23 @@ func (s *service) loadExistingItemPrices(ctx context.Context, buyerStoreID uuid.
 
 func buildCartItemFromPipeline(item *quotePipelineItem) models.CartItem {
 	return models.CartItem{
-		ProductID:             item.Product.ID,
-		VendorStoreID:         item.Product.StoreID,
-		Quantity:              item.NormalizedQty,
-		MOQ:                   item.MOQ,
-		MaxQty:                item.MaxQty,
-		UnitPriceCents:        item.UnitPriceCents,
-		AppliedVolumeDiscount: item.AppliedVolumeDiscount,
-		LineSubtotalCents:     item.LineSubtotalCents,
-		Status:                item.Status,
-		Warnings:              item.Warnings,
+		ProductID:               item.Product.ID,
+		VendorStoreID:           item.Product.StoreID,
+		VendorStoreName:         item.VendorStore.CompanyName,
+		Unit:                    item.Product.Unit,
+		Quantity:                item.NormalizedQty,
+		MOQ:                     item.MOQ,
+		MaxQty:                  item.MaxQty,
+		Title:                   item.Title,
+		Thumbnail:               item.Thumbnail,
+		UnitPriceCents:          item.UnitPriceCents,
+		EffectiveUnitPriceCents: item.EffectiveUnitPriceCents,
+		LineDiscountsCents:      item.LineDiscountsCents,
+		LineTotalCents:          item.LineTotalCents,
+		AppliedVolumeDiscount:   item.AppliedVolumeDiscount,
+		LineSubtotalCents:       item.LineSubtotalCents,
+		Status:                  item.Status,
+		Warnings:                item.Warnings,
 	}
 }
 

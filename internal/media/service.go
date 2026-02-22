@@ -238,9 +238,9 @@ func (s *service) GenerateReadURL(ctx context.Context, params ReadURLParams) (*R
 		return nil, pkgerrors.New(pkgerrors.CodeConflict, "media not available for download")
 	}
 
-	if mediaRow.PublicURL == "" {
-		return nil, pkgerrors.New(pkgerrors.CodeDependency, "public url missing for media")
-	}
+	// if mediaRow.PublicURL == "" {
+	// 	return nil, pkgerrors.New(pkgerrors.CodeDependency, "public url missing for media")
+	// }
 
 	return &ReadURLOutput{
 		URL:       mediaRow.PublicURL,

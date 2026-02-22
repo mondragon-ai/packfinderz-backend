@@ -2493,7 +2493,7 @@ Registration now calls the shared Square customer helper so onboarding persists 
 
 * `GET /api/v1/admin/orders/payouts`
 
-  * Returns delivered + settled + unpaid `vendor_orders` (joined to `payment_intents`) ordered by `delivered_at ASC` so oldest deliveries surface first, paginated via `limit` + `cursor` (internal/orders/repo.go:561-620; api/controllers/admin_orders.go:17-46). Response includes `orderId`, `vendorStoreId`, `amountCents`, and `deliveredAt`.
+  * Returns delivered + settled + unpaid `vendor_orders` (joined to `payment_intents`) ordered by `delivered_at ASC` so oldest deliveries surface first, paginated via `limit` + `cursor` (internal/orders/repo.go:561-620; api/controllers/admin_orders.go:17-46). Response includes `orderId`, `vendorStoreId`, `DiscountPercent`, and `deliveredAt`.
   * Success: `200`
   * Errors: `401, 403`
 

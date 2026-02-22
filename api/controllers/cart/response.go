@@ -9,13 +9,23 @@ func newCartQuote(record *models.CartRecord) cartdto.CartQuote {
 	items := make([]cartdto.CartQuoteItem, 0, len(record.Items))
 	for _, item := range record.Items {
 		items = append(items, cartdto.CartQuoteItem{
-			ID:                    item.ID,
-			ProductID:             item.ProductID,
-			VendorStoreID:         item.VendorStoreID,
-			Quantity:              item.Quantity,
-			MOQ:                   item.MOQ,
-			MaxQty:                item.MaxQty,
-			UnitPriceCents:        item.UnitPriceCents,
+			ID:              item.ID,
+			ProductID:       item.ProductID,
+			VendorStoreID:   item.VendorStoreID,
+			VendorStoreName: item.VendorStoreName,
+			Unit:            item.Unit,
+			Quantity:        item.Quantity,
+			MOQ:             item.MOQ,
+			MaxQty:          item.MaxQty,
+
+			Title:     item.Title,
+			Thumbnail: item.Thumbnail,
+
+			UnitPriceCents:          item.UnitPriceCents,
+			EffectiveUnitPriceCents: item.EffectiveUnitPriceCents,
+			LineDiscountsCents:      item.LineDiscountsCents,
+			LineTotalCents:          item.LineTotalCents,
+
 			AppliedVolumeDiscount: item.AppliedVolumeDiscount,
 			LineSubtotalCents:     item.LineSubtotalCents,
 			Status:                item.Status,
@@ -33,7 +43,12 @@ func newCartQuote(record *models.CartRecord) cartdto.CartQuote {
 			Warnings:      group.Warnings,
 			SubtotalCents: group.SubtotalCents,
 			Promo:         group.Promo,
-			TotalCents:    group.TotalCents,
+
+			LineDiscountsCents: group.LineDiscountsCents,
+			PromoDiscountCents: group.PromoDiscountCents,
+			DiscountsCents:     group.DiscountsCents,
+
+			TotalCents: group.TotalCents,
 		})
 	}
 

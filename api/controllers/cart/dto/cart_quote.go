@@ -35,18 +35,33 @@ type CartQuoteVendorGroup struct {
 	Warnings      types.VendorGroupWarnings `json:"warnings,omitempty"`
 	SubtotalCents int                       `json:"subtotal_cents"`
 	Promo         *types.VendorGroupPromo   `json:"promo,omitempty"`
-	TotalCents    int                       `json:"total_cents"`
+
+	LineDiscountsCents int `json:"line_discounts_cents"`
+	PromoDiscountCents int `json:"promo_discount_cents"`
+	DiscountsCents     int `json:"discounts_cents"`
+
+	TotalCents int `json:"total_cents"`
 }
 
 // CartQuoteItem describes each line item in the authoritative quote.
 type CartQuoteItem struct {
-	ID                    uuid.UUID                    `json:"id"`
-	ProductID             uuid.UUID                    `json:"product_id"`
-	VendorStoreID         uuid.UUID                    `json:"vendor_store_id"`
-	Quantity              int                          `json:"quantity"`
-	MOQ                   int                          `json:"moq"`
-	MaxQty                *int                         `json:"max_qty,omitempty"`
-	UnitPriceCents        int                          `json:"unit_price_cents"`
+	ID              uuid.UUID         `json:"id"`
+	ProductID       uuid.UUID         `json:"product_id"`
+	VendorStoreID   uuid.UUID         `json:"vendor_store_id"`
+	VendorStoreName string            `json:"vendor_store_name"`
+	Unit            enums.ProductUnit `json:"unit"`
+	Quantity        int               `json:"quantity"`
+	MOQ             int               `json:"moq"`
+	MaxQty          *int              `json:"max_qty,omitempty"`
+
+	Title     string  `json:"title"`
+	Thumbnail *string `json:"thumbnail,omitempty"`
+
+	UnitPriceCents          int `json:"unit_price_cents"`
+	EffectiveUnitPriceCents int `json:"effective_unit_price_cents"`
+	LineDiscountsCents      int `json:"line_discounts_cents"`
+	LineTotalCents          int `json:"line_total_cents"`
+
 	AppliedVolumeDiscount *types.AppliedVolumeDiscount `json:"applied_volume_discount,omitempty"`
 	LineSubtotalCents     int                          `json:"line_subtotal_cents"`
 	Status                enums.CartItemStatus         `json:"status"`

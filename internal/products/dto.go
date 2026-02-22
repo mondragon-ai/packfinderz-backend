@@ -39,6 +39,11 @@ type ProductDTO struct {
 	UpdatedAt           time.Time           `json:"updated_at"`
 }
 
+// CONSIDER ADDING:
+// 1. Main Image || use the 1st in the media listin
+// 2. product rating (no review just 1-5) -> require CRUD around this
+// 3. terpens?: number; &&&& cannabinoids?: Record<string, number>;
+
 // ProductSummary captures the lightweight product payload returned by listing endpoints.
 type ProductSummary struct {
 	ID                  uuid.UUID `json:"id"`

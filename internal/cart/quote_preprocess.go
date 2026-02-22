@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"strings"
 	"time"
 
 	"github.com/angelmondragon/packfinderz-backend/internal/stores"
@@ -17,20 +18,25 @@ import (
 )
 
 type quotePipelineItem struct {
-	Request               QuoteCartItem
-	Product               *models.Product
-	VendorStore           *stores.StoreDTO
-	VendorMatch           bool
-	ProductAvailable      bool
-	NormalizedQty         int
-	MOQ                   int
-	MaxQty                *int
-	Status                enums.CartItemStatus
-	Warnings              types.CartItemWarnings
-	UnitPriceCents        int
-	AppliedVolumeDiscount *types.AppliedVolumeDiscount
-	LineSubtotalCents     int
-	SelectedTier          *models.ProductVolumeDiscount
+	Request                 QuoteCartItem
+	Product                 *models.Product
+	VendorStore             *stores.StoreDTO
+	VendorMatch             bool
+	ProductAvailable        bool
+	Title                   string
+	Thumbnail               *string
+	NormalizedQty           int
+	MOQ                     int
+	MaxQty                  *int
+	Status                  enums.CartItemStatus
+	Warnings                types.CartItemWarnings
+	UnitPriceCents          int
+	EffectiveUnitPriceCents int
+	LineDiscountsCents      int
+	LineTotalCents          int
+	AppliedVolumeDiscount   *types.AppliedVolumeDiscount
+	LineSubtotalCents       int
+	SelectedTier            *models.ProductVolumeDiscount
 }
 
 type quotePipelineResult struct {
@@ -84,9 +90,15 @@ func (s *service) preprocessQuoteInput(ctx context.Context, buyerState string, i
 			})
 			continue
 		}
+
+		amount := promoRecord.AmountCents
+		if amount < 0 {
+			amount = 0
+		}
+
 		vendorPromos[vendorID] = &types.VendorGroupPromo{
 			Code:        promoRecord.Code,
-			AmountCents: promoRecord.AmountCents,
+			AmountCents: amount,
 		}
 	}
 
@@ -133,28 +145,61 @@ func (s *service) preprocessQuoteInput(ctx context.Context, buyerState string, i
 		}
 
 		selectedTier := selectVolumeDiscount(normalizedQty, product.VolumeDiscounts)
-		unitPrice, appliedDiscount := resolvePricing(product, normalizedQty, selectedTier)
-		lineSubtotal := unitPrice * normalizedQty
+
+		baseUnitPriceCents, _, effectiveUnitPriceCents, applied :=
+			resolvePricing(product, normalizedQty, selectedTier)
+
+		lineSubtotalCents := baseUnitPriceCents * normalizedQty
+		if lineSubtotalCents < 0 {
+			lineSubtotalCents = 0
+		}
+
+		lineTotalCents := effectiveUnitPriceCents * normalizedQty
+		if lineTotalCents < 0 {
+			lineTotalCents = 0
+		}
+
+		lineDiscountsCents := lineSubtotalCents - lineTotalCents
+		if lineDiscountsCents < 0 {
+			lineDiscountsCents = 0
+		}
+		if applied != nil {
+			applied.AmountCents = lineDiscountsCents
+		}
 
 		key := priceKey(product.ID, payload.VendorStoreID)
-		if prevPrice, ok := previousPrices[key]; ok && prevPrice != unitPrice {
-			warnings = appendWarning(warnings, enums.CartItemWarningTypePriceChanged, fmt.Sprintf("price changed from %d to %d", prevPrice, unitPrice))
+		if prevPrice, ok := previousPrices[key]; ok && prevPrice != baseUnitPriceCents {
+			warnings = appendWarning(
+				warnings,
+				enums.CartItemWarningTypePriceChanged,
+				fmt.Sprintf("price changed from %d to %d", prevPrice, baseUnitPriceCents),
+			)
 		}
 
 		item := &quotePipelineItem{
-			Request:               payload,
-			Product:               product,
-			VendorStore:           vendorStore,
-			VendorMatch:           vendorMatch,
-			ProductAvailable:      product.IsActive,
-			NormalizedQty:         normalizedQty,
-			MOQ:                   product.MOQ,
-			MaxQty:                maxQty,
-			Status:                status,
-			Warnings:              warnings,
-			UnitPriceCents:        unitPrice,
-			AppliedVolumeDiscount: appliedDiscount,
-			LineSubtotalCents:     lineSubtotal,
+			Request:          payload,
+			Product:          product,
+			VendorStore:      vendorStore,
+			VendorMatch:      vendorMatch,
+			ProductAvailable: product.IsActive,
+
+			Title:     product.Title,
+			Thumbnail: firstMediaURL(product),
+
+			NormalizedQty: normalizedQty,
+			MOQ:           product.MOQ,
+			MaxQty:        maxQty,
+			Status:        status,
+			Warnings:      warnings,
+
+			UnitPriceCents: baseUnitPriceCents,
+
+			EffectiveUnitPriceCents: effectiveUnitPriceCents,
+			LineDiscountsCents:      lineDiscountsCents,
+			LineTotalCents:          lineTotalCents,
+
+			AppliedVolumeDiscount: applied,
+			LineSubtotalCents:     lineSubtotalCents,
 			SelectedTier:          selectedTier,
 		}
 
@@ -163,6 +208,20 @@ func (s *service) preprocessQuoteInput(ctx context.Context, buyerState string, i
 	}
 
 	return result, nil
+}
+
+func firstMediaURL(product *models.Product) *string {
+	if product == nil || len(product.Media) == 0 || product.Media[0].URL == nil {
+		return nil
+	}
+
+	u := strings.TrimSpace(*product.Media[0].URL)
+	if u == "" {
+		return nil
+	}
+
+	product.Media[0].URL = &u
+	return product.Media[0].URL
 }
 
 func appendWarning(warnings types.CartItemWarnings, warningType enums.CartItemWarningType, message string) types.CartItemWarnings {
@@ -209,45 +268,85 @@ func priceKey(productID, vendorID uuid.UUID) string {
 	return fmt.Sprintf("%s:%s", productID, vendorID)
 }
 
-func resolvePricing(product *models.Product, qty int, tier *models.ProductVolumeDiscount) (int, *types.AppliedVolumeDiscount) {
-	unitPrice := product.PriceCents
-	if tier == nil || tier.DiscountPercent <= 0 {
-		return unitPrice, nil
+func resolvePricing(
+	product *models.Product,
+	qty int,
+	tier *models.ProductVolumeDiscount,
+) (baseUnitPriceCents int, lineDiscountsCents int, effectiveUnitPriceCents int, applied *types.AppliedVolumeDiscount) {
+	if product == nil {
+		return 0, 0, 0, nil
+	}
+	if qty < 0 {
+		qty = 0
 	}
 
-	discountAmount := int(math.Round(float64(product.PriceCents) * tier.DiscountPercent / 100))
-	if discountAmount < 0 {
-		discountAmount = 0
-	}
-	if discountAmount > product.PriceCents {
-		discountAmount = product.PriceCents
+	base := product.PriceCents
+	if base < 0 {
+		base = 0
 	}
 
-	applied := &types.AppliedVolumeDiscount{
-		Label:       fmt.Sprintf("volume tier %d+", tier.MinQty),
-		AmountCents: discountAmount * qty,
+	effective := base
+	lineDiscounts := 0
+	var appliedDiscount *types.AppliedVolumeDiscount
+
+	if tier != nil && tier.DiscountPercent > 0 {
+		discountPerUnit := int(math.Round(float64(base) * float64(tier.DiscountPercent) / 100.0))
+		if discountPerUnit < 0 {
+			discountPerUnit = 0
+		}
+		if discountPerUnit > base {
+			discountPerUnit = base
+		}
+
+		effective = base - discountPerUnit
+		if effective < 0 {
+			effective = 0
+		}
+
+		lineDiscounts = discountPerUnit * qty
+		if lineDiscounts < 0 {
+			lineDiscounts = 0
+		}
+
+		appliedDiscount = &types.AppliedVolumeDiscount{
+			Label:       fmt.Sprintf("volume tier %d+", tier.MinQty),
+			AmountCents: lineDiscounts,
+		}
 	}
 
-	unitPrice = product.PriceCents - discountAmount
-	if unitPrice < 0 {
-		unitPrice = 0
-	}
-	return unitPrice, applied
+	return base, lineDiscounts, effective, appliedDiscount
 }
 
 func aggregateVendorGroups(pipeline *quotePipelineResult) []models.CartVendorGroup {
 	groups := make([]models.CartVendorGroup, 0, len(pipeline.ItemsByVendor))
+
 	for vendorID, items := range pipeline.ItemsByVendor {
 		subtotal := 0
+		lineDiscounts := 0
 		hasOK := false
+
 		for _, item := range items {
-			if item.Status == enums.CartItemStatusOK {
-				subtotal += item.LineSubtotalCents
-				hasOK = true
+			if item.Status != enums.CartItemStatusOK {
+				continue
 			}
+			hasOK = true
+			subtotal += item.LineSubtotalCents
+			lineDiscounts += item.LineDiscountsCents
 		}
+
+		if subtotal < 0 {
+			subtotal = 0
+		}
+		if lineDiscounts < 0 {
+			lineDiscounts = 0
+		}
+		if lineDiscounts > subtotal {
+			lineDiscounts = subtotal
+		}
+
 		status := enums.VendorGroupStatusInvalid
 		warnings := append(types.VendorGroupWarnings{}, pipeline.VendorWarnings[vendorID]...)
+
 		if hasOK {
 			status = enums.VendorGroupStatusOK
 		} else {
@@ -256,14 +355,49 @@ func aggregateVendorGroups(pipeline *quotePipelineResult) []models.CartVendorGro
 				Message: "no valid items for vendor",
 			})
 		}
+
+		promo := pipeline.VendorPromos[vendorID]
+
+		promoDiscount := 0
+		if promo != nil && promo.AmountCents > 0 {
+			remaining := subtotal - lineDiscounts
+			if remaining < 0 {
+				remaining = 0
+			}
+			promoDiscount = promo.AmountCents
+			if promoDiscount < 0 {
+				promoDiscount = 0
+			}
+			if promoDiscount > remaining {
+				promoDiscount = remaining
+			}
+		}
+
+		discounts := lineDiscounts + promoDiscount
+		if discounts < 0 {
+			discounts = 0
+		}
+		if discounts > subtotal {
+			discounts = subtotal
+		}
+
+		total := subtotal - discounts
+		if total < 0 {
+			total = 0
+		}
+
 		groups = append(groups, models.CartVendorGroup{
-			VendorStoreID: vendorID,
-			Status:        status,
-			Warnings:      warnings,
-			SubtotalCents: subtotal,
-			Promo:         pipeline.VendorPromos[vendorID],
-			TotalCents:    subtotal,
+			VendorStoreID:      vendorID,
+			Status:             status,
+			Warnings:           warnings,
+			SubtotalCents:      subtotal,
+			Promo:              promo,
+			LineDiscountsCents: lineDiscounts,
+			PromoDiscountCents: promoDiscount,
+			DiscountsCents:     discounts,
+			TotalCents:         total,
 		})
 	}
+
 	return groups
 }

@@ -34,12 +34,7 @@ func CartQuote(svc cartsvc.Service, logg *logger.Logger) http.HandlerFunc {
 			return
 		}
 
-		if payload.BuyerStoreID != uuid.Nil && payload.BuyerStoreID != buyerStoreID {
-			responses.WriteError(r.Context(), logg, w, pkgerrors.New(pkgerrors.CodeValidation, "buyer store id mismatch"))
-			return
-		}
 		payload.BuyerStoreID = buyerStoreID
-
 		input := toQuoteCartInput(payload)
 
 		record, err := svc.QuoteCart(r.Context(), buyerStoreID, input)

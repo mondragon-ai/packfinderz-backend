@@ -407,6 +407,138 @@ Response body:
 }
 ```
 
+### `GET /api/v1/products`
+
+Browses products that match the requesting store context. Requires `/api` auth + store context (`middleware.StoreContext`). Buyer stores must supply `state` (matching their address) while vendor stores omit it. Supported query parameters:
+
+- `limit` (default `20`)
+- `page` (default `1`)
+- `cursor` (opaque string from prior responses for pagination)
+- `state` (`CA`, `OR`, etc.; required for buyers)
+- `category`, `classification` (`enums.ProductCategory`, `enums.ProductClassification`)
+- `price_min_cents`, `price_max_cents`
+- `thc_min`, `thc_max`, `cbd_min`, `cbd_max`
+- `has_promo` (`true`/`false`)
+- `q` for a title/SKU search term
+
+```bash
+curl "{{API_BASE_URL}}/api/v1/products?state=CA&limit=25&page=1&category=flower&price_min_cents=1000&has_promo=true&q=indica" \
+  -H "Authorization: Bearer {{ACCESS_TOKEN}}"
+```
+
+Response mirrors `product.ProductListResult`:
+
+```json
+{
+  "data": {
+    "products": [
+      {
+        "id": "product-uuid-1",
+        "sku": "FLOWER-001",
+        "title": "Blue Dream Flower",
+        "subtitle": "Sativa-dominant classic",
+        "category": "flower",
+        "classification": null,
+        "unit": "gram",
+        "moq": 1,
+        "price_cents": 1800,
+        "compare_at_price_cents": 2200,
+        "thc_percent": 18,
+        "cbd_percent": 0.4,
+        "has_promo": true,
+        "coa_added": true,
+        "vendor_store_id": "vendor-store-uuid",
+        "created_at": "...",
+        "updated_at": "...",
+        "max_qty": 10,
+        "thumbnail_url": "https://cdn.packfinderz.com/products/flower-001-thumb.jpg"
+      },
+      {
+        "id": "product-uuid-2",
+        "sku": "EDIBLE-001",
+        "title": "Sour Gummies",
+        "category": "edibles",
+        "unit": "pack",
+        "moq": 1,
+        "price_cents": 1800,
+        "has_promo": false,
+        "coa_added": false,
+        "vendor_store_id": "vendor-store-uuid",
+        "created_at": "...",
+        "updated_at": "...",
+        "max_qty": 5,
+        "thumbnail_url": null
+      }
+    ],
+    "pagination": {
+      "page": 1,
+      "total": 2,
+      "current": "{{CURSOR_THIS_PAGE}}",
+      "next": "{{NEXT_CURSOR}}"
+    }
+  }
+}
+```
+
+### `GET /api/v1/products/{productId}`
+
+Returns the full `product.ProductDTO` for the requested product, including inventory, media gallery, volume discounts, COA info, and vendor summary. Requires `/api` auth + store context that owns or has access to the product.
+
+```bash
+curl "{{API_BASE_URL}}/api/v1/products/{{PRODUCT_ID}}" \
+  -H "Authorization: Bearer {{ACCESS_TOKEN}}"
+```
+
+Response example:
+
+```json
+{
+  "data": {
+    "id": "product-uuid-1",
+    "sku": "FLOWER-001",
+    "title": "Blue Dream Flower",
+    "subtitle": "Sativa-dominant classic",
+    "body_html": "<p>Premium batch from the coast.</p>",
+    "category": "flower",
+    "feelings": ["Relaxed","Creative"],
+    "flavors": ["Citrus","Berry"],
+    "usage": ["Day","Creative"],
+    "classification": "Sativa",
+    "unit": "gram",
+    "moq": 1,
+    "price_cents": 1800,
+    "compare_at_price_cents": 2200,
+    "is_active": true,
+    "is_featured": false,
+    "thc_percent": 18.2,
+    "cbd_percent": 0.4,
+    "inventory": {
+      "available_qty": 24,
+      "reserved_qty": 2,
+      "low_stock_threshold": 5,
+      "updated_at": "..."
+    },
+    "volume_discounts": [
+      {"id": "vd-1", "min_qty": 3, "discount_percent": 5, "created_at": "..."}
+    ],
+    "media": [
+      {"id": "media-1", "position": 0, "url": "https://cdn...", "gcs_key": "product/flower-1.jpg", "created_at": "..."}
+    ],
+    "coa_media_id": "coa-uuid",
+    "coa_read_url": "https://signed-url",
+    "vendor": {
+      "store_id": "vendor-store-uuid",
+      "company_name": "Coastal Cultivars",
+      "logo_media_id": "logo-uuid",
+      "logo_gcs_key": "logos/coastal-logo.png"
+    },
+    "max_qty": 10,
+    "created_at": "...",
+    "updated_at": "..."
+  }
+}
+```
+
 # Auth (store switching)
 
 Switching stores relies on the scoped JWT sent with the request (`Authorization: Bearer {{ACCESS_TOKEN}}`). The handler extracts `store_id` from the body, reuses the access token’s `jti`/refresh mapping, and returns a fresh access token via the `X-PF-Token` header plus a `refresh_token` value in the JSON payload. The body only requires the new store ID, there is no refresh token input because the JWT already identifies the session.
@@ -424,5 +556,4 @@ Successful calls update the `X-PF-Token` response header with the new access tok
 
 
 
----
-
+---                            
