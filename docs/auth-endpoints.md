@@ -1080,12 +1080,13 @@ Polls the confirmed checkout snapshot using either the `checkout_group_id` assig
 Every `/api/v1/orders*` route runs under the authenticated store context (`middleware.RequireStore` / `StoreTypeFromContext`) so the bearer token must carry the store you intend to operate on. All requests require `Authorization: Bearer {{access_token}}`. The POST routes listed below are also guarded by `middleware.Idempotency` (`api/middleware/idempotency.go`), which enforces a non-empty `Idempotency-Key` header before allowing retries. The TTL varies: the **critical 7-day** TTL applies to `/api/v1/orders/{orderId}/cancel`, `/api/v1/orders/{orderId}/retry`, and `/api/v1/vendor/orders/{orderId}/decision`, while the **default 24-hour** TTL covers `/api/v1/orders/{orderId}/nudge`, every `/api/v1/agent/orders/*` route, and `/api/admin/orders/*`.
 
 ### GET /api/v1/orders
-Returns either the buyer (`internal/orders.BuyerOrderList`) or vendor (`internal/orders.VendorOrderList`) perspective depending on `StoreType` stored in the JWT. The handler reconciles `internal/orders.BuyerOrderFilters` / `internal/orders.VendorOrderFilters` (`internal/orders/dto.go`) with the columns in `pkg/db/models/vendor_order.go` (`status`, `fulfillment_status`, `shipping_status`, `total_cents`, `discount_cents`, `order_number`, etc.).
+Returns either the buyer (`internal/orders.BuyerOrderListResult`) or vendor (`internal/orders.VendorOrderListResult`) perspective depending on `StoreType` stored in the JWT. The handler reconciles `internal/orders.BuyerOrderFilters` / `internal/orders.VendorOrderFilters` (`internal/orders/dto.go`) with the columns in `pkg/db/models/vendor_order.go` (`status`, `fulfillment_status`, `shipping_status`, `total_cents`, `discount_cents`, `order_number`, etc.) and includes the cursor-based `pagination` object (`page`, `total`, `current`, `first`, `last`, `prev`, `next`) so clients can keep track of the request flow as they traverse the list.
 
 Supported query parameters:
 
   * `limit` (optional, defaults to `25`, max `100`; enforced by `pkg/pagination.NormalizeLimit`)
   * `cursor` (optional pagination cursor tied to `vendor_orders.created_at` + `id`)
+  * `page` (optional numeric page hint stored on the pagination metadata; defaults to `1` when omitted or when a cursor is used)
   * `order_status` (optional enum from `pkg/db/models/vendor_order.go` / `enums.VendorOrderStatus`)
   * `fulfillment_status` (optional enum from `enums.VendorOrderFulfillmentStatus`)
   * `shipping_status` (optional enum from `enums.VendorOrderShippingStatus`)
@@ -1094,7 +1095,31 @@ Supported query parameters:
   * `date_from` / `date_to` (optional ISO-8601 / `time.RFC3339` range filters)
   * `q` (optional case-insensitive search across buyer and vendor `company_name`)
 
-Response rows include `order_number`, totals, `payment_status`, `fulfillment_status`, `shipping_status`, and the related store summaries so the UI reflects exactly what is persisted on `vendor_orders`.
+Response rows include `order_number`, totals, `payment_status`, `fulfillment_status`, `shipping_status`, the related store summaries, and the `pagination` metadata so the UI reflects exactly what is persisted on `vendor_orders`.
+
+#### Request DTO
+
+The handler consumes `internal/orders.ListOrdersInput`, which bundles the shared `pagination.Params` (limit/cursor) plus the optional `page` hint and filter criteria. Because the endpoint still reads values from query parameters, the JSON below mirrors the decoded DTO that the controller derives internally:
+
+```json
+{
+  "pagination": {
+    "limit": 25,
+    "cursor": "{{CURSOR}}"
+  },
+  "page": 1,
+  "order_status": "created_pending",
+  "fulfillment_status": "pending",
+  "shipping_status": "pending",
+  "payment_status": "unpaid",
+  "actionable_statuses": ["created_pending","accepted"],
+  "date_from": "2025-01-01T00:00:00Z",
+  "date_to": "2025-01-31T23:59:59Z",
+  "q": "rivera"
+}
+```
+
+The existing `curl -G` example still applies; add `--data-urlencode "page=1"` or `--data-urlencode "cursor={{CURSOR}}"` as needed alongside the other filters.
 
 #### cURL
 ```bash
@@ -1108,6 +1133,43 @@ curl -G "{{API_BASE_URL}}/api/v1/orders" \
   --data-urlencode "date_from=2025-01-01T00:00:00Z" \
   --data-urlencode "date_to=2025-01-31T23:59:59Z" \
   --data-urlencode "q=rivera"
+```
+
+#### Response DTO
+
+The JSON body follows `internal/orders.BuyerOrderListResult` / `VendorOrderListResult`: an `orders` array (each containing `order_number`, totals, shipment/payment statuses, and store summaries) plus the `pagination` block that mirrors the cursor metadata (`page`, `total`, `current`, `first`, `last`, `prev`, `next`).
+
+Response example:
+
+```json
+{
+  "data": {
+    "orders": [
+      {
+        "order_number": 123,
+        "total_cents": 4500,
+        "discounts_cents": 0,
+        "payment_status": "unpaid",
+        "fulfillment_status": "pending",
+        "shipping_status": "pending",
+        "vendor": {
+          "store_id": "vendor-uuid",
+          "company_name": "Vendor Co",
+          "logo_url": "https://cdn.packfinderz.com/logos/vendor.png"
+        }
+      }
+    ],
+    "pagination": {
+      "page": 1,
+      "total": 42,
+      "current": "{{CURSOR_THIS_PAGE}}",
+      "first": "{{FIRST_CURSOR}}",
+      "last": "{{LAST_CURSOR}}",
+      "prev": "{{PREV_CURSOR}}",
+      "next": "{{NEXT_CURSOR}}"
+    }
+  }
+}
 ```
 
 ### GET /api/v1/orders/{orderId}

@@ -157,11 +157,11 @@ func (s *stubOrdersRepo) FindPaymentIntentByOrder(ctx context.Context, orderID u
 	panic("not implemented")
 }
 
-func (s *stubOrdersRepo) ListBuyerOrders(ctx context.Context, buyerStoreID uuid.UUID, params pagination.Params, filters orders.BuyerOrderFilters) (*orders.BuyerOrderList, error) {
+func (s *stubOrdersRepo) ListBuyerOrders(ctx context.Context, buyerStoreID uuid.UUID, input orders.ListOrdersInput, filters orders.BuyerOrderFilters) (*orders.BuyerOrderListResult, error) {
 	panic("not implemented")
 }
 
-func (s *stubOrdersRepo) ListVendorOrders(ctx context.Context, vendorStoreID uuid.UUID, params pagination.Params, filters orders.VendorOrderFilters) (*orders.VendorOrderList, error) {
+func (s *stubOrdersRepo) ListVendorOrders(ctx context.Context, vendorStoreID uuid.UUID, input orders.ListOrdersInput, filters orders.VendorOrderFilters) (*orders.VendorOrderListResult, error) {
 	panic("not implemented")
 }
 

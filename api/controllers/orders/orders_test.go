@@ -21,8 +21,8 @@ import (
 )
 
 type stubControllerOrdersRepo struct {
-	listBuyer  func(ctx context.Context, buyerStoreID uuid.UUID, params pagination.Params, filters internalorders.BuyerOrderFilters) (*internalorders.BuyerOrderList, error)
-	listVendor func(ctx context.Context, vendorStoreID uuid.UUID, params pagination.Params, filters internalorders.VendorOrderFilters) (*internalorders.VendorOrderList, error)
+	listBuyer  func(ctx context.Context, buyerStoreID uuid.UUID, input internalorders.ListOrdersInput, filters internalorders.BuyerOrderFilters) (*internalorders.BuyerOrderListResult, error)
+	listVendor func(ctx context.Context, vendorStoreID uuid.UUID, input internalorders.ListOrdersInput, filters internalorders.VendorOrderFilters) (*internalorders.VendorOrderListResult, error)
 	payoutList func(ctx context.Context, params pagination.Params) (*internalorders.PayoutOrderList, error)
 	detail     func(ctx context.Context, orderID uuid.UUID) (*internalorders.OrderDetail, error)
 }
@@ -95,16 +95,16 @@ func (s *stubControllerOrdersRepo) FindPaymentIntentByOrder(ctx context.Context,
 	panic("not implemented")
 }
 
-func (s *stubControllerOrdersRepo) ListBuyerOrders(ctx context.Context, buyerStoreID uuid.UUID, params pagination.Params, filters internalorders.BuyerOrderFilters) (*internalorders.BuyerOrderList, error) {
+func (s *stubControllerOrdersRepo) ListBuyerOrders(ctx context.Context, buyerStoreID uuid.UUID, input internalorders.ListOrdersInput, filters internalorders.BuyerOrderFilters) (*internalorders.BuyerOrderListResult, error) {
 	if s.listBuyer != nil {
-		return s.listBuyer(ctx, buyerStoreID, params, filters)
+		return s.listBuyer(ctx, buyerStoreID, input, filters)
 	}
 	return nil, nil
 }
 
-func (s *stubControllerOrdersRepo) ListVendorOrders(ctx context.Context, vendorStoreID uuid.UUID, params pagination.Params, filters internalorders.VendorOrderFilters) (*internalorders.VendorOrderList, error) {
+func (s *stubControllerOrdersRepo) ListVendorOrders(ctx context.Context, vendorStoreID uuid.UUID, input internalorders.ListOrdersInput, filters internalorders.VendorOrderFilters) (*internalorders.VendorOrderListResult, error) {
 	if s.listVendor != nil {
-		return s.listVendor(ctx, vendorStoreID, params, filters)
+		return s.listVendor(ctx, vendorStoreID, input, filters)
 	}
 	return nil, nil
 }
@@ -196,24 +196,27 @@ func (s *stubControllerOrdersService) ConfirmPayout(ctx context.Context, input i
 
 func TestListBuyerPerspective(t *testing.T) {
 	storeID := uuid.New()
-	expected := &internalorders.BuyerOrderList{
+	expected := &internalorders.BuyerOrderListResult{
 		Orders: []internalorders.BuyerOrderSummary{
 			{OrderNumber: 42},
 		},
 	}
 	repo := &stubControllerOrdersRepo{
-		listBuyer: func(ctx context.Context, buyerStoreID uuid.UUID, params pagination.Params, filters internalorders.BuyerOrderFilters) (*internalorders.BuyerOrderList, error) {
+		listBuyer: func(ctx context.Context, buyerStoreID uuid.UUID, input internalorders.ListOrdersInput, filters internalorders.BuyerOrderFilters) (*internalorders.BuyerOrderListResult, error) {
 			if buyerStoreID != storeID {
 				t.Fatalf("unexpected buyer store id %s", buyerStoreID)
 			}
-			if params.Limit != 5 {
-				t.Fatalf("unexpected limit %d", params.Limit)
+			if input.Pagination.Limit != 5 {
+				t.Fatalf("unexpected limit %d", input.Pagination.Limit)
 			}
 			if filters.Query != "tap" {
 				t.Fatalf("unexpected query %q", filters.Query)
 			}
 			if filters.OrderStatus == nil || *filters.OrderStatus != enums.VendorOrderStatusCreatedPending {
 				t.Fatalf("order status not parsed")
+			}
+			if input.Page != 1 {
+				t.Fatalf("unexpected page %d", input.Page)
 			}
 			return expected, nil
 		},
@@ -231,7 +234,7 @@ func TestListBuyerPerspective(t *testing.T) {
 	}
 
 	var envelope struct {
-		Data internalorders.BuyerOrderList `json:"data"`
+		Data internalorders.BuyerOrderListResult `json:"data"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&envelope); err != nil {
 		t.Fatalf("decode response: %v", err)
@@ -243,18 +246,21 @@ func TestListBuyerPerspective(t *testing.T) {
 
 func TestListVendorPerspectiveActionable(t *testing.T) {
 	storeID := uuid.New()
-	expected := &internalorders.VendorOrderList{
+	expected := &internalorders.VendorOrderListResult{
 		Orders: []internalorders.VendorOrderSummary{
 			{OrderNumber: 100},
 		},
 	}
 	repo := &stubControllerOrdersRepo{
-		listVendor: func(ctx context.Context, vendorStoreID uuid.UUID, params pagination.Params, filters internalorders.VendorOrderFilters) (*internalorders.VendorOrderList, error) {
+		listVendor: func(ctx context.Context, vendorStoreID uuid.UUID, input internalorders.ListOrdersInput, filters internalorders.VendorOrderFilters) (*internalorders.VendorOrderListResult, error) {
 			if vendorStoreID != storeID {
 				t.Fatalf("unexpected vendor store id %s", vendorStoreID)
 			}
 			if len(filters.ActionableStatuses) != 2 {
 				t.Fatalf("expected actionable statuses")
+			}
+			if input.Page != 1 {
+				t.Fatalf("unexpected page %d", input.Page)
 			}
 			return expected, nil
 		},
@@ -272,7 +278,7 @@ func TestListVendorPerspectiveActionable(t *testing.T) {
 	}
 
 	var envelope struct {
-		Data internalorders.VendorOrderList `json:"data"`
+		Data internalorders.VendorOrderListResult `json:"data"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&envelope); err != nil {
 		t.Fatalf("decode response: %v", err)

@@ -3,6 +3,7 @@ package orders
 import (
 	"errors"
 	"fmt"
+	"math"
 	"net/http"
 	"strings"
 	"time"
@@ -46,11 +47,20 @@ func List(repo internalorders.Repository, logg *logger.Logger) http.HandlerFunc 
 			responses.WriteError(r.Context(), logg, w, err)
 			return
 		}
+		page, err := validators.ParseQueryInt(r, "page", 1, 1, int(math.MaxInt32))
+		if err != nil {
+			responses.WriteError(r.Context(), logg, w, err)
+			return
+		}
 		cursor := strings.TrimSpace(r.URL.Query().Get("cursor"))
 
 		params := pagination.Params{
 			Limit:  limit,
 			Cursor: cursor,
+		}
+		input := internalorders.ListOrdersInput{
+			Pagination: params,
+			Page:       page,
 		}
 
 		switch storeType {
@@ -60,7 +70,7 @@ func List(repo internalorders.Repository, logg *logger.Logger) http.HandlerFunc 
 				responses.WriteError(r.Context(), logg, w, err)
 				return
 			}
-			list, err := repo.ListBuyerOrders(r.Context(), storeID, params, filters)
+			list, err := repo.ListBuyerOrders(r.Context(), storeID, input, filters)
 			if err != nil {
 				responses.WriteError(r.Context(), logg, w, pkgerrors.Wrap(pkgerrors.CodeDependency, err, "list buyer orders"))
 				return
@@ -73,7 +83,7 @@ func List(repo internalorders.Repository, logg *logger.Logger) http.HandlerFunc 
 				responses.WriteError(r.Context(), logg, w, err)
 				return
 			}
-			list, err := repo.ListVendorOrders(r.Context(), storeID, params, filters)
+			list, err := repo.ListVendorOrders(r.Context(), storeID, input, filters)
 			if err != nil {
 				responses.WriteError(r.Context(), logg, w, pkgerrors.Wrap(pkgerrors.CodeDependency, err, "list vendor orders"))
 				return

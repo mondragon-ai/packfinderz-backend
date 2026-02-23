@@ -11,7 +11,7 @@ type CheckoutGroup struct {
 	BuyerStoreID     uuid.UUID
 	CartID           *uuid.UUID
 	BillingAddress   *types.Address
-	Tip              int
+	Tip              float32
 	VendorOrders     []VendorOrder     `gorm:"-"`
 	CartVendorGroups []CartVendorGroup `gorm:"-"`
 }

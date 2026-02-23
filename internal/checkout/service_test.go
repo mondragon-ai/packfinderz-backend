@@ -350,7 +350,7 @@ func TestServicePersistsBillingAddressAndTip(t *testing.T) {
 		t.Fatalf("billing address not persisted: %+v", cartRepo.updated.BillingAddress)
 	}
 	if cartRepo.updated.Tip != tipCents {
-		t.Fatalf("expected tip %d got %d", tipCents, cartRepo.updated.Tip)
+		t.Fatalf("expected tip %d got %f", tipCents, cartRepo.updated.Tip)
 	}
 	if result == nil {
 		t.Fatalf("expected checkout result")
@@ -359,7 +359,7 @@ func TestServicePersistsBillingAddressAndTip(t *testing.T) {
 		t.Fatalf("checkout result missing billing address: %+v", result.BillingAddress)
 	}
 	if result.Tip != tipCents {
-		t.Fatalf("checkout result tip mismatch: got %d", result.Tip)
+		t.Fatalf("checkout result tip mismatch: got %f", result.Tip)
 	}
 }
 
@@ -1606,11 +1606,11 @@ func (*stubOrdersRepository) FindPaymentIntentByOrder(ctx context.Context, order
 	return nil, errors.New("not implemented")
 }
 
-func (*stubOrdersRepository) ListBuyerOrders(ctx context.Context, buyerStoreID uuid.UUID, params pagination.Params, filters orders.BuyerOrderFilters) (*orders.BuyerOrderList, error) {
+func (*stubOrdersRepository) ListBuyerOrders(ctx context.Context, buyerStoreID uuid.UUID, input orders.ListOrdersInput, filters orders.BuyerOrderFilters) (*orders.BuyerOrderListResult, error) {
 	return nil, errors.New("not implemented")
 }
 
-func (*stubOrdersRepository) ListVendorOrders(ctx context.Context, vendorStoreID uuid.UUID, params pagination.Params, filters orders.VendorOrderFilters) (*orders.VendorOrderList, error) {
+func (*stubOrdersRepository) ListVendorOrders(ctx context.Context, vendorStoreID uuid.UUID, input orders.ListOrdersInput, filters orders.VendorOrderFilters) (*orders.VendorOrderListResult, error) {
 	return nil, errors.New("not implemented")
 }
 

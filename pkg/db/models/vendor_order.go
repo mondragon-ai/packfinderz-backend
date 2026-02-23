@@ -29,7 +29,7 @@ type VendorOrder struct {
 	BalanceDueCents   int                                `gorm:"column:balance_due_cents;not null;default:0"`
 	FulfillmentStatus enums.VendorOrderFulfillmentStatus `gorm:"column:fulfillment_status;type:vendor_order_fulfillment_status;not null;default:'pending'"`
 	ShippingStatus    enums.VendorOrderShippingStatus    `gorm:"column:shipping_status;type:vendor_order_shipping_status;not null;default:'pending'"`
-	OrderNumber       int64                              `gorm:"column:order_number;not null"`
+	OrderNumber       int64                              `gorm:"column:order_number;type:bigint;not null;default:nextval('vendor_order_number_seq');->"`
 	Notes             *string                            `gorm:"column:notes"`
 	InternalNotes     *string                            `gorm:"column:internal_notes"`
 	Warnings          types.VendorGroupWarnings          `gorm:"column:warnings;type:jsonb;serializer:json"`

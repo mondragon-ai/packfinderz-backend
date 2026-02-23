@@ -27,7 +27,7 @@ type CartQuote struct {
 	Items           []CartQuoteItem        `json:"items"`
 	CreatedAt       time.Time              `json:"created_at"`
 	UpdatedAt       time.Time              `json:"updated_at"`
-	Tip             int                    `json:"tip"`
+	Tip             float32                `json:"tip"`
 }
 
 // CartQuoteVendorGroup captures vendor-level meta inside the cart quote.

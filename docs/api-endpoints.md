@@ -139,14 +139,14 @@ Routes under `/api/v1/stores` require the standard `/api` auth + store context g
 
 ### `GET /api/v1/stores/me`
 
-Returns the active store’s profile. The response matches `stores.StoreDTO`, exposing company info, contact channels, curated badge status, address, ratings, and timestamps such as `last_logged_in_at`.
+Returns the active store’s profile. The response matches `stores.StoreDTO`, exposing company info, contact channels, curated badge status, address, ratings, owner metadata, licenses, and timestamps such as `last_active_at` / `last_logged_in_at`.
 
 ```bash
 curl "{{API_BASE_URL}}/api/v1/stores/me" \
   -H "Authorization: Bearer {{ACCESS_TOKEN}}"
 ```
 
-Response example:
+Response example (all available fields):
 
 ```json
 {
@@ -154,7 +154,8 @@ Response example:
     "id": "store-uuid",
     "type": "buyer",
     "company_name": "Acme Groceries",
-    "description": "Locally owned",
+    "dba_name": "Acme Groceries & Greens",
+    "description": "Locally owned omnichannel grocer & delivery hub.",
     "phone": "+15555551234",
     "email": "care@acme.local",
     "kyc_status": "verified",
@@ -162,26 +163,52 @@ Response example:
     "delivery_radius_meters": 10000,
     "address": {
       "line1": "123 Market Street",
+      "line2": "Suite 200",
       "city": "Testville",
       "state": "CA",
       "postal_code": "94103",
       "country": "US"
     },
-    "social": null,
-    "banner_url": null,
-    "logo_url": null,
+    "social": {
+      "twitter": "https://twitter.com/acmegoods",
+      "facebook": "https://facebook.com/acmegoods",
+      "instagram": "https://instagram.com/acmegoods",
+      "linkedin": "https://linkedin.com/company/acme",
+      "youtube": "https://youtube.com/@acmegoods",
+      "website": "https://acme.goods"
+    },
+    "banner_url": "https://cdn.packfinderz.com/stores/acme-banner.jpg",
+    "logo_url": "https://cdn.packfinderz.com/stores/acme-logo.png",
+    "banner_media_id": "2e3f5a00-7cb3-4b41-8f14-1f2abc3d4e5f",
+    "logo_media_id": "3d4e5f6a-7cb3-4b41-8f14-1f2abc3d4e5f",
     "ratings": {
-      "service": 5
+      "service": 5,
+      "delivery": 4
     },
     "categories": [
       "groceries",
-      "cannabis"
+      "cannabis",
+      "delivery"
     ],
     "owner": "owner-uuid",
+    "owner_detail": {
+      "id": "owner-uuid",
+      "full_name": "Owner Example",
+      "email": "owner@example.com",
+      "last_active_at": "2024-03-31T16:00:00Z",
+      "role": "owner"
+    },
+    "licenses": [
+      {
+        "number": "LIC-123456",
+        "type": "retail"
+      }
+    ],
     "badge": "quality_verified",
+    "last_active_at": "2024-03-31T16:00:00Z",
     "last_logged_in_at": "2024-04-01T12:34:56Z",
-    "created_at": "...",
-    "updated_at": "..."
+    "created_at": "2023-11-01T08:30:00Z",
+    "updated_at": "2024-04-01T12:34:56Z"
   }
 }
 ```
@@ -410,10 +437,34 @@ Browses products that match the requesting store context. Requires `/api` auth +
 - `q` for a title/SKU search term
 
 #### Request DTO
+
 The controller decodes a `product.ListProductsInput` (under the hood the `product.ProductListFilters` + pagination params) from the query string. Buyers must include `state` (matching their store) while vendors omit it and stay scoped to their own listings; the same filters (`category`, `classification`, `price_min_cents`, etc.) apply to both store types.
 
+Full query representation (even though it arrives via URL parameters):
+
+```json
+{
+  "limit": 25,
+  "page": 1,
+  "cursor": "{{CURSOR}}",
+  "state": "CA",
+  "category": "flower",
+  "classification": "flower",
+  "price_min_cents": 1000,
+  "price_max_cents": 5000,
+  "thc_min": 10,
+  "thc_max": 25,
+  "cbd_min": 0,
+  "cbd_max": 3,
+  "has_promo": true,
+  "q": "indica"
+}
+```
+
+#### Example cURL
+
 ```bash
-curl "{{API_BASE_URL}}/api/v1/products?state=CA&limit=25&page=1&category=flower&price_min_cents=1000&has_promo=true&q=indica" \
+curl "{{API_BASE_URL}}/api/v1/products?state=CA&limit=25&page=1&cursor={{CURSOR}}&category=flower&classification=flower&price_min_cents=1000&price_max_cents=5000&thc_min=10&thc_max=25&cbd_min=0&cbd_max=3&has_promo=true&q=indica" \
   -H "Authorization: Bearer {{ACCESS_TOKEN}}"
 ```
 
@@ -468,6 +519,9 @@ Response mirrors `product.ProductListResult`:
       "page": 1,
       "total": 2,
       "current": "{{CURSOR_THIS_PAGE}}",
+      "first": "{{FIRST_CURSOR}}",
+      "last": "{{LAST_CURSOR}}",
+      "prev": "{{PREV_CURSOR}}",
       "next": "{{NEXT_CURSOR}}"
     }
   }
@@ -477,6 +531,16 @@ Response mirrors `product.ProductListResult`:
 ### `GET /api/v1/products/{productId}`
 
 Returns the full `product.ProductDTO` for the requested product, including inventory, media gallery, volume discounts, COA info, and vendor summary. Requires `/api` auth + store context that owns or has access to the product.
+
+#### Request DTO
+
+The handler reads a `product.ProductDetailInput` from the `{productId}` path parameter (a UUID). Buyers/vendors simply replace `{productId}` in the route with the requested product’s ID; the DTO contains only that path value.
+
+```json
+{
+  "product_id": "product-uuid-1"
+}
+```
 
 #### Response DTO
 The payload mirrors `product.ProductDTO`, which includes the vendor summary (`vendor.store_id`, company, logo), the inventory counts (`available_qty`, `reserved_qty`, `low_stock_threshold`, `updated_at`), the media gallery, volume tiers, and metadata such as `feelings`, `flavors`, `usage`, and cannabinoid percentages.

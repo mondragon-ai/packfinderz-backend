@@ -158,7 +158,6 @@ func NewRouter(
 		r.Group(func(r chi.Router) {
 			r.Use(middleware.StoreContext(logg))
 			r.Get("/ping", controllers.PrivatePing())
-
 			r.Route("/v1/vendor", func(r chi.Router) {
 				r.Get("/products", controllers.VendorProductList(productService, logg))
 				r.Post("/products", controllers.VendorCreateProduct(productService, logg))
@@ -184,11 +183,9 @@ func NewRouter(
 					r.Get("/", subscriptionControllers.VendorSubscriptionFetch(subscriptionsService, logg))
 				})
 			})
-
 			r.Route("/v1/analytics", func(r chi.Router) {
 				r.Get("/marketplace", analysiscontrollers.MarketplaceAnalytics(analyticsService, logg))
 			})
-
 			r.Route("/v1/stores", func(r chi.Router) {
 				r.Get("/me", controllers.StoreProfile(storeService, logg))
 				r.Put("/me", controllers.StoreUpdate(storeService, logg))
@@ -206,23 +203,19 @@ func NewRouter(
 				r.Post("/", controllers.LicenseCreate(licenseService, logg))
 				r.Delete("/{licenseId}", controllers.LicenseDelete(licenseService, logg))
 			})
-
 			r.Route("/v1/notifications", func(r chi.Router) {
 				r.Get("/", controllers.ListNotifications(notificationsService, logg))
 				r.Post("/{notificationId}/read", controllers.MarkNotificationRead(notificationsService, logg))
 				r.Post("/read-all", controllers.MarkAllNotificationsRead(notificationsService, logg))
 			})
-
 			r.Route("/v1/wishlist", func(r chi.Router) {
 				r.Get("/", controllers.WishlistList(wishlistService, logg))
 				r.Get("/ids", controllers.WishlistIDs(wishlistService, logg))
 				r.Post("/items", controllers.WishlistAddItem(wishlistService, logg))
 				r.Delete("/items/{productId}", controllers.WishlistRemoveItem(wishlistService, logg))
 			})
-
 			r.Get("/v1/products", controllers.BrowseProducts(productService, storeService, logg))
 			r.Get("/v1/products/{productId}", controllers.ProductDetail(productService, logg))
-
 			r.Route("/v1/cart", func(r chi.Router) {
 				r.Get("/", cartcontrollers.CartFetch(cartService, logg))
 				r.Post("/", cartcontrollers.CartQuote(cartService, logg))
@@ -279,14 +272,6 @@ func NewRouter(
 			r.Patch("/{planId}", billingcontrollers.AdminBillingPlanUpdate(billingPlanService, logg))
 			r.Delete("/{planId}", billingcontrollers.AdminBillingPlanDelete(billingPlanService, logg))
 		})
-	})
-
-	r.Route("/api/agent", func(r chi.Router) {
-		r.Use(middleware.Auth(cfg.JWT, sessionManager, logg))
-		r.Use(middleware.RequireRole("agent", logg))
-		r.Use(middleware.Idempotency(redisClient, logg))
-		r.Use(middleware.RateLimit())
-		r.Get("/ping", controllers.AgentPing())
 	})
 
 	return r

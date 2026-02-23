@@ -361,6 +361,7 @@
   * [x] Ticket [PF-275], [PF-276], [PF-277], [PF-278]: Goose migration, Repo, Service, Controller & wiring + docs
   * [x] Ticket [PF-279]: Patch - updating store + logging 
   * [x] Ticket [PF-280]: Patch - Cart upsert and res DTO
+  * [x] Ticket [PF-281]: cart record patch + checkout update
 
 ## Phase W — Wishlist**
   **Goal:** Implement the full wishlist feature — GORM model, Goose migration, repo, service, controller, and routes — so buyers can save and manage products they're interested in.

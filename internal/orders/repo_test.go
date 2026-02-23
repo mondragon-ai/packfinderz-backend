@@ -317,21 +317,27 @@ func TestRepositoryListBuyerOrders_pagination(t *testing.T) {
 	now := time.Now().UTC()
 	createOrder(t, db, buyer, vendorA, 1, now.Add(-time.Hour), 2, enums.PaymentStatusSettled, enums.VendorOrderStatusAccepted, enums.VendorOrderFulfillmentStatusPartial, enums.VendorOrderShippingStatusInTransit)
 	createOrder(t, db, buyer, vendorB, 2, now, 3, enums.PaymentStatusUnpaid, enums.VendorOrderStatusCreatedPending, enums.VendorOrderFulfillmentStatusPending, enums.VendorOrderShippingStatusPending)
-	list, err := repo.ListBuyerOrders(context.Background(), buyer.ID, pagination.Params{Limit: 1}, BuyerOrderFilters{})
+	list, err := repo.ListBuyerOrders(context.Background(), buyer.ID, ListOrdersInput{
+		Pagination: pagination.Params{Limit: 1},
+		Page:       1,
+	}, BuyerOrderFilters{})
 	require.NoError(t, err)
 	require.Len(t, list.Orders, 1)
-	assert.NotEmpty(t, list.NextCursor)
+	assert.NotEmpty(t, list.Pagination.Next)
 	assert.Equal(t, int64(2), list.Orders[0].OrderNumber)
 	assert.Equal(t, "Vendor B", list.Orders[0].Vendor.CompanyName)
 	assert.Equal(t, enums.PaymentStatusUnpaid, list.Orders[0].PaymentStatus)
 
-	second, err := repo.ListBuyerOrders(context.Background(), buyer.ID, pagination.Params{Limit: 1, Cursor: list.NextCursor}, BuyerOrderFilters{})
+	second, err := repo.ListBuyerOrders(context.Background(), buyer.ID, ListOrdersInput{
+		Pagination: pagination.Params{Limit: 1, Cursor: list.Pagination.Next},
+		Page:       1,
+	}, BuyerOrderFilters{})
 	require.NoError(t, err)
 	require.Len(t, second.Orders, 1)
 	assert.Equal(t, int64(1), second.Orders[0].OrderNumber)
 	assert.Equal(t, "Vendor A", second.Orders[0].Vendor.CompanyName)
 	assert.Equal(t, enums.PaymentStatusSettled, second.Orders[0].PaymentStatus)
-	assert.Empty(t, second.NextCursor)
+	assert.Empty(t, second.Pagination.Next)
 }
 
 func TestRepositoryListBuyerOrders_filtersAndSearch(t *testing.T) {
@@ -350,12 +356,15 @@ func TestRepositoryListBuyerOrders_filtersAndSearch(t *testing.T) {
 		FulfillmentStatus: ptr(enums.VendorOrderFulfillmentStatusFulfilled),
 		ShippingStatus:    ptr(enums.VendorOrderShippingStatusDelivered),
 	}
-	list, err := repo.ListBuyerOrders(context.Background(), buyer.ID, pagination.Params{Limit: 10}, filters)
+	list, err := repo.ListBuyerOrders(context.Background(), buyer.ID, ListOrdersInput{
+		Pagination: pagination.Params{Limit: 10},
+		Page:       1,
+	}, filters)
 	require.NoError(t, err)
 	require.Len(t, list.Orders, 1)
 	assert.Equal(t, "Search Vendor", list.Orders[0].Vendor.CompanyName)
 	assert.Equal(t, 4, list.Orders[0].TotalItems)
-	assert.Empty(t, list.NextCursor)
+	assert.Empty(t, list.Pagination.Next)
 }
 
 func TestRepositoryListVendorOrders_pagination(t *testing.T) {
@@ -370,19 +379,25 @@ func TestRepositoryListVendorOrders_pagination(t *testing.T) {
 	createOrder(t, db, buyerA, vendor, 3, now.Add(-time.Hour), 1, enums.PaymentStatusPaid, enums.VendorOrderStatusFulfilled, enums.VendorOrderFulfillmentStatusFulfilled, enums.VendorOrderShippingStatusDelivered)
 	createOrder(t, db, buyerB, vendor, 4, now, 2, enums.PaymentStatusUnpaid, enums.VendorOrderStatusCreatedPending, enums.VendorOrderFulfillmentStatusPending, enums.VendorOrderShippingStatusPending)
 
-	list, err := repo.ListVendorOrders(context.Background(), vendor.ID, pagination.Params{Limit: 1}, VendorOrderFilters{})
+	list, err := repo.ListVendorOrders(context.Background(), vendor.ID, ListOrdersInput{
+		Pagination: pagination.Params{Limit: 1},
+		Page:       1,
+	}, VendorOrderFilters{})
 	require.NoError(t, err)
 	require.Len(t, list.Orders, 1)
 	assert.Equal(t, int64(4), list.Orders[0].OrderNumber)
 	assert.Equal(t, "Buyer B", list.Orders[0].Buyer.CompanyName)
-	assert.NotEmpty(t, list.NextCursor)
+	assert.NotEmpty(t, list.Pagination.Next)
 
-	second, err := repo.ListVendorOrders(context.Background(), vendor.ID, pagination.Params{Limit: 1, Cursor: list.NextCursor}, VendorOrderFilters{})
+	second, err := repo.ListVendorOrders(context.Background(), vendor.ID, ListOrdersInput{
+		Pagination: pagination.Params{Limit: 1, Cursor: list.Pagination.Next},
+		Page:       1,
+	}, VendorOrderFilters{})
 	require.NoError(t, err)
 	require.Len(t, second.Orders, 1)
 	assert.Equal(t, int64(3), second.Orders[0].OrderNumber)
 	assert.Equal(t, "Buyer A", second.Orders[0].Buyer.CompanyName)
-	assert.Empty(t, second.NextCursor)
+	assert.Empty(t, second.Pagination.Next)
 }
 
 func TestRepositoryListVendorOrders_filtersAndSearch(t *testing.T) {
@@ -403,12 +418,15 @@ func TestRepositoryListVendorOrders_filtersAndSearch(t *testing.T) {
 		Query:              "search buyer",
 	}
 
-	list, err := repo.ListVendorOrders(context.Background(), vendor.ID, pagination.Params{Limit: 10}, filters)
+	list, err := repo.ListVendorOrders(context.Background(), vendor.ID, ListOrdersInput{
+		Pagination: pagination.Params{Limit: 10},
+		Page:       1,
+	}, filters)
 	require.NoError(t, err)
 	require.Len(t, list.Orders, 1)
 	assert.Equal(t, "Search Buyer", list.Orders[0].Buyer.CompanyName)
 	assert.Equal(t, enums.PaymentStatusUnpaid, list.Orders[0].PaymentStatus)
-	assert.Empty(t, list.NextCursor)
+	assert.Empty(t, list.Pagination.Next)
 }
 
 func TestRepositoryFindOrderDetail(t *testing.T) {

@@ -96,7 +96,7 @@ type checkoutRequest struct {
 	CartID          uuid.UUID           `json:"cart_id" validate:"required,uuid4"`
 	ShippingAddress *types.Address      `json:"shipping_address" validate:"required"`
 	BillingAddress  *types.Address      `json:"billing_address"`
-	Tip             int                 `json:"tip" validate:"gte=0"`
+	Tip             float32             `json:"tip" validate:"gte=0"`
 	PaymentMethod   enums.PaymentMethod `json:"payment_method" validate:"required,oneof=cash ach"`
 	ShippingLine    *types.ShippingLine `json:"shipping_line,omitempty"`
 }
@@ -109,7 +109,7 @@ type checkoutResponse struct {
 	ShippingLine    *types.ShippingLine    `json:"shipping_line,omitempty"`
 	VendorOrders    []vendorOrderResponse  `json:"vendor_orders"`
 	RejectedVendors []rejectedVendorReport `json:"rejected_vendors,omitempty"`
-	Tip             int                    `json:"tip"`
+	Tip             float32                `json:"tip"`
 }
 
 type vendorOrderResponse struct {

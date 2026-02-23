@@ -277,8 +277,8 @@ func (s stubCartService) GetActiveCart(ctx context.Context, buyerStoreID uuid.UU
 }
 
 type stubOrdersRepo struct {
-	listBuyer     func(ctx context.Context, buyerStoreID uuid.UUID, params pagination.Params, filters ordersrepo.BuyerOrderFilters) (*ordersrepo.BuyerOrderList, error)
-	listVendor    func(ctx context.Context, vendorStoreID uuid.UUID, params pagination.Params, filters ordersrepo.VendorOrderFilters) (*ordersrepo.VendorOrderList, error)
+	listBuyer     func(ctx context.Context, buyerStoreID uuid.UUID, input ordersrepo.ListOrdersInput, filters ordersrepo.BuyerOrderFilters) (*ordersrepo.BuyerOrderListResult, error)
+	listVendor    func(ctx context.Context, vendorStoreID uuid.UUID, input ordersrepo.ListOrdersInput, filters ordersrepo.VendorOrderFilters) (*ordersrepo.VendorOrderListResult, error)
 	payoutList    func(ctx context.Context, params pagination.Params) (*ordersrepo.PayoutOrderList, error)
 	queue         func(ctx context.Context, params pagination.Params) (*ordersrepo.AgentOrderQueueList, error)
 	assignedQueue func(ctx context.Context, agentID uuid.UUID, params pagination.Params) (*ordersrepo.AgentOrderQueueList, error)
@@ -326,16 +326,16 @@ func (s *stubOrdersRepo) FindPaymentIntentByOrder(ctx context.Context, orderID u
 	panic("unimplemented")
 }
 
-func (s *stubOrdersRepo) ListBuyerOrders(ctx context.Context, buyerStoreID uuid.UUID, params pagination.Params, filters ordersrepo.BuyerOrderFilters) (*ordersrepo.BuyerOrderList, error) {
+func (s *stubOrdersRepo) ListBuyerOrders(ctx context.Context, buyerStoreID uuid.UUID, input ordersrepo.ListOrdersInput, filters ordersrepo.BuyerOrderFilters) (*ordersrepo.BuyerOrderListResult, error) {
 	if s.listBuyer != nil {
-		return s.listBuyer(ctx, buyerStoreID, params, filters)
+		return s.listBuyer(ctx, buyerStoreID, input, filters)
 	}
 	return nil, nil
 }
 
-func (s *stubOrdersRepo) ListVendorOrders(ctx context.Context, vendorStoreID uuid.UUID, params pagination.Params, filters ordersrepo.VendorOrderFilters) (*ordersrepo.VendorOrderList, error) {
+func (s *stubOrdersRepo) ListVendorOrders(ctx context.Context, vendorStoreID uuid.UUID, input ordersrepo.ListOrdersInput, filters ordersrepo.VendorOrderFilters) (*ordersrepo.VendorOrderListResult, error) {
 	if s.listVendor != nil {
-		return s.listVendor(ctx, vendorStoreID, params, filters)
+		return s.listVendor(ctx, vendorStoreID, input, filters)
 	}
 	return nil, nil
 }

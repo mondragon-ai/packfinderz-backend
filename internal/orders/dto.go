@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/angelmondragon/packfinderz-backend/pkg/enums"
+	"github.com/angelmondragon/packfinderz-backend/pkg/pagination"
 	"github.com/google/uuid"
 )
 
@@ -30,6 +31,23 @@ type VendorOrderFilters struct {
 	Query              string
 }
 
+// OrderPagination captures the pagination metadata shared across listing responses.
+type OrderPagination struct {
+	Page    int    `json:"page"`
+	Total   int    `json:"total"`
+	Current string `json:"current,omitempty"`
+	First   string `json:"first,omitempty"`
+	Last    string `json:"last,omitempty"`
+	Prev    string `json:"prev,omitempty"`
+	Next    string `json:"next,omitempty"`
+}
+
+// ListOrdersInput bundles cursor inputs plus the requested page number.
+type ListOrdersInput struct {
+	Pagination pagination.Params
+	Page       int
+}
+
 // OrderStoreSummary captures the vendor summary returned in the order list.
 type OrderStoreSummary struct {
 	ID          uuid.UUID `json:"id"`
@@ -40,31 +58,35 @@ type OrderStoreSummary struct {
 
 // BuyerOrderSummary exposes the aggregated fields returned in the buyer list.
 type BuyerOrderSummary struct {
+	ID                uuid.UUID                          `json:"id"`
 	OrderNumber       int64                              `json:"order_number"`
 	CreatedAt         time.Time                          `json:"created_at"`
 	TotalCents        int                                `json:"total_cents"`
 	DiscountsCents    int                                `json:"discount_cents"`
 	TotalItems        int                                `json:"total_items"`
+	OrderStatus       enums.VendorOrderStatus            `json:"order_status"`
 	PaymentStatus     enums.PaymentStatus                `json:"payment_status"`
 	FulfillmentStatus enums.VendorOrderFulfillmentStatus `json:"fulfillment_status"`
 	ShippingStatus    enums.VendorOrderShippingStatus    `json:"shipping_status"`
 	Vendor            OrderStoreSummary                  `json:"vendor"`
 }
 
-// BuyerOrderList wraps the paginated orders plus the next page cursor.
-type BuyerOrderList struct {
+// BuyerOrderListResult wraps a page of buyer orders plus pagination metadata.
+type BuyerOrderListResult struct {
 	Orders     []BuyerOrderSummary `json:"orders"`
-	NextCursor string              `json:"next_cursor,omitempty"`
+	Pagination OrderPagination     `json:"pagination"`
 }
 
 // VendorOrderSummary exposes aggregated fields returned in the vendor list.
 type VendorOrderSummary struct {
+	ID                uuid.UUID                          `json:"id"`
 	Status            enums.VendorOrderStatus            `json:"status"`
 	OrderNumber       int64                              `json:"order_number"`
 	CreatedAt         time.Time                          `json:"created_at"`
 	TotalCents        int                                `json:"total_cents"`
 	DiscountsCents    int                                `json:"discount_cents"`
 	TotalItems        int                                `json:"total_items"`
+	OrderStatus       enums.VendorOrderStatus            `json:"order_status"`
 	PaymentStatus     enums.PaymentStatus                `json:"payment_status"`
 	FulfillmentStatus enums.VendorOrderFulfillmentStatus `json:"fulfillment_status"`
 	ShippingStatus    enums.VendorOrderShippingStatus    `json:"shipping_status"`
@@ -110,10 +132,10 @@ type PayoutOrderList struct {
 
 // AgentOrderDetail includes the full order detail exposed to agents (reuse OrderDetail).
 
-// VendorOrderList wraps paginated vendor orders plus the next cursor.
-type VendorOrderList struct {
+// VendorOrderListResult wraps a page of vendor orders plus pagination metadata.
+type VendorOrderListResult struct {
 	Orders     []VendorOrderSummary `json:"orders"`
-	NextCursor string               `json:"next_cursor,omitempty"`
+	Pagination OrderPagination      `json:"pagination"`
 }
 
 // OrderAssignmentSummary highlights the active agent assignment for an order.

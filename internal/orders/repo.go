@@ -178,7 +178,8 @@ func (r *repository) UpdatePaymentIntent(ctx context.Context, orderID uuid.UUID,
 		Updates(updates).Error
 }
 
-func (r *repository) ListBuyerOrders(ctx context.Context, buyerStoreID uuid.UUID, params pagination.Params, filters BuyerOrderFilters) (*BuyerOrderList, error) {
+func (r *repository) ListBuyerOrders(ctx context.Context, buyerStoreID uuid.UUID, input ListOrdersInput, filters BuyerOrderFilters) (*BuyerOrderListResult, error) {
+	params := input.Pagination
 	pageSize := pagination.NormalizeLimit(params.Limit)
 	limitWithBuffer := pagination.LimitWithBuffer(params.Limit)
 	if limitWithBuffer <= pageSize {
@@ -190,53 +191,22 @@ func (r *repository) ListBuyerOrders(ctx context.Context, buyerStoreID uuid.UUID
 		return nil, err
 	}
 
-	qb := r.db.WithContext(ctx).Table("vendor_orders AS vo").
-		Select(`vo.id,
-			vo.created_at,
-			vo.order_number,
-			vo.total_cents,
-			vo.discounts_cents,
-			vo.fulfillment_status,
-			vo.shipping_status,
-			pi.status AS payment_status,
-			vs.id AS vendor_store_id,
-			vs.company_name AS vendor_company_name,
-			vs.dba_name AS vendor_dba_name,
-			vs.logo_url AS vendor_logo_url,
-			(SELECT COALESCE(SUM(qty), 0) FROM order_line_items WHERE order_id = vo.id) AS total_items`).
-		Joins("JOIN payment_intents pi ON pi.order_id = vo.id").
-		Joins("JOIN stores vs ON vs.id = vo.vendor_store_id").
-		Joins("JOIN stores bs ON bs.id = vo.buyer_store_id").
-		Where("vo.buyer_store_id = ?", buyerStoreID)
-
-	if filters.OrderStatus != nil {
-		qb = qb.Where("vo.status = ?", *filters.OrderStatus)
-	}
-	if filters.FulfillmentStatus != nil {
-		qb = qb.Where("vo.fulfillment_status = ?", *filters.FulfillmentStatus)
-	}
-	if filters.ShippingStatus != nil {
-		qb = qb.Where("vo.shipping_status = ?", *filters.ShippingStatus)
-	}
-	if filters.PaymentStatus != nil {
-		qb = qb.Where("pi.status = ?", *filters.PaymentStatus)
-	}
-	if filters.DateFrom != nil {
-		qb = qb.Where("vo.created_at >= ?", filters.DateFrom)
-	}
-	if filters.DateTo != nil {
-		qb = qb.Where("vo.created_at <= ?", filters.DateTo)
-	}
-
-	if q := strings.TrimSpace(filters.Query); q != "" {
-		pattern := "%" + strings.ToLower(q) + "%"
-		qb = qb.Where(`(
-			LOWER(vs.company_name) LIKE ? OR
-			LOWER(COALESCE(vs.dba_name, '')) LIKE ? OR
-			LOWER(bs.company_name) LIKE ? OR
-			LOWER(COALESCE(bs.dba_name, '')) LIKE ?
-		)`, pattern, pattern, pattern, pattern)
-	}
+	qb := r.buyerOrderSummaryQuery(ctx, buyerStoreID)
+	qb = applyBuyerOrderFilters(qb, filters)
+	qb = qb.Select(`vo.id,
+		vo.created_at,
+		vo.order_number,
+		vo.total_cents,
+		vo.discounts_cents,
+		vo.status AS order_status,
+		vo.fulfillment_status,
+		vo.shipping_status,
+		pi.status AS payment_status,
+		vs.id AS vendor_store_id,
+		vs.company_name AS vendor_company_name,
+		vs.dba_name AS vendor_dba_name,
+		vs.logo_url AS vendor_logo_url,
+		(SELECT COALESCE(SUM(qty), 0) FROM order_line_items WHERE order_id = vo.id) AS total_items`)
 
 	if cursor != nil {
 		qb = qb.Where("(vo.created_at < ?) OR (vo.created_at = ? AND vo.id < ?)", cursor.CreatedAt, cursor.CreatedAt, cursor.ID)
@@ -260,11 +230,13 @@ func (r *repository) ListBuyerOrders(ctx context.Context, buyerStoreID uuid.UUID
 	orders := make([]BuyerOrderSummary, 0, len(resultRows))
 	for _, record := range resultRows {
 		orders = append(orders, BuyerOrderSummary{
+			ID:                record.ID,
 			CreatedAt:         record.CreatedAt,
 			OrderNumber:       record.OrderNumber,
 			TotalCents:        record.TotalCents,
 			DiscountsCents:    record.DiscountsCents,
 			TotalItems:        record.TotalItems,
+			OrderStatus:       record.OrderStatus,
 			PaymentStatus:     record.PaymentStatus,
 			FulfillmentStatus: record.FulfillmentStatus,
 			ShippingStatus:    record.ShippingStatus,
@@ -277,13 +249,52 @@ func (r *repository) ListBuyerOrders(ctx context.Context, buyerStoreID uuid.UUID
 		})
 	}
 
-	return &BuyerOrderList{
-		Orders:     orders,
-		NextCursor: nextCursor,
+	countQB := r.buyerOrderBaseQuery(ctx, buyerStoreID)
+	countQB = applyBuyerOrderFilters(countQB, filters)
+	var totalCount int64
+	if err := countQB.Count(&totalCount).Error; err != nil {
+		return nil, err
+	}
+
+	firstBoundaryQB := r.buyerOrderBaseQuery(ctx, buyerStoreID)
+	firstBoundaryQB = applyBuyerOrderFilters(firstBoundaryQB, filters)
+	firstCursor, err := r.fetchOrderBoundaryCursor(firstBoundaryQB, true)
+	if err != nil {
+		return nil, err
+	}
+	lastBoundaryQB := r.buyerOrderBaseQuery(ctx, buyerStoreID)
+	lastBoundaryQB = applyBuyerOrderFilters(lastBoundaryQB, filters)
+	lastCursor, err := r.fetchOrderBoundaryCursor(lastBoundaryQB, false)
+	if err != nil {
+		return nil, err
+	}
+
+	currentCursor := strings.TrimSpace(params.Cursor)
+	prevCursor := ""
+	if currentCursor != "" {
+		prevCursor = currentCursor
+	}
+	page := input.Page
+	if page < 1 || currentCursor == "" {
+		page = 1
+	}
+
+	return &BuyerOrderListResult{
+		Orders: orders,
+		Pagination: OrderPagination{
+			Page:    page,
+			Total:   int(totalCount),
+			Current: currentCursor,
+			First:   firstCursor,
+			Last:    lastCursor,
+			Prev:    prevCursor,
+			Next:    nextCursor,
+		},
 	}, nil
 }
 
-func (r *repository) ListVendorOrders(ctx context.Context, vendorStoreID uuid.UUID, params pagination.Params, filters VendorOrderFilters) (*VendorOrderList, error) {
+func (r *repository) ListVendorOrders(ctx context.Context, vendorStoreID uuid.UUID, input ListOrdersInput, filters VendorOrderFilters) (*VendorOrderListResult, error) {
+	params := input.Pagination
 	pageSize := pagination.NormalizeLimit(params.Limit)
 	limitWithBuffer := pagination.LimitWithBuffer(params.Limit)
 	if limitWithBuffer <= pageSize {
@@ -295,56 +306,22 @@ func (r *repository) ListVendorOrders(ctx context.Context, vendorStoreID uuid.UU
 		return nil, err
 	}
 
-	qb := r.db.WithContext(ctx).Table("vendor_orders AS vo").
-		Select(`vo.id,
-			vo.created_at,
-			vo.order_number,
-			vo.total_cents,
-			vo.discounts_cents,
-			vo.fulfillment_status,
-			vo.shipping_status,
-			pi.status AS payment_status,
-			bs.id AS buyer_store_id,
-			bs.company_name AS buyer_company_name,
-			bs.dba_name AS buyer_dba_name,
-			bs.logo_url AS buyer_logo_url,
-			(SELECT COALESCE(SUM(qty), 0) FROM order_line_items WHERE order_id = vo.id) AS total_items`).
-		Joins("JOIN payment_intents pi ON pi.order_id = vo.id").
-		Joins("JOIN stores bs ON bs.id = vo.buyer_store_id").
-		Joins("JOIN stores vs ON vs.id = vo.vendor_store_id").
-		Where("vo.vendor_store_id = ?", vendorStoreID)
-
-	if filters.OrderStatus != nil {
-		qb = qb.Where("vo.status = ?", *filters.OrderStatus)
-	}
-	if filters.FulfillmentStatus != nil {
-		qb = qb.Where("vo.fulfillment_status = ?", *filters.FulfillmentStatus)
-	}
-	if filters.ShippingStatus != nil {
-		qb = qb.Where("vo.shipping_status = ?", *filters.ShippingStatus)
-	}
-	if filters.PaymentStatus != nil {
-		qb = qb.Where("pi.status = ?", *filters.PaymentStatus)
-	}
-	if len(filters.ActionableStatuses) > 0 {
-		qb = qb.Where("vo.status IN ?", filters.ActionableStatuses)
-	}
-	if filters.DateFrom != nil {
-		qb = qb.Where("vo.created_at >= ?", filters.DateFrom)
-	}
-	if filters.DateTo != nil {
-		qb = qb.Where("vo.created_at <= ?", filters.DateTo)
-	}
-
-	if q := strings.TrimSpace(filters.Query); q != "" {
-		pattern := "%" + strings.ToLower(q) + "%"
-		qb = qb.Where(`(
-			LOWER(vs.company_name) LIKE ? OR
-			LOWER(COALESCE(vs.dba_name, '')) LIKE ? OR
-			LOWER(bs.company_name) LIKE ? OR
-			LOWER(COALESCE(bs.dba_name, '')) LIKE ?
-		)`, pattern, pattern, pattern, pattern)
-	}
+	qb := r.vendorOrderSummaryQuery(ctx, vendorStoreID)
+	qb = applyVendorOrderFilters(qb, filters)
+	qb = qb.Select(`vo.id,
+		vo.created_at,
+		vo.order_number,
+		vo.total_cents,
+		vo.discounts_cents,
+		vo.fulfillment_status,
+		vo.shipping_status,
+		vo.status AS order_status,
+		pi.status AS payment_status,
+		bs.id AS buyer_store_id,
+		bs.company_name AS buyer_company_name,
+		bs.dba_name AS buyer_dba_name,
+		bs.logo_url AS buyer_logo_url,
+		(SELECT COALESCE(SUM(qty), 0) FROM order_line_items WHERE order_id = vo.id) AS total_items`)
 
 	if cursor != nil {
 		qb = qb.Where("(vo.created_at < ?) OR (vo.created_at = ? AND vo.id < ?)", cursor.CreatedAt, cursor.CreatedAt, cursor.ID)
@@ -368,6 +345,8 @@ func (r *repository) ListVendorOrders(ctx context.Context, vendorStoreID uuid.UU
 	orders := make([]VendorOrderSummary, 0, len(resultRows))
 	for _, record := range resultRows {
 		orders = append(orders, VendorOrderSummary{
+			ID:                record.ID,
+			OrderStatus:       record.OrderStatus,
 			CreatedAt:         record.CreatedAt,
 			OrderNumber:       record.OrderNumber,
 			TotalCents:        record.TotalCents,
@@ -385,10 +364,161 @@ func (r *repository) ListVendorOrders(ctx context.Context, vendorStoreID uuid.UU
 		})
 	}
 
-	return &VendorOrderList{
-		Orders:     orders,
-		NextCursor: nextCursor,
+	countQB := r.vendorOrderBaseQuery(ctx, vendorStoreID)
+	countQB = applyVendorOrderFilters(countQB, filters)
+	var totalCount int64
+	if err := countQB.Count(&totalCount).Error; err != nil {
+		return nil, err
+	}
+
+	firstBoundaryQB := r.vendorOrderBaseQuery(ctx, vendorStoreID)
+	firstBoundaryQB = applyVendorOrderFilters(firstBoundaryQB, filters)
+	firstCursor, err := r.fetchOrderBoundaryCursor(firstBoundaryQB, true)
+	if err != nil {
+		return nil, err
+	}
+	lastBoundaryQB := r.vendorOrderBaseQuery(ctx, vendorStoreID)
+	lastBoundaryQB = applyVendorOrderFilters(lastBoundaryQB, filters)
+	lastCursor, err := r.fetchOrderBoundaryCursor(lastBoundaryQB, false)
+	if err != nil {
+		return nil, err
+	}
+
+	currentCursor := strings.TrimSpace(params.Cursor)
+	prevCursor := ""
+	if currentCursor != "" {
+		prevCursor = currentCursor
+	}
+	page := input.Page
+	if page < 1 || currentCursor == "" {
+		page = 1
+	}
+
+	return &VendorOrderListResult{
+		Orders: orders,
+		Pagination: OrderPagination{
+			Page:    page,
+			Total:   int(totalCount),
+			Current: currentCursor,
+			First:   firstCursor,
+			Last:    lastCursor,
+			Prev:    prevCursor,
+			Next:    nextCursor,
+		},
 	}, nil
+}
+
+func (r *repository) buyerOrderBaseQuery(ctx context.Context, buyerStoreID uuid.UUID) *gorm.DB {
+	return r.db.WithContext(ctx).Table("vendor_orders AS vo").
+		Joins("JOIN payment_intents pi ON pi.order_id = vo.id").
+		Joins("JOIN stores vs ON vs.id = vo.vendor_store_id").
+		Joins("JOIN stores bs ON bs.id = vo.buyer_store_id").
+		Where("vo.buyer_store_id = ?", buyerStoreID)
+}
+
+func (r *repository) buyerOrderSummaryQuery(ctx context.Context, buyerStoreID uuid.UUID) *gorm.DB {
+	return r.buyerOrderBaseQuery(ctx, buyerStoreID)
+}
+
+func applyBuyerOrderFilters(q *gorm.DB, filters BuyerOrderFilters) *gorm.DB {
+	if filters.OrderStatus != nil {
+		q = q.Where("vo.status = ?", *filters.OrderStatus)
+	}
+	if filters.FulfillmentStatus != nil {
+		q = q.Where("vo.fulfillment_status = ?", *filters.FulfillmentStatus)
+	}
+	if filters.ShippingStatus != nil {
+		q = q.Where("vo.shipping_status = ?", *filters.ShippingStatus)
+	}
+	if filters.PaymentStatus != nil {
+		q = q.Where("pi.status = ?", *filters.PaymentStatus)
+	}
+	if filters.DateFrom != nil {
+		q = q.Where("vo.created_at >= ?", filters.DateFrom)
+	}
+	if filters.DateTo != nil {
+		q = q.Where("vo.created_at <= ?", filters.DateTo)
+	}
+	if qStr := strings.TrimSpace(filters.Query); qStr != "" {
+		pattern := "%" + strings.ToLower(qStr) + "%"
+		q = q.Where(`(
+			CAST(vo.order_number AS TEXT) ILIKE ? OR
+			vs.company_name ILIKE ? OR
+			COALESCE(vs.dba_name, '') ILIKE ? OR
+			bs.company_name ILIKE ? OR
+			COALESCE(bs.dba_name, '') ILIKE ?
+		)`, pattern, pattern, pattern, pattern, pattern)
+	}
+	return q
+}
+
+func (r *repository) vendorOrderBaseQuery(ctx context.Context, vendorStoreID uuid.UUID) *gorm.DB {
+	return r.db.WithContext(ctx).Table("vendor_orders AS vo").
+		Joins("JOIN payment_intents pi ON pi.order_id = vo.id").
+		Joins("JOIN stores bs ON bs.id = vo.buyer_store_id").
+		Joins("JOIN stores vs ON vs.id = vo.vendor_store_id").
+		Where("vo.vendor_store_id = ?", vendorStoreID)
+}
+
+func (r *repository) vendorOrderSummaryQuery(ctx context.Context, vendorStoreID uuid.UUID) *gorm.DB {
+	return r.vendorOrderBaseQuery(ctx, vendorStoreID)
+}
+
+func applyVendorOrderFilters(q *gorm.DB, filters VendorOrderFilters) *gorm.DB {
+	if filters.OrderStatus != nil {
+		q = q.Where("vo.status = ?", *filters.OrderStatus)
+	}
+	if filters.FulfillmentStatus != nil {
+		q = q.Where("vo.fulfillment_status = ?", *filters.FulfillmentStatus)
+	}
+	if filters.ShippingStatus != nil {
+		q = q.Where("vo.shipping_status = ?", *filters.ShippingStatus)
+	}
+	if filters.PaymentStatus != nil {
+		q = q.Where("pi.status = ?", *filters.PaymentStatus)
+	}
+	if len(filters.ActionableStatuses) > 0 {
+		q = q.Where("vo.status IN ?", filters.ActionableStatuses)
+	}
+	if filters.DateFrom != nil {
+		q = q.Where("vo.created_at >= ?", filters.DateFrom)
+	}
+	if filters.DateTo != nil {
+		q = q.Where("vo.created_at <= ?", filters.DateTo)
+	}
+	if qs := strings.TrimSpace(filters.Query); qs != "" {
+		pattern := "%" + strings.ToLower(qs) + "%"
+		q = q.Where(`(
+			LOWER(vs.company_name) LIKE ? OR
+			LOWER(COALESCE(vs.dba_name, '')) LIKE ? OR
+			LOWER(bs.company_name) LIKE ? OR
+			LOWER(COALESCE(bs.dba_name, '')) LIKE ?
+		)`, pattern, pattern, pattern, pattern)
+	}
+	return q
+}
+
+func (r *repository) fetchOrderBoundaryCursor(q *gorm.DB, asc bool) (string, error) {
+	orderDir := "DESC"
+	if asc {
+		orderDir = "ASC"
+	}
+	var boundary struct {
+		CreatedAt time.Time
+		ID        uuid.UUID
+	}
+	if err := q.Session(&gorm.Session{}).
+		Select("vo.created_at", "vo.id").
+		Order("vo.created_at " + orderDir).
+		Order("vo.id " + orderDir).
+		Limit(1).
+		Scan(&boundary).Error; err != nil {
+		return "", err
+	}
+	if boundary.ID == uuid.Nil {
+		return "", nil
+	}
+	return pagination.EncodeCursor(pagination.Cursor{CreatedAt: boundary.CreatedAt, ID: boundary.ID}), nil
 }
 
 func (r *repository) ListAssignedOrders(ctx context.Context, agentID uuid.UUID, params pagination.Params) (*AgentOrderQueueList, error) {
@@ -692,6 +822,7 @@ type buyerOrderRecord struct {
 	OrderNumber       int64
 	TotalCents        int
 	DiscountsCents    int
+	OrderStatus       enums.VendorOrderStatus
 	FulfillmentStatus enums.VendorOrderFulfillmentStatus
 	ShippingStatus    enums.VendorOrderShippingStatus
 	PaymentStatus     enums.PaymentStatus
@@ -708,6 +839,7 @@ type vendorOrderRecord struct {
 	OrderNumber       int64
 	TotalCents        int
 	DiscountsCents    int
+	OrderStatus       enums.VendorOrderStatus
 	FulfillmentStatus enums.VendorOrderFulfillmentStatus
 	ShippingStatus    enums.VendorOrderShippingStatus
 	PaymentStatus     enums.PaymentStatus

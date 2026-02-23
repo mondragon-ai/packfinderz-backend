@@ -57,7 +57,7 @@ type CheckoutInput struct {
 	BillingAddress  *types.Address
 	PaymentMethod   enums.PaymentMethod
 	ShippingLine    *types.ShippingLine
-	Tip             int
+	Tip             float32
 }
 
 type service struct {
@@ -691,7 +691,7 @@ func validateCartForCheckout(record *models.CartRecord) error {
 	return nil
 }
 
-func finalizeCart(record *models.CartRecord, shippingAddress, billingAddress *types.Address, tip int, paymentMethod enums.PaymentMethod, shippingLine *types.ShippingLine) {
+func finalizeCart(record *models.CartRecord, shippingAddress, billingAddress *types.Address, tip float32, paymentMethod enums.PaymentMethod, shippingLine *types.ShippingLine) {
 	if record == nil {
 		return
 	}
