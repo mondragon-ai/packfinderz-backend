@@ -193,11 +193,8 @@ Allows updating writable store fields. All attributes are optional—send only t
 - `company_name` (min 1 char, display/company name)
 - `description`, `phone`, `email` (contact info; email must be valid)
 - `social` object per `pkg/types.Social` (keys: `twitter`, `facebook`, `instagram`, `linkedin`, `youtube`, `website`; nullable strings to clear)
-- `banner_url`, `logo_url` (public URLs that override the persisted attachments)
 - `banner_media_id`, `logo_media_id` (nullable UUID for pre-uploaded assets; send `null` to remove)
-- `ratings` map (string keys → ints; send `{}` to clear ratings)
 - `categories` array (string tags; send `[]` to clear)
-- `badge` (`store_badge` enum; provide a known value to apply a curated badge)
 
 Example request showing every writable field:
 
@@ -215,16 +212,8 @@ Example request showing every writable field:
     "youtube": "https://youtube.com/@acmegoods",
     "website": "https://acme.goods"
   },
-  "banner_url": "https://cdn.packfinderz.com/banners/acme-store.jpg",
-  "logo_url": "https://cdn.packfinderz.com/logos/acme.png",
-  "badge": "quality_verified",
   "banner_media_id": "2e3f5a00-7cb3-4b41-8f14-1f2abc3d4e5f",
   "logo_media_id": null,
-  "ratings": {
-    "service": 4,
-    "selection": 5,
-    "delivery": 3
-  },
   "categories": [
     "groceries",
     "delivery",
@@ -250,7 +239,6 @@ curl -X PUT "{{API_BASE_URL}}/api/v1/stores/me" \
       "youtube": "https://youtube.com/@acmegoods",
       "website": "https://acme.goods"
     },
-    "badge": "quality_verified",
     "banner_media_id": "2e3f5a00-7cb3-4b41-8f14-1f2abc3d4e5f",
     "logo_media_id": null,
     "categories": [
@@ -421,10 +409,16 @@ Browses products that match the requesting store context. Requires `/api` auth +
 - `has_promo` (`true`/`false`)
 - `q` for a title/SKU search term
 
+#### Request DTO
+The controller decodes a `product.ListProductsInput` (under the hood the `product.ProductListFilters` + pagination params) from the query string. Buyers must include `state` (matching their store) while vendors omit it and stay scoped to their own listings; the same filters (`category`, `classification`, `price_min_cents`, etc.) apply to both store types.
+
 ```bash
 curl "{{API_BASE_URL}}/api/v1/products?state=CA&limit=25&page=1&category=flower&price_min_cents=1000&has_promo=true&q=indica" \
   -H "Authorization: Bearer {{ACCESS_TOKEN}}"
 ```
+
+#### Response DTO
+The response follows `product.ProductListResult`: a `products` array of `product.ProductSummary` rows (id, sku, classification, price tiers, `has_promo`, `vendor_store_id`, `thumbnail_url`, etc.) plus the `pagination` object (`page`, `total`, cursor links).
 
 Response mirrors `product.ProductListResult`:
 
@@ -483,6 +477,9 @@ Response mirrors `product.ProductListResult`:
 ### `GET /api/v1/products/{productId}`
 
 Returns the full `product.ProductDTO` for the requested product, including inventory, media gallery, volume discounts, COA info, and vendor summary. Requires `/api` auth + store context that owns or has access to the product.
+
+#### Response DTO
+The payload mirrors `product.ProductDTO`, which includes the vendor summary (`vendor.store_id`, company, logo), the inventory counts (`available_qty`, `reserved_qty`, `low_stock_threshold`, `updated_at`), the media gallery, volume tiers, and metadata such as `feelings`, `flavors`, `usage`, and cannabinoid percentages.
 
 ```bash
 curl "{{API_BASE_URL}}/api/v1/products/{{PRODUCT_ID}}" \

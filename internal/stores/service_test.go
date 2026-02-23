@@ -3,6 +3,7 @@ package stores
 import (
 	"context"
 	"errors"
+	"io"
 	"testing"
 	"time"
 
@@ -12,17 +13,19 @@ import (
 	"github.com/angelmondragon/packfinderz-backend/pkg/db/models"
 	"github.com/angelmondragon/packfinderz-backend/pkg/enums"
 	pkgerrors "github.com/angelmondragon/packfinderz-backend/pkg/errors"
+	"github.com/angelmondragon/packfinderz-backend/pkg/logger"
 	"github.com/angelmondragon/packfinderz-backend/pkg/types"
 	"github.com/google/uuid"
+	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
 
-func newStoreService(repo storeRepository, members stubMembershipsRepo, usersRepo usersRepository) (Service, error) {
+func newStoreService(repo storeRepository, members *stubMembershipsRepo, usersRepo usersRepository) (Service, error) {
 	svc, _, err := newStoreServiceWithAttachmentStub(repo, members, usersRepo, nil, nil, nil)
 	return svc, err
 }
 
-func newStoreServiceWithAttachmentStub(repo storeRepository, members stubMembershipsRepo, usersRepo usersRepository, reconciler *stubAttachmentReconciler, mediaRepo mediaLookup, licenseRepo licenseRepository) (Service, *stubAttachmentReconciler, error) {
+func newStoreServiceWithAttachmentStub(repo storeRepository, members *stubMembershipsRepo, usersRepo usersRepository, reconciler *stubAttachmentReconciler, mediaRepo mediaLookup, licenseRepo licenseRepository) (Service, *stubAttachmentReconciler, error) {
 	if reconciler == nil {
 		reconciler = &stubAttachmentReconciler{}
 	}
@@ -41,18 +44,37 @@ func newStoreServiceWithAttachmentStub(repo storeRepository, members stubMembers
 			defaultMedia: defaultMedia,
 		}
 	}
+	if usersRepo == nil {
+		usersRepo = &stubUsersRepo{}
+	}
+	if sr, ok := usersRepo.(*stubUsersRepo); ok && sr.nextID == uuid.Nil {
+		owner := defaultOwnerUser(repo)
+		if sr.user == nil {
+			sr.user = owner
+		}
+		if sr.byID == nil {
+			sr.byID = owner
+		}
+	}
 	if licenseRepo == nil {
 		licenseRepo = &stubLicenseRepo{}
+	}
+	if members == nil {
+		members = &stubMembershipsRepo{}
+	}
+	if ur, ok := usersRepo.(*stubUsersRepo); ok {
+		members.usersStub = ur
 	}
 	svc, err := NewService(ServiceParams{
 		Repo:                 repo,
 		Memberships:          members,
 		Users:                usersRepo,
 		PasswordCfg:          config.PasswordConfig{},
-		TransactionRunner:    stubTxRunner{},
+		TransactionRunner:    newStubTxRunner(),
 		AttachmentReconciler: reconciler,
 		MediaRepo:            mediaRepo,
 		LicenseRepo:          licenseRepo,
+		Logg:                 logger.New(logger.Options{ServiceName: "stores-test", Output: io.Discard}),
 	})
 	return svc, reconciler, err
 }
@@ -60,10 +82,10 @@ func newStoreServiceWithAttachmentStub(repo storeRepository, members stubMembers
 func TestNewServiceRequiresRepo(t *testing.T) {
 	_, err := NewService(ServiceParams{
 		Repo:                 nil,
-		Memberships:          stubMembershipsRepo{},
+		Memberships:          &stubMembershipsRepo{},
 		Users:                &stubUsersRepo{},
 		PasswordCfg:          config.PasswordConfig{},
-		TransactionRunner:    stubTxRunner{},
+		TransactionRunner:    newStubTxRunner(),
 		AttachmentReconciler: &stubAttachmentReconciler{},
 	})
 	if err == nil {
@@ -77,7 +99,7 @@ func TestNewServiceRequiresMembershipRepo(t *testing.T) {
 		Memberships:          nil,
 		Users:                &stubUsersRepo{},
 		PasswordCfg:          config.PasswordConfig{},
-		TransactionRunner:    stubTxRunner{},
+		TransactionRunner:    newStubTxRunner(),
 		AttachmentReconciler: &stubAttachmentReconciler{},
 	})
 	if err == nil {
@@ -88,7 +110,7 @@ func TestNewServiceRequiresMembershipRepo(t *testing.T) {
 func TestServiceGetByIDSuccess(t *testing.T) {
 	store := baseStore()
 	repo := &stubStoreRepo{store: store}
-	svc, err := newStoreService(repo, stubMembershipsRepo{allowed: true}, &stubUsersRepo{})
+	svc, err := newStoreService(repo, &stubMembershipsRepo{allowed: true}, &stubUsersRepo{})
 	if err != nil {
 		t.Fatalf("new service: %v", err)
 	}
@@ -113,7 +135,7 @@ func TestServiceGetByIDSuccess(t *testing.T) {
 
 func TestServiceGetByIDNotFound(t *testing.T) {
 	repo := &stubStoreRepo{err: gorm.ErrRecordNotFound}
-	svc, err := newStoreService(repo, stubMembershipsRepo{allowed: true}, &stubUsersRepo{})
+	svc, err := newStoreService(repo, &stubMembershipsRepo{allowed: true}, &stubUsersRepo{})
 	if err != nil {
 		t.Fatalf("new service: %v", err)
 	}
@@ -129,7 +151,7 @@ func TestServiceGetByIDNotFound(t *testing.T) {
 
 func TestServiceGetByIDDependencyError(t *testing.T) {
 	repo := &stubStoreRepo{err: errors.New("boom")}
-	svc, err := newStoreService(repo, stubMembershipsRepo{allowed: true}, &stubUsersRepo{})
+	svc, err := newStoreService(repo, &stubMembershipsRepo{allowed: true}, &stubUsersRepo{})
 	if err != nil {
 		t.Fatalf("new service: %v", err)
 	}
@@ -174,7 +196,7 @@ func TestServiceGetManagerViewIncludesOwnerAndLicenses(t *testing.T) {
 		user: user,
 		byID: user,
 	}
-	svc, _, err := newStoreServiceWithAttachmentStub(repo, membershipsRepo, usersRepo, nil, nil, licenseRepo)
+	svc, _, err := newStoreServiceWithAttachmentStub(repo, &membershipsRepo, usersRepo, nil, nil, licenseRepo)
 	if err != nil {
 		t.Fatalf("new service: %v", err)
 	}
@@ -186,8 +208,8 @@ func TestServiceGetManagerViewIncludesOwnerAndLicenses(t *testing.T) {
 	if dto.Owner.Email != user.Email {
 		t.Fatalf("expected owner email %s got %s", user.Email, dto.Owner.Email)
 	}
-	if dto.Owner.Role == nil || *dto.Owner.Role != enums.MemberRoleOwner.String() {
-		t.Fatalf("expected owner role owner got %v", dto.Owner.Role)
+	if dto.Owner.Role != nil {
+		t.Fatalf("expected nil owner role got %v", dto.Owner.Role)
 	}
 	if len(dto.Licenses) != 2 {
 		t.Fatalf("expected 2 licenses got %d", len(dto.Licenses))
@@ -213,7 +235,7 @@ func TestServiceGetManagerViewNoLicenses(t *testing.T) {
 	membershipsRepo := stubMembershipsRepo{
 		allowed: true,
 	}
-	svc, _, err := newStoreServiceWithAttachmentStub(repo, membershipsRepo, usersRepo, nil, nil, &stubLicenseRepo{})
+	svc, _, err := newStoreServiceWithAttachmentStub(repo, &membershipsRepo, usersRepo, nil, nil, &stubLicenseRepo{})
 	if err != nil {
 		t.Fatalf("new service: %v", err)
 	}
@@ -240,7 +262,7 @@ func TestServiceGetManagerViewWithoutMembershipRole(t *testing.T) {
 		user: user,
 		byID: user,
 	}
-	svc, _, err := newStoreServiceWithAttachmentStub(repo, stubMembershipsRepo{allowed: true}, usersRepo, nil, nil, &stubLicenseRepo{})
+	svc, _, err := newStoreServiceWithAttachmentStub(repo, &stubMembershipsRepo{allowed: true}, usersRepo, nil, nil, &stubLicenseRepo{})
 	if err != nil {
 		t.Fatalf("new service: %v", err)
 	}
@@ -258,7 +280,7 @@ func TestServiceUpdateSuccess(t *testing.T) {
 	store := baseStore()
 	repo := &stubStoreRepo{store: store}
 	att := &stubAttachmentReconciler{}
-	svc, _, err := newStoreServiceWithAttachmentStub(repo, stubMembershipsRepo{allowed: true}, &stubUsersRepo{}, att, nil, nil)
+	svc, _, err := newStoreServiceWithAttachmentStub(repo, &stubMembershipsRepo{allowed: true}, &stubUsersRepo{}, att, nil, nil)
 	if err != nil {
 		t.Fatalf("new service: %v", err)
 	}
@@ -340,7 +362,7 @@ func TestServiceUpdatePopulatesMediaURLs(t *testing.T) {
 			},
 		},
 	}
-	svc, _, err := newStoreServiceWithAttachmentStub(repo, stubMembershipsRepo{allowed: true}, &stubUsersRepo{}, att, mediaRepo, nil)
+	svc, _, err := newStoreServiceWithAttachmentStub(repo, &stubMembershipsRepo{allowed: true}, &stubUsersRepo{}, att, mediaRepo, nil)
 	if err != nil {
 		t.Fatalf("new service: %v", err)
 	}
@@ -364,7 +386,7 @@ func TestServiceUpdatePopulatesMediaURLs(t *testing.T) {
 
 func TestServiceUpdateForbidden(t *testing.T) {
 	repo := &stubStoreRepo{store: baseStore()}
-	svc, err := newStoreService(repo, stubMembershipsRepo{allowed: false}, &stubUsersRepo{})
+	svc, err := newStoreService(repo, &stubMembershipsRepo{allowed: false}, &stubUsersRepo{})
 	if err != nil {
 		t.Fatalf("new service: %v", err)
 	}
@@ -393,7 +415,7 @@ func TestServiceListUsersSuccess(t *testing.T) {
 			CreatedAt:    time.Now(),
 		},
 	}
-	svc, err := newStoreService(repo, stubMembershipsRepo{allowed: true, members: members}, &stubUsersRepo{})
+	svc, err := newStoreService(repo, &stubMembershipsRepo{allowed: true, members: members}, &stubUsersRepo{})
 	if err != nil {
 		t.Fatalf("new service: %v", err)
 	}
@@ -412,7 +434,7 @@ func TestServiceListUsersSuccess(t *testing.T) {
 
 func TestServiceListUsersForbidden(t *testing.T) {
 	repo := &stubStoreRepo{store: baseStore()}
-	svc, err := newStoreService(repo, stubMembershipsRepo{allowed: false}, &stubUsersRepo{})
+	svc, err := newStoreService(repo, &stubMembershipsRepo{allowed: false}, &stubUsersRepo{})
 	if err != nil {
 		t.Fatalf("new service: %v", err)
 	}
@@ -446,7 +468,7 @@ func TestServiceInviteCreatesMembership(t *testing.T) {
 		allowed: true,
 		members: []memberships.StoreUserDTO{member},
 	}
-	svc, err := newStoreService(repo, membershipsRepo, usersRepo)
+	svc, err := newStoreService(repo, &membershipsRepo, usersRepo)
 	if err != nil {
 		t.Fatalf("new service: %v", err)
 	}
@@ -490,7 +512,7 @@ func TestServiceInviteDuplicateMembership(t *testing.T) {
 		members:            []memberships.StoreUserDTO{member},
 		existingMembership: &models.StoreMembership{StoreID: storeID, UserID: user.ID},
 	}
-	svc, err := newStoreService(repo, membershipsRepo, usersRepo)
+	svc, err := newStoreService(repo, &membershipsRepo, usersRepo)
 	if err != nil {
 		t.Fatalf("new service: %v", err)
 	}
@@ -526,7 +548,7 @@ func TestServiceRemoveUserSuccess(t *testing.T) {
 		},
 		countByRole: 2,
 	}
-	svc, err := newStoreService(storeRepo, membershipsRepo, &stubUsersRepo{})
+	svc, err := newStoreService(storeRepo, &membershipsRepo, &stubUsersRepo{})
 	if err != nil {
 		t.Fatalf("new service: %v", err)
 	}
@@ -538,7 +560,7 @@ func TestServiceRemoveUserSuccess(t *testing.T) {
 
 func TestServiceRemoveUserForbidden(t *testing.T) {
 	storeRepo := &stubStoreRepo{store: baseStore()}
-	svc, err := newStoreService(storeRepo, stubMembershipsRepo{allowed: false}, &stubUsersRepo{})
+	svc, err := newStoreService(storeRepo, &stubMembershipsRepo{allowed: false}, &stubUsersRepo{})
 	if err != nil {
 		t.Fatalf("new service: %v", err)
 	}
@@ -557,7 +579,7 @@ func TestServiceRemoveUserNotFound(t *testing.T) {
 	membershipsRepo := stubMembershipsRepo{
 		allowed: true,
 	}
-	svc, err := newStoreService(storeRepo, membershipsRepo, &stubUsersRepo{})
+	svc, err := newStoreService(storeRepo, &membershipsRepo, &stubUsersRepo{})
 	if err != nil {
 		t.Fatalf("new service: %v", err)
 	}
@@ -584,7 +606,7 @@ func TestServiceRemoveUserLastOwner(t *testing.T) {
 		},
 		countByRole: 1,
 	}
-	svc, err := newStoreService(storeRepo, membershipsRepo, &stubUsersRepo{})
+	svc, err := newStoreService(storeRepo, &membershipsRepo, &stubUsersRepo{})
 	if err != nil {
 		t.Fatalf("new service: %v", err)
 	}
@@ -622,6 +644,22 @@ func baseStore() *models.Store {
 		Email:       stringPtr("owner@example.com"),
 		Description: stringPtr("flagship store"),
 	}
+}
+
+func defaultOwnerUser(repo storeRepository) *models.User {
+	if sr, ok := repo.(*stubStoreRepo); ok && sr.store != nil {
+		email := ""
+		if sr.store.Email != nil {
+			email = *sr.store.Email
+		}
+		return &models.User{
+			ID:        sr.store.OwnerID,
+			FirstName: "Owner",
+			LastName:  "Keeper",
+			Email:     email,
+		}
+	}
+	return &models.User{}
 }
 
 type stubStoreRepo struct {
@@ -662,23 +700,24 @@ type stubMembershipsRepo struct {
 	deleteErr          error
 	countErr           error
 	countByRole        int64
+	usersStub          *stubUsersRepo
 }
 
-func (s stubMembershipsRepo) UserHasRole(ctx context.Context, userID, storeID uuid.UUID, roles ...enums.MemberRole) (bool, error) {
+func (s *stubMembershipsRepo) UserHasRole(ctx context.Context, userID, storeID uuid.UUID, roles ...enums.MemberRole) (bool, error) {
 	if s.err != nil {
 		return false, s.err
 	}
 	return s.allowed, nil
 }
 
-func (s stubMembershipsRepo) ListStoreUsers(ctx context.Context, storeID uuid.UUID) ([]memberships.StoreUserDTO, error) {
+func (s *stubMembershipsRepo) ListStoreUsers(ctx context.Context, storeID uuid.UUID) ([]memberships.StoreUserDTO, error) {
 	if s.listErr != nil {
 		return nil, s.listErr
 	}
 	return s.members, nil
 }
 
-func (s stubMembershipsRepo) GetMembership(ctx context.Context, userID, storeID uuid.UUID) (*models.StoreMembership, error) {
+func (s *stubMembershipsRepo) GetMembership(ctx context.Context, userID, storeID uuid.UUID) (*models.StoreMembership, error) {
 	if s.getErr != nil {
 		return nil, s.getErr
 	}
@@ -688,28 +727,59 @@ func (s stubMembershipsRepo) GetMembership(ctx context.Context, userID, storeID 
 	return nil, gorm.ErrRecordNotFound
 }
 
-func (s stubMembershipsRepo) CreateMembership(ctx context.Context, storeID, userID uuid.UUID, role enums.MemberRole, invitedBy *uuid.UUID, status enums.MembershipStatus) (*models.StoreMembership, error) {
+func (s *stubMembershipsRepo) CreateMembership(ctx context.Context, storeID, userID uuid.UUID, role enums.MemberRole, invitedBy *uuid.UUID, status enums.MembershipStatus) (*models.StoreMembership, error) {
 	if s.createErr != nil {
 		return nil, s.createErr
 	}
-	return &models.StoreMembership{
+	membership := &models.StoreMembership{
 		ID:              uuid.New(),
 		StoreID:         storeID,
 		UserID:          userID,
 		Role:            role,
 		Status:          status,
 		InvitedByUserID: invitedBy,
-	}, nil
+	}
+	s.existingMembership = membership
+	email, firstName, lastName := "", "", ""
+	if s.usersStub != nil {
+		if u := s.usersStub.created; u != nil && u.ID == userID {
+			email = u.Email
+			firstName = u.FirstName
+			lastName = u.LastName
+		}
+		if u := s.usersStub.user; u != nil && u.ID == userID {
+			email = u.Email
+			firstName = u.FirstName
+			lastName = u.LastName
+		}
+		if u := s.usersStub.byID; u != nil && u.ID == userID {
+			email = u.Email
+			firstName = u.FirstName
+			lastName = u.LastName
+		}
+	}
+	s.members = append(s.members, memberships.StoreUserDTO{
+		MembershipID: membership.ID,
+		StoreID:      storeID,
+		UserID:       userID,
+		Role:         role,
+		Status:       status,
+		Email:        email,
+		FirstName:    firstName,
+		LastName:     lastName,
+		CreatedAt:    time.Now(),
+	})
+	return membership, nil
 }
 
-func (s stubMembershipsRepo) CountMembersWithRoles(ctx context.Context, storeID uuid.UUID, roles ...enums.MemberRole) (int64, error) {
+func (s *stubMembershipsRepo) CountMembersWithRoles(ctx context.Context, storeID uuid.UUID, roles ...enums.MemberRole) (int64, error) {
 	if s.countErr != nil {
 		return 0, s.countErr
 	}
 	return s.countByRole, nil
 }
 
-func (s stubMembershipsRepo) DeleteMembership(ctx context.Context, storeID, userID uuid.UUID) error {
+func (s *stubMembershipsRepo) DeleteMembership(ctx context.Context, storeID, userID uuid.UUID) error {
 	return s.deleteErr
 }
 
@@ -810,10 +880,20 @@ func (s *stubUsersRepo) UpdatePasswordHash(ctx context.Context, id uuid.UUID, ha
 
 func stringPtr(s string) *string { return &s }
 
-type stubTxRunner struct{}
+type stubTxRunner struct {
+	db *gorm.DB
+}
 
-func (stubTxRunner) WithTx(ctx context.Context, fn func(tx *gorm.DB) error) error {
-	return fn(nil)
+func newStubTxRunner() stubTxRunner {
+	db, err := gorm.Open(sqlite.Open("file::memory:?cache=shared"), &gorm.Config{})
+	if err != nil {
+		panic(err)
+	}
+	return stubTxRunner{db: db}
+}
+
+func (s stubTxRunner) WithTx(ctx context.Context, fn func(tx *gorm.DB) error) error {
+	return fn(s.db)
 }
 
 type stubAttachmentReconciler struct {

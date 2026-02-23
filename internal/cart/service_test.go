@@ -753,8 +753,11 @@ func TestQuoteCartPersistsVolumeDiscount(t *testing.T) {
 	}
 
 	item := repo.replaced[0]
-	if item.UnitPriceCents != 800 {
-		t.Fatalf("expected tier price 800, got %d", item.UnitPriceCents)
+	if item.UnitPriceCents != product.PriceCents {
+		t.Fatalf("expected base unit price %d, got %d", product.PriceCents, item.UnitPriceCents)
+	}
+	if item.EffectiveUnitPriceCents != 800 {
+		t.Fatalf("expected effective tier price 800, got %d", item.EffectiveUnitPriceCents)
 	}
 	if item.AppliedVolumeDiscount == nil {
 		t.Fatalf("expected applied volume discount, got nil")
@@ -763,13 +766,17 @@ func TestQuoteCartPersistsVolumeDiscount(t *testing.T) {
 	if item.AppliedVolumeDiscount.Label != expectedLabel {
 		t.Fatalf("unexpected label %s", item.AppliedVolumeDiscount.Label)
 	}
-	expectedAmount := (product.PriceCents - item.UnitPriceCents) * item.Quantity
+	expectedAmount := (product.PriceCents - item.EffectiveUnitPriceCents) * item.Quantity
 	if item.AppliedVolumeDiscount.AmountCents != expectedAmount {
 		t.Fatalf("unexpected discount amount %d", item.AppliedVolumeDiscount.AmountCents)
 	}
 	expectedLine := item.UnitPriceCents * item.Quantity
 	if item.LineSubtotalCents != expectedLine {
 		t.Fatalf("expected line subtotal %d, got %d", expectedLine, item.LineSubtotalCents)
+	}
+	expectedTotal := item.EffectiveUnitPriceCents * item.Quantity
+	if item.LineTotalCents != expectedTotal {
+		t.Fatalf("expected line total %d, got %d", expectedTotal, item.LineTotalCents)
 	}
 }
 
@@ -820,7 +827,7 @@ func TestQuoteCartAddsPriceChangedWarning(t *testing.T) {
 				{
 					ProductID:      product.ID,
 					VendorStoreID:  vendorStore.ID,
-					UnitPriceCents: product.PriceCents,
+					UnitPriceCents: product.PriceCents + 200,
 				},
 			},
 		},

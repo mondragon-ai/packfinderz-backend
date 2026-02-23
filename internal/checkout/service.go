@@ -54,8 +54,10 @@ type Service interface {
 type CheckoutInput struct {
 	IdempotencyKey  string
 	ShippingAddress *types.Address
+	BillingAddress  *types.Address
 	PaymentMethod   enums.PaymentMethod
 	ShippingLine    *types.ShippingLine
+	Tip             int
 }
 
 type service struct {
@@ -208,6 +210,15 @@ func (s *service) Execute(ctx context.Context, buyerStoreID, cartID uuid.UUID, i
 		}
 		appliedShippingLine := input.ShippingLine
 
+		appliedBillingAddress := input.BillingAddress
+		if appliedBillingAddress == nil {
+			appliedBillingAddress = appliedShippingAddress
+		}
+		appliedTip := input.Tip
+		if appliedTip < 0 {
+			appliedTip = 0
+		}
+
 		checkoutGroupID := record.CheckoutGroupID
 		if checkoutGroupID == nil {
 			groupID := uuid.New()
@@ -313,7 +324,7 @@ func (s *service) Execute(ctx context.Context, buyerStoreID, cartID uuid.UUID, i
 			vendorStoreIDs[createdOrder.VendorStoreID] = struct{}{}
 		}
 
-		finalizeCart(record, appliedShippingAddress, appliedPaymentMethod, appliedShippingLine)
+		finalizeCart(record, appliedShippingAddress, appliedBillingAddress, appliedTip, appliedPaymentMethod, appliedShippingLine)
 		if _, err := cartRepo.Update(ctx, record); err != nil {
 			return err
 		}
@@ -335,6 +346,8 @@ func (s *service) Execute(ctx context.Context, buyerStoreID, cartID uuid.UUID, i
 			ID:               *checkoutGroupID,
 			BuyerStoreID:     buyerStoreID,
 			CartID:           &record.ID,
+			BillingAddress:   record.BillingAddress,
+			Tip:              record.Tip,
 			VendorOrders:     orderRecords,
 			CartVendorGroups: vendorGroupSnapshots,
 		}
@@ -592,6 +605,8 @@ func (s *service) buildConvertedCheckout(ctx context.Context, buyerStoreID uuid.
 		ID:               *record.CheckoutGroupID,
 		BuyerStoreID:     buyerStoreID,
 		CartID:           &record.ID,
+		BillingAddress:   record.BillingAddress,
+		Tip:              record.Tip,
 		VendorOrders:     orderRecords,
 		CartVendorGroups: vendorGroupSnapshots,
 	}, nil
@@ -676,11 +691,13 @@ func validateCartForCheckout(record *models.CartRecord) error {
 	return nil
 }
 
-func finalizeCart(record *models.CartRecord, shippingAddress *types.Address, paymentMethod enums.PaymentMethod, shippingLine *types.ShippingLine) {
+func finalizeCart(record *models.CartRecord, shippingAddress, billingAddress *types.Address, tip int, paymentMethod enums.PaymentMethod, shippingLine *types.ShippingLine) {
 	if record == nil {
 		return
 	}
 	record.ShippingAddress = shippingAddress
+	record.BillingAddress = billingAddress
+	record.Tip = tip
 	record.ShippingLine = shippingLine
 	method := paymentMethod
 	record.PaymentMethod = &method

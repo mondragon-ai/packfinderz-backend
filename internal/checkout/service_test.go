@@ -238,6 +238,243 @@ func TestServiceUsesVendorGroupTotals(t *testing.T) {
 	}
 }
 
+func TestServicePersistsBillingAddressAndTip(t *testing.T) {
+	t.Parallel()
+
+	buyerID := uuid.New()
+	vendorID := uuid.New()
+	productID := uuid.New()
+
+	cartRecord := &models.CartRecord{
+		ID:           uuid.New(),
+		BuyerStoreID: buyerID,
+		Status:       enums.CartStatusActive,
+		Currency:     enums.CurrencyUSD,
+		ValidUntil:   time.Now().Add(10 * time.Minute),
+		Items: []models.CartItem{
+			{
+				ID:                uuid.New(),
+				ProductID:         productID,
+				VendorStoreID:     vendorID,
+				Quantity:          2,
+				UnitPriceCents:    1000,
+				LineSubtotalCents: 2000,
+				Status:            enums.CartItemStatusOK,
+			},
+		},
+		VendorGroups: []models.CartVendorGroup{
+			{
+				VendorStoreID: vendorID,
+				Status:        enums.VendorGroupStatusOK,
+				SubtotalCents: 2000,
+				TotalCents:    2000,
+			},
+		},
+	}
+
+	cartRepo := &stubCartRepo{record: cartRecord}
+	storeSvc := &stubStoreService{
+		records: map[uuid.UUID]*stores.StoreDTO{
+			buyerID: {
+				ID:        buyerID,
+				Type:      enums.StoreTypeBuyer,
+				KYCStatus: enums.KYCStatusVerified,
+				Address:   types.Address{State: "CA"},
+			},
+			vendorID: {
+				ID:                 vendorID,
+				Type:               enums.StoreTypeVendor,
+				KYCStatus:          enums.KYCStatusVerified,
+				SubscriptionActive: true,
+				Address:            types.Address{State: "CA"},
+			},
+		},
+	}
+	productLoader := stubProductLoader{
+		products: map[uuid.UUID]*models.Product{
+			productID: {
+				ID:       productID,
+				StoreID:  vendorID,
+				SKU:      "SKU123",
+				Title:    "Test",
+				Category: enums.ProductCategoryFlower,
+				Unit:     enums.ProductUnitGram,
+			},
+		},
+	}
+	reserver := stubReservationRunner{
+		results: map[uuid.UUID]reservation.InventoryReservationResult{
+			cartRecord.Items[0].ID: {
+				CartItemID: cartRecord.Items[0].ID,
+				ProductID:  cartRecord.Items[0].ProductID,
+				Qty:        cartRecord.Items[0].Quantity,
+				Reserved:   true,
+			},
+		},
+	}
+	orderRepo := newStubOrdersRepository()
+	publisher := &stubOutboxPublisher{}
+
+	service, err := NewService(
+		stubTxRunner{},
+		cartRepo,
+		orderRepo,
+		storeSvc,
+		productLoader,
+		reserver,
+		publisher,
+		false,
+	)
+	if err != nil {
+		t.Fatalf("build service: %v", err)
+	}
+
+	shippingAddress := &types.Address{Line1: "Ship", City: "Port", State: "CA", PostalCode: "90001", Country: "US"}
+	billingAddress := &types.Address{Line1: "Bill", City: "Port", State: "CA", PostalCode: "90001", Country: "US"}
+	const tipCents = 500
+	result, err := service.Execute(context.Background(), buyerID, cartRecord.ID, CheckoutInput{
+		IdempotencyKey:  "key",
+		ShippingAddress: shippingAddress,
+		BillingAddress:  billingAddress,
+		Tip:             tipCents,
+		PaymentMethod:   enums.PaymentMethodCash,
+	})
+	if err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+
+	if cartRepo.updated == nil {
+		t.Fatalf("expected cart update")
+	}
+	if cartRepo.updated.BillingAddress == nil || cartRepo.updated.BillingAddress.Line1 != billingAddress.Line1 {
+		t.Fatalf("billing address not persisted: %+v", cartRepo.updated.BillingAddress)
+	}
+	if cartRepo.updated.Tip != tipCents {
+		t.Fatalf("expected tip %d got %d", tipCents, cartRepo.updated.Tip)
+	}
+	if result == nil {
+		t.Fatalf("expected checkout result")
+	}
+	if result.BillingAddress == nil || result.BillingAddress.Line1 != billingAddress.Line1 {
+		t.Fatalf("checkout result missing billing address: %+v", result.BillingAddress)
+	}
+	if result.Tip != tipCents {
+		t.Fatalf("checkout result tip mismatch: got %d", result.Tip)
+	}
+}
+
+func TestServiceDefaultsBillingAddressToShippingAddress(t *testing.T) {
+	t.Parallel()
+
+	buyerID := uuid.New()
+	vendorID := uuid.New()
+	productID := uuid.New()
+
+	cartRecord := &models.CartRecord{
+		ID:              uuid.New(),
+		BuyerStoreID:    buyerID,
+		Status:          enums.CartStatusActive,
+		Currency:        enums.CurrencyUSD,
+		ValidUntil:      time.Now().Add(10 * time.Minute),
+		ShippingAddress: &types.Address{Line1: "Store Ship", State: "CA"},
+		Items: []models.CartItem{
+			{
+				ID:                uuid.New(),
+				ProductID:         productID,
+				VendorStoreID:     vendorID,
+				Quantity:          1,
+				UnitPriceCents:    1000,
+				LineSubtotalCents: 1000,
+				Status:            enums.CartItemStatusOK,
+			},
+		},
+		VendorGroups: []models.CartVendorGroup{
+			{
+				VendorStoreID: vendorID,
+				Status:        enums.VendorGroupStatusOK,
+				SubtotalCents: 1000,
+				TotalCents:    1000,
+			},
+		},
+	}
+
+	cartRepo := &stubCartRepo{record: cartRecord}
+	storeSvc := &stubStoreService{
+		records: map[uuid.UUID]*stores.StoreDTO{
+			buyerID: {
+				ID:        buyerID,
+				Type:      enums.StoreTypeBuyer,
+				KYCStatus: enums.KYCStatusVerified,
+				Address:   types.Address{State: "CA"},
+			},
+			vendorID: {
+				ID:                 vendorID,
+				Type:               enums.StoreTypeVendor,
+				KYCStatus:          enums.KYCStatusVerified,
+				SubscriptionActive: true,
+				Address:            types.Address{State: "CA"},
+			},
+		},
+	}
+	productLoader := stubProductLoader{
+		products: map[uuid.UUID]*models.Product{
+			productID: {
+				ID:       productID,
+				StoreID:  vendorID,
+				SKU:      "SKU123",
+				Category: enums.ProductCategoryFlower,
+				Unit:     enums.ProductUnitGram,
+			},
+		},
+	}
+	reserver := stubReservationRunner{
+		results: map[uuid.UUID]reservation.InventoryReservationResult{
+			cartRecord.Items[0].ID: {
+				CartItemID: cartRecord.Items[0].ID,
+				ProductID:  cartRecord.Items[0].ProductID,
+				Qty:        cartRecord.Items[0].Quantity,
+				Reserved:   true,
+			},
+		},
+	}
+	orderRepo := newStubOrdersRepository()
+	publisher := &stubOutboxPublisher{}
+
+	service, err := NewService(
+		stubTxRunner{},
+		cartRepo,
+		orderRepo,
+		storeSvc,
+		productLoader,
+		reserver,
+		publisher,
+		false,
+	)
+	if err != nil {
+		t.Fatalf("build service: %v", err)
+	}
+
+	shippingAddress := &types.Address{Line1: "Override Ship", City: "Port", State: "CA", PostalCode: "90001", Country: "US"}
+	result, err := service.Execute(context.Background(), buyerID, cartRecord.ID, CheckoutInput{
+		IdempotencyKey:  "key",
+		ShippingAddress: shippingAddress,
+		PaymentMethod:   enums.PaymentMethodCash,
+	})
+	if err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+
+	if cartRepo.updated == nil {
+		t.Fatalf("expected cart update")
+	}
+	if cartRepo.updated.BillingAddress == nil || cartRepo.updated.BillingAddress.Line1 != shippingAddress.Line1 {
+		t.Fatalf("billing address should match shipping fallback: %+v", cartRepo.updated.BillingAddress)
+	}
+	if result == nil || result.BillingAddress == nil || result.BillingAddress.Line1 != shippingAddress.Line1 {
+		t.Fatalf("checkout result should include fallback billing address: %+v", result.BillingAddress)
+	}
+}
+
 func TestServiceReusesExistingVendorOrderAndOutbox(t *testing.T) {
 	t.Parallel()
 

@@ -99,6 +99,8 @@ func (r *repository) findByCheckoutGroup(ctx context.Context, checkoutGroupID uu
 	if cartRecord != nil {
 		group.BuyerStoreID = cartRecord.BuyerStoreID
 		group.CartID = &cartRecord.ID
+		group.BillingAddress = cartRecord.BillingAddress
+		group.Tip = cartRecord.Tip
 		group.CartVendorGroups = append([]models.CartVendorGroup(nil), cartRecord.VendorGroups...)
 	} else if len(vendorOrders) > 0 {
 		group.BuyerStoreID = vendorOrders[0].BuyerStoreID

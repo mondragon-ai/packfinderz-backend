@@ -121,6 +121,14 @@ func TestCheckoutSuccess(t *testing.T) {
 				},
 			},
 		},
+		BillingAddress: &types.Address{
+			Line1:      "102 Billing Blvd",
+			City:       "Tulsa",
+			State:      "OK",
+			PostalCode: "74105",
+			Country:    "US",
+		},
+		Tip: 250,
 	}
 
 	handler := Checkout(
@@ -174,6 +182,12 @@ func TestCheckoutSuccess(t *testing.T) {
 	}
 	if envelope.Data.ShippingLine == nil || envelope.Data.ShippingLine.Code != "express" {
 		t.Fatalf("unexpected shipping line: %+v", envelope.Data.ShippingLine)
+	}
+	if envelope.Data.BillingAddress == nil || envelope.Data.BillingAddress.Line1 != "102 Billing Blvd" {
+		t.Fatalf("unexpected billing address: %+v", envelope.Data.BillingAddress)
+	}
+	if envelope.Data.Tip != 250 {
+		t.Fatalf("unexpected tip: %d", envelope.Data.Tip)
 	}
 }
 
@@ -274,6 +288,14 @@ func validCheckoutRequest(cartID uuid.UUID) string {
 			"lat":36.154,
 			"lng":-95.992
 		},
+		"billing_address":{
+			"line1":"234 Billing Ave",
+			"city":"Tulsa",
+			"state":"OK",
+			"postal_code":"74105",
+			"country":"US"
+		},
+		"tip": 250,
 		"payment_method":"cash",
 		"shipping_line":{
 			"code":"express",

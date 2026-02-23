@@ -63,6 +63,8 @@ func Checkout(svc checkoutsvc.Service, storeSvc stores.Service, logg *logger.Log
 		group, err := svc.Execute(r.Context(), buyerStoreID, payload.CartID, checkoutsvc.CheckoutInput{
 			IdempotencyKey:  idempotencyKey,
 			ShippingAddress: payload.ShippingAddress,
+			BillingAddress:  payload.BillingAddress,
+			Tip:             payload.Tip,
 			PaymentMethod:   payload.PaymentMethod,
 			ShippingLine:    payload.ShippingLine,
 		})
@@ -93,6 +95,8 @@ func buyerStoreIDFromContext(r *http.Request) (uuid.UUID, error) {
 type checkoutRequest struct {
 	CartID          uuid.UUID           `json:"cart_id" validate:"required,uuid4"`
 	ShippingAddress *types.Address      `json:"shipping_address" validate:"required"`
+	BillingAddress  *types.Address      `json:"billing_address"`
+	Tip             int                 `json:"tip" validate:"gte=0"`
 	PaymentMethod   enums.PaymentMethod `json:"payment_method" validate:"required,oneof=cash ach"`
 	ShippingLine    *types.ShippingLine `json:"shipping_line,omitempty"`
 }
@@ -100,10 +104,12 @@ type checkoutRequest struct {
 type checkoutResponse struct {
 	CheckoutGroupID uuid.UUID              `json:"checkout_group_id"`
 	ShippingAddress *types.Address         `json:"shipping_address"`
+	BillingAddress  *types.Address         `json:"billing_address,omitempty"`
 	PaymentMethod   enums.PaymentMethod    `json:"payment_method"`
 	ShippingLine    *types.ShippingLine    `json:"shipping_line,omitempty"`
 	VendorOrders    []vendorOrderResponse  `json:"vendor_orders"`
 	RejectedVendors []rejectedVendorReport `json:"rejected_vendors,omitempty"`
+	Tip             int                    `json:"tip"`
 }
 
 type vendorOrderResponse struct {
@@ -201,10 +207,12 @@ func newCheckoutResponse(group *models.CheckoutGroup) checkoutResponse {
 	return checkoutResponse{
 		CheckoutGroupID: group.ID,
 		ShippingAddress: shippingAddress,
+		BillingAddress:  group.BillingAddress,
 		PaymentMethod:   paymentMethod,
 		ShippingLine:    shippingLine,
 		VendorOrders:    vendorOrders,
 		RejectedVendors: rejected,
+		Tip:             group.Tip,
 	}
 }
 

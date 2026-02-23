@@ -17,6 +17,8 @@ type CartRecord struct {
 	CheckoutGroupID *uuid.UUID           `gorm:"column:checkout_group_id;type:uuid"`
 	Status          enums.CartStatus     `gorm:"column:status;type:cart_status;not null;default:'active'"`
 	ShippingAddress *types.Address       `gorm:"column:shipping_address;type:address_t"`
+	BillingAddress  *types.Address       `gorm:"column:billing_address;type:address_t"`
+	Tip             int                  `gorm:"column:tip;not null;default:0"`
 	PaymentMethod   *enums.PaymentMethod `gorm:"column:payment_method;type:payment_method"`
 	ShippingLine    *types.ShippingLine  `gorm:"column:shipping_line;type:jsonb;serializer:json"`
 	Currency        enums.Currency       `gorm:"column:currency;not null;default:'USD'"`

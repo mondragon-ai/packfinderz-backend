@@ -19,12 +19,14 @@ import (
 )
 
 type stubCartService struct {
-	record         *models.CartRecord
-	err            error
-	lastQuoteInput cartsvc.QuoteCartInput
+	record           *models.CartRecord
+	err              error
+	lastQuoteInput   cartsvc.QuoteCartInput
+	lastBuyerStoreID uuid.UUID
 }
 
 func (s *stubCartService) QuoteCart(ctx context.Context, buyerStoreID uuid.UUID, input cartsvc.QuoteCartInput) (*models.CartRecord, error) {
+	s.lastBuyerStoreID = buyerStoreID
 	s.lastQuoteInput = input
 	return s.record, s.err
 }
@@ -140,7 +142,13 @@ func TestCartQuoteSuccess(t *testing.T) {
 func TestCartQuoteBuyerStoreMismatch(t *testing.T) {
 	storeID := uuid.New()
 	otherStoreID := uuid.New()
-	handler := CartQuote(&stubCartService{}, nil)
+	record := &models.CartRecord{
+		ID:           uuid.New(),
+		BuyerStoreID: storeID,
+		Status:       enums.CartStatusActive,
+	}
+	service := &stubCartService{record: record}
+	handler := CartQuote(service, nil)
 
 	body := fmt.Sprintf(`{
 		"buyer_store_id": "%s",
@@ -156,8 +164,22 @@ func TestCartQuoteBuyerStoreMismatch(t *testing.T) {
 	resp := httptest.NewRecorder()
 	handler.ServeHTTP(resp, req)
 
-	if resp.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400 got %d", resp.Code)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("expected 200 got %d", resp.Code)
+	}
+
+	var envelope struct {
+		Data cartdto.CartQuote `json:"data"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&envelope); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if envelope.Data.ID != record.ID {
+		t.Fatalf("unexpected cart id: %s", envelope.Data.ID)
+	}
+
+	if service.lastBuyerStoreID != storeID {
+		t.Fatalf("expected service to receive buyer store %s, got %s", storeID, service.lastBuyerStoreID)
 	}
 }
 

@@ -358,6 +358,9 @@
   * [x] Ticket [PF-272]: PATCH - Update store switch & handle create customer registration sqauare
   * [x] Ticket [PF-273]: PATCH - Media public URLs
   * [x] Ticket [PF-274]: REFACTOR - Pagination
+  * [x] Ticket [PF-275], [PF-276], [PF-277], [PF-278]: Goose migration, Repo, Service, Controller & wiring + docs
+  * [x] Ticket [PF-279]: Patch - updating store + logging 
+  * [x] Ticket [PF-280]: Patch - Cart upsert and res DTO
 
 ## Phase W — Wishlist**
   **Goal:** Implement the full wishlist feature — GORM model, Goose migration, repo, service, controller, and routes — so buyers can save and manage products they're interested in.

@@ -414,7 +414,7 @@ func (s *service) Update(ctx context.Context, userID, storeID uuid.UUID, input U
 		return nil
 	}); err != nil {
 		if pe := pkgerrors.As(err); pe != nil {
-			pe.WithDetails(map[string]any{
+			err = pe.WithDetails(map[string]any{
 				"step": step,
 			})
 		}

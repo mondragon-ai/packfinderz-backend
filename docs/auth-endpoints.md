@@ -155,6 +155,120 @@ curl -X POST "{{API_BASE_URL}}/api/v1/auth/switch-store" \
 
 Success returns new `access_token`, `refresh_token`, and the target store summary, plus `X-PF-Token` contains the new access token. If the membership is inactive or missing, expect HTTP 403.
 
+## Checkout endpoints
+Checkout requests must use a token issued for a buyer store—the middleware derives `store_id` from `Authorization: Bearer {{access_token}}`, so the request never carries `store_id` in the JSON payload. The checkout service also enforces `Idempotency-Key` headers for write operations, because a duplicate `POST /checkout` could otherwise create multiple vendor orders against the same cart.
+
+### POST /api/v1/checkout
+Submits the buyer store’s current cart, creates vendor orders, and returns the checkout group summary. The buyer store must already exist and have a verified type of `buyer`.
+
+Required headers:
+- `Authorization: Bearer {{access_token}}`
+- `Idempotency-Key: {{nonce}}`
+- `Content-Type: application/json`
+- `Accept: application/json`
+
+Required request body:
+```json
+{
+  "cart_id": "{{active_cart_id}}",
+  "shipping_address": {
+    "line1": "123 Main St",
+    "city": "Oklahoma City",
+    "state": "OK",
+    "postal_code": "73102",
+    "country": "US",
+    "lat": 35.4676,
+    "lng": -97.5164
+  },
+  "tip": 0,
+  "payment_method": "cash"
+}
+```
+
+Optional fields:
+- `billing_address` (same structure as `shipping_address`)
+- `shipping_line` (see `types.ShippingLine`, typically contains `rate`, `service`, and `eta_minutes`)
+- `payment_method: "ach"` is valid when `PACKFINDERZ_FEATURE_ALLOW_ACH=true`
+
+On success the server replies `201 Created` with a payload such as:
+```json
+{
+  "checkout_group_id": "{{checkout_group_id}}",
+  "shipping_address": { ... },
+  "payment_method": "cash",
+  "vendor_orders": [
+    {
+      "order_id": "...",
+      "vendor_store_id": "...",
+      "status": "open",
+      "subtotal_cents": 1500,
+      "total_cents": 1500,
+      "balance_due_cents": 1500,
+      "items": [
+        {
+          "line_item_id": "...",
+          "product_name": "Fresh Spinach",
+          "qty": 2,
+          "unit_price_cents": 750,
+          "total_cents": 1500
+        }
+      ]
+    }
+  ],
+  "rejected_vendors": [],
+  "tip": 0
+}
+```
+
+If any vendor cannot be fulfilled, the `rejected_vendors` array explains why via `warnings` or included line items with `status: "rejected"`.
+
+### GET /api/v1/checkout/{identifier}/confirmation
+Fetches the latest checkout group (or cart) data for display on the confirmation screen. `{identifier}` can be either the `checkout_group_id` returned by the POST above or the original `cart_id`; the handler will look up whichever matches the buyer store. Only buyer stores may call this route.
+
+Required headers:
+- `Authorization: Bearer {{access_token}}`
+- `Accept: application/json`
+
+Example:
+```bash
+curl "{{API_BASE_URL}}/api/v1/checkout/{{checkout_group_id}}/confirmation" \
+  -H "Authorization: Bearer {{access_token}}" \
+  -H "Accept: application/json"
+```
+
+Response:
+```json
+{
+  "checkout_group_id": "{{checkout_group_id}}",
+  "cart_id": "{{cart_id}}",
+  "vendor_orders": [
+    {
+      "order_id": "...",
+      "vendor_store_id": "...",
+      "status": "open",
+      "payment_status": "pending",
+      "amount_cents": 1800,
+      "balance_due_cents": 1800,
+      "fulfillment_status": "queued",
+      "warnings": [],
+      "items": [
+        {
+          "line_item_id": "...",
+          "product_id": "...",
+          "product_name": "Fresh Spinach",
+          "qty": 2,
+          "unit_price_cents": 750,
+          "total_cents": 1500,
+          "status": "ok"
+        }
+      ]
+    }
+  ]
+}
+```
+
+If the identifier does not belong to the store, the endpoint returns `403 Forbidden`; missing groups/cart IDs yield `404 Not Found`.
+
 ## Media endpoints
 All `/api/v1/media` paths require an authenticated user with an active store context (the same token you used for products/orders), so include `Authorization: Bearer {{access_token}}`. The store is derived from the session, meaning you do not send a `store_id` inside these payloads. Optional filters and headers are listed per endpoint.
 
@@ -888,6 +1002,14 @@ Submits the buyer store's active cart (the bearer must belong to a buyer store).
     "lat": 39.948,
     "lng": -75.142
   },
+  "billing_address": {
+    "line1": "200 Billing Ave",
+    "city": "Philadelphia",
+    "state": "PA",
+    "postal_code": "19106",
+    "country": "US"
+  },
+  "tip": 250,
   "payment_method": "cash",
   "shipping_line": {
     "code": "express",
@@ -896,7 +1018,7 @@ Submits the buyer store's active cart (the bearer must belong to a buyer store).
   }
 }
 ```
-`cart_id` and `shipping_address` are required; `payment_method` must be either `cash` or `ach`. `shipping_line` is optional and lets you confirm the chosen shipping option (omit it if the buyer selected the store's default). Checkout attribution now relies on the tokens persisted in `cart_records.ad_tokens`, so no `attributed_ad_click_id` is accepted by this endpoint.
+`cart_id` and `shipping_address` are required; `payment_method` must be either `cash` or `ach`. `shipping_line` is optional and lets you confirm the chosen shipping option (omit it if the buyer selected the store's default). Checkout attribution now relies on the tokens persisted in `cart_records.ad_tokens`, so no `attributed_ad_click_id` is accepted by this endpoint. `billing_address` is optional; when omitted the checkout mirrors the chosen shipping address, and the `tip` value must be an integer >= 0 (it defaults to 0 when absent).
 
 #### cURL
 ```bash
@@ -916,6 +1038,14 @@ curl -X POST "{{API_BASE_URL}}/api/v1/checkout" \
       "lat": {{shipping_lat}},
       "lng": {{shipping_lng}}
     },
+    "billing_address": {
+      "line1": "{{billing_line1}}",
+      "city": "{{billing_city}}",
+      "state": "{{billing_state}}",
+      "postal_code": "{{billing_postal_code}}",
+      "country": "US"
+    },
+    "tip": {{tip}},
     "payment_method": "cash",
     "shipping_line": {
       "code": "{{shipping_code}}",
@@ -929,6 +1059,8 @@ curl -X POST "{{API_BASE_URL}}/api/v1/checkout" \
 - `checkout_group_id`: UUID representing the checkout run.
 - `vendor_orders`: array of vendors with totals (`subtotal_cents`, `transport_fee_cents`, `discount_cents`, `tax_cents`, `total_cents`, `balance_due_cents`) and their `items`.
 - Each line item includes `line_item_id`, `product_id` (nullable), `product_name`, `qty`, `unit`, `unit_price_cents`, `discount_cents`, `total_cents`, `status`, and optional `notes`.
+- `billing_address`: repeats the address used for billing, defaulting to the chosen shipping address when no billing override was supplied.
+- `tip`: the non-negative tip carrying over from the checkout request (in cents) so the client can confirm the final total.
 
 ### GET /api/v1/checkout/{identifier}/confirmation
 Polls the confirmed checkout snapshot using either the `checkout_group_id` assigned during checkout or the `cart_id` that spawned it. Buyers use this endpoint to monitor each `vendor_order` status, the attached payment intent, and the cached `cart_vendor_groups` once the checkout transaction has committed.

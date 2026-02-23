@@ -16,6 +16,7 @@ type CartQuote struct {
 	CheckoutGroupID *uuid.UUID             `json:"checkout_group_id,omitempty"`
 	Status          enums.CartStatus       `json:"status"`
 	ShippingAddress *types.Address         `json:"shipping_address,omitempty"`
+	BillingAddress  *types.Address         `json:"billing_address,omitempty"`
 	Currency        string                 `json:"currency"`
 	ValidUntil      time.Time              `json:"valid_until"`
 	SubtotalCents   int                    `json:"subtotal_cents"`
@@ -26,6 +27,7 @@ type CartQuote struct {
 	Items           []CartQuoteItem        `json:"items"`
 	CreatedAt       time.Time              `json:"created_at"`
 	UpdatedAt       time.Time              `json:"updated_at"`
+	Tip             int                    `json:"tip"`
 }
 
 // CartQuoteVendorGroup captures vendor-level meta inside the cart quote.

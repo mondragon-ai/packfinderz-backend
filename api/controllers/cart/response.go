@@ -58,6 +58,7 @@ func newCartQuote(record *models.CartRecord) cartdto.CartQuote {
 		CheckoutGroupID: record.CheckoutGroupID,
 		Status:          record.Status,
 		ShippingAddress: record.ShippingAddress,
+		BillingAddress:  record.BillingAddress,
 		Currency:        string(record.Currency),
 		ValidUntil:      record.ValidUntil,
 		SubtotalCents:   record.SubtotalCents,
@@ -68,5 +69,6 @@ func newCartQuote(record *models.CartRecord) cartdto.CartQuote {
 		Items:           items,
 		CreatedAt:       record.CreatedAt,
 		UpdatedAt:       record.UpdatedAt,
+		Tip:             record.Tip,
 	}
 }

@@ -98,16 +98,22 @@ func TestStoreUpdateSuccess(t *testing.T) {
 	payload := []byte(`{
 		"company_name": "Updated",
 		"phone": "+15551234567",
-		"banner_url": "https://example.com/banner",
-		"ratings": {"quality": 5},
+		"social": {
+			"twitter": "https://twitter.com/acmegoods",
+			"facebook": "https://facebook.com/acmegoods",
+			"instagram": "https://instagram.com/acmegoods",
+			"linkedin": "https://linkedin.com/company/acme",
+			"youtube": "https://youtube.com/@acmegoods",
+			"website": "https://acme.goods"
+		},
+		"banner_media_id": "2e3f5a00-7cb3-4b41-8f14-1f2abc3d4e5f",
+		"logo_media_id": null,
 		"categories": ["flower","edibles"]
 	}`)
 	respDTO := &stores.StoreDTO{
 		ID:          storeID,
 		CompanyName: "Updated",
 		Phone:       stringPtr("+15551234567"),
-		BannerURL:   stringPtr("https://example.com/banner"),
-		Ratings:     map[string]int{"quality": 5},
 		Categories:  []string{"flower", "edibles"},
 	}
 	handler := StoreUpdate(stubStoreService{updateResp: respDTO}, nil)
@@ -133,8 +139,8 @@ func TestStoreUpdateSuccess(t *testing.T) {
 	if envelope.Data.CompanyName != "Updated" {
 		t.Fatalf("expected updated company name, got %s", envelope.Data.CompanyName)
 	}
-	if envelope.Data.Ratings["quality"] != 5 {
-		t.Fatalf("expected rating quality=5 got %v", envelope.Data.Ratings)
+	if len(envelope.Data.Categories) != 2 {
+		t.Fatalf("expected 2 categories, got %v", envelope.Data.Categories)
 	}
 }
 
