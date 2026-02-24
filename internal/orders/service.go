@@ -568,6 +568,7 @@ func (s *service) RetryOrder(ctx context.Context, input BuyerRetryInput) (*Buyer
 				ProductID:             item.ProductID,
 				CartItemID:            item.CartItemID,
 				Name:                  item.Name,
+				Thumbnail:             item.Thumbnail,
 				Category:              item.Category,
 				Strain:                item.Strain,
 				Classification:        item.Classification,

@@ -574,6 +574,7 @@ func buildLineItem(orderID uuid.UUID, cartItem models.CartItem, product *models.
 		ProductID:             &cartItem.ProductID,
 		Name:                  name,
 		Category:              category,
+		Thumbnail:             cartItem.Thumbnail,
 		Strain:                product.Strain,
 		Classification:        classification,
 		Unit:                  unit,

@@ -442,12 +442,12 @@ func applyBuyerOrderFilters(q *gorm.DB, filters BuyerOrderFilters) *gorm.DB {
 	if qStr := strings.TrimSpace(filters.Query); qStr != "" {
 		pattern := "%" + strings.ToLower(qStr) + "%"
 		q = q.Where(`(
-			CAST(vo.order_number AS TEXT) ILIKE ? OR
-			vs.company_name ILIKE ? OR
-			COALESCE(vs.dba_name, '') ILIKE ? OR
-			bs.company_name ILIKE ? OR
-			COALESCE(bs.dba_name, '') ILIKE ?
-		)`, pattern, pattern, pattern, pattern, pattern)
+		CAST(vo.order_number AS TEXT) LIKE ? OR
+		LOWER(vs.company_name) LIKE ? OR
+		LOWER(COALESCE(vs.dba_name, '')) LIKE ? OR
+		LOWER(bs.company_name) LIKE ? OR
+		LOWER(COALESCE(bs.dba_name, '')) LIKE ?
+	)`, pattern, pattern, pattern, pattern, pattern)
 	}
 	return q
 }
@@ -803,7 +803,7 @@ func (r *repository) FindOrderDetail(ctx context.Context, orderID uuid.UUID) (*O
 func (r *repository) loadStoreSummary(ctx context.Context, storeID uuid.UUID) (OrderStoreSummary, error) {
 	var store models.Store
 	if err := r.db.WithContext(ctx).
-		Select("id", "company_name", "dba_name", "logo_url").
+		Select("id", "company_name", "dba_name", "logo_url", "address", "phone").
 		Where("id = ?", storeID).
 		First(&store).Error; err != nil {
 		return OrderStoreSummary{}, err
@@ -813,6 +813,8 @@ func (r *repository) loadStoreSummary(ctx context.Context, storeID uuid.UUID) (O
 		CompanyName: store.CompanyName,
 		DBAName:     store.DBAName,
 		LogoURL:     store.LogoURL,
+		Address:     &store.Address,
+		Phone:       store.Phone,
 	}, nil
 }
 
@@ -875,16 +877,20 @@ func buildVendorOrderSummary(order *models.VendorOrder) *VendorOrderSummary {
 		return nil
 	}
 	return &VendorOrderSummary{
+		ID:                order.ID,
 		Status:            order.Status,
 		OrderNumber:       order.OrderNumber,
 		CreatedAt:         order.CreatedAt,
 		TotalCents:        order.TotalCents,
 		DiscountsCents:    order.DiscountsCents,
 		TotalItems:        sumOrderItems(order.Items),
+		OrderStatus:       order.Status,
 		PaymentStatus:     paymentStatus(order.PaymentIntent),
 		FulfillmentStatus: order.FulfillmentStatus,
 		ShippingStatus:    order.ShippingStatus,
 		DeliveredAt:       order.DeliveredAt,
+		Assignments:       &order.Assignments,
+		ShippingLine:      order.ShippingLine,
 	}
 }
 
@@ -906,12 +912,13 @@ func buildLineItemDetail(item models.OrderLineItem) LineItemDetail {
 	return LineItemDetail{
 		ID:             item.ID,
 		Name:           item.Name,
+		Thumbnail:      item.Thumbnail,
 		Category:       item.Category,
 		Strain:         item.Strain,
 		Classification: item.Classification,
 		Unit:           string(item.Unit),
 		UnitPriceCents: item.UnitPriceCents,
-		Qty:            item.Qty,
+		Quantity:       item.Qty,
 		DiscountCents:  item.DiscountCents,
 		TotalCents:     item.TotalCents,
 		Status:         string(item.Status),

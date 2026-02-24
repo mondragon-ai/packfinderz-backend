@@ -187,7 +187,7 @@ func TestCheckoutSuccess(t *testing.T) {
 		t.Fatalf("unexpected billing address: %+v", envelope.Data.BillingAddress)
 	}
 	if envelope.Data.Tip != 250 {
-		t.Fatalf("unexpected tip: %d", envelope.Data.Tip)
+		t.Fatalf("unexpected tip: %f", envelope.Data.Tip)
 	}
 }
 

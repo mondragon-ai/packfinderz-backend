@@ -129,6 +129,7 @@ type lineItemResponse struct {
 	LineItemID     uuid.UUID  `json:"line_item_id"`
 	ProductID      *uuid.UUID `json:"product_id,omitempty"`
 	ProductName    string     `json:"product_name"`
+	Thumbnail      *string    `json:"thumbnail,omitempty"`
 	Qty            int        `json:"qty"`
 	Unit           string     `json:"unit"`
 	UnitPriceCents int        `json:"unit_price_cents"`
@@ -225,6 +226,7 @@ func newLineItemResponse(item models.OrderLineItem) lineItemResponse {
 		LineItemID:     item.ID,
 		ProductID:      item.ProductID,
 		ProductName:    productName,
+		Thumbnail:      item.Thumbnail,
 		Qty:            item.Qty,
 		Unit:           string(item.Unit),
 		UnitPriceCents: item.UnitPriceCents,

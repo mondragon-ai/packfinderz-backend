@@ -72,7 +72,7 @@ CREATE TABLE IF NOT EXISTS vendor_orders (
   balance_due_cents INTEGER NOT NULL,
   fulfillment_status TEXT NOT NULL,
   shipping_status TEXT NOT NULL,
-  order_number INTEGER NOT NULL,
+  order_number INTEGER NOT NULL DEFAULT 0,
   notes TEXT,
   internal_notes TEXT,
   fulfilled_at DATETIME,
@@ -91,6 +91,7 @@ CREATE TABLE IF NOT EXISTS order_line_items (
   name TEXT NOT NULL,
   category TEXT NOT NULL,
   strain TEXT,
+  thumbnail TEXT,
   classification TEXT,
   unit TEXT NOT NULL,
   unit_price_cents INTEGER NOT NULL,
@@ -183,12 +184,14 @@ func createOrder(t *testing.T, db *gorm.DB, buyer, vendor *models.Store, number 
 		PaymentMethod:     enums.PaymentMethodCash,
 		FulfillmentStatus: fulfillment,
 		ShippingStatus:    shipping,
-		OrderNumber:       number,
 		CreatedAt:         created,
 		UpdatedAt:         created,
 	}
 	order.ID = uuid.New()
 	require.NoError(t, db.Create(order).Error)
+
+	require.NoError(t, db.Exec(`UPDATE vendor_orders SET order_number = ? WHERE id = ?`, number, order.ID.String()).Error)
+	require.NoError(t, db.First(order, "id = ?", order.ID.String()).Error)
 
 	createLineItem(t, db, order, qty)
 
@@ -225,6 +228,7 @@ func createLineItem(t *testing.T, db *gorm.DB, order *models.VendorOrder, qty in
 		Qty:                   qty,
 		TotalCents:            1000 * qty,
 		Warnings:              nil,
+		Thumbnail:             nil,
 		AppliedVolumeDiscount: nil,
 		AttributedToken:       nil,
 		Status:                enums.LineItemStatusAccepted,

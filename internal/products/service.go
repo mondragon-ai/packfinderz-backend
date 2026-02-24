@@ -482,10 +482,11 @@ func (s *service) ListProducts(ctx context.Context, input ListProductsInput) (*P
 		}
 		vendorID := input.StoreID
 		return s.repo.ListProductSummaries(ctx, productListQuery{
-			Pagination:    input.Pagination,
-			Filters:       input.Filters,
-			VendorStoreID: &vendorID,
-			Page:          page,
+			Pagination:     input.Pagination,
+			Filters:        input.Filters,
+			VendorStoreID:  &vendorID,
+			RequestedState: requested,
+			Page:           page,
 		})
 	default:
 		return nil, pkgerrors.New(pkgerrors.CodeForbidden, "unsupported store type")

@@ -3,8 +3,10 @@ package orders
 import (
 	"time"
 
+	"github.com/angelmondragon/packfinderz-backend/pkg/db/models"
 	"github.com/angelmondragon/packfinderz-backend/pkg/enums"
 	"github.com/angelmondragon/packfinderz-backend/pkg/pagination"
+	"github.com/angelmondragon/packfinderz-backend/pkg/types"
 	"github.com/google/uuid"
 )
 
@@ -50,10 +52,12 @@ type ListOrdersInput struct {
 
 // OrderStoreSummary captures the vendor summary returned in the order list.
 type OrderStoreSummary struct {
-	ID          uuid.UUID `json:"id"`
-	CompanyName string    `json:"company_name"`
-	DBAName     *string   `json:"dba_name,omitempty"`
-	LogoURL     *string   `json:"logo_url,omitempty"`
+	ID          uuid.UUID      `json:"id"`
+	CompanyName string         `json:"company_name"`
+	DBAName     *string        `json:"dba_name,omitempty"`
+	LogoURL     *string        `json:"logo_url,omitempty"`
+	Address     *types.Address `json:"address,omitempty"`
+	Phone       *string        `json:"phone,omitempty"`
 }
 
 // BuyerOrderSummary exposes the aggregated fields returned in the buyer list.
@@ -92,6 +96,8 @@ type VendorOrderSummary struct {
 	ShippingStatus    enums.VendorOrderShippingStatus    `json:"shipping_status"`
 	Buyer             OrderStoreSummary                  `json:"buyer"`
 	DeliveredAt       *time.Time                         `json:"delivered_at,omitempty"`
+	Assignments       *[]models.OrderAssignment          `json:"assignments,omitempty"`
+	ShippingLine      *types.ShippingLine                `json:"shipping,omitempty"`
 }
 
 // AgentOrderQueueSummary describes the orders exposed to agents on the dispatch queue.
@@ -156,12 +162,13 @@ type OrderAssignmentSummary struct {
 type LineItemDetail struct {
 	ID             uuid.UUID `json:"id"`
 	Name           string    `json:"name"`
+	Thumbnail      *string   `json:"thumbnail,omitempty"`
 	Category       string    `json:"category"`
 	Strain         *string   `json:"strain,omitempty"`
 	Classification *string   `json:"classification,omitempty"`
 	Unit           string    `json:"unit"`
 	UnitPriceCents int       `json:"unit_price_cents"`
-	Qty            int       `json:"qty"`
+	Quantity       int       `json:"quantity"`
 	DiscountCents  int       `json:"discount_cents"`
 	TotalCents     int       `json:"total_cents"`
 	Status         string    `json:"status"`

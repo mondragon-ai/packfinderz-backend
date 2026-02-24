@@ -15,6 +15,7 @@ type OrderLineItem struct {
 	OrderID               uuid.UUID                    `gorm:"column:order_id;type:uuid;not null"`
 	ProductID             *uuid.UUID                   `gorm:"column:product_id;type:uuid"`
 	CartItemID            *uuid.UUID                   `gorm:"column:cart_item_id;type:uuid"`
+	Thumbnail             *string                      `gorm:"column:thumbnail"`
 	Name                  string                       `gorm:"column:name;not null"`
 	Category              string                       `gorm:"column:category;not null"`
 	Strain                *string                      `gorm:"column:strain"`
