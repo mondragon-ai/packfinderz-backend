@@ -364,7 +364,7 @@
   * [x] Ticket [PF-281]: cart record patch + checkout update
   * [x] Ticket [PF-282]: cart/checkout patch + pagination for orders
   * [x] Ticket [PF-283]: Order detail + wishlist enabled for vendor + Shop (browse product) vednor
-  * [x] Ticket 
+  * [x] Ticket [PF-284]: Product inventory search patch
 
 ## Phase W — Wishlist**
   **Goal:** Implement the full wishlist feature — GORM model, Goose migration, repo, service, controller, and routes — so buyers can save and manage products they're interested in.

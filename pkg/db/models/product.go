@@ -17,6 +17,9 @@ type Product struct {
 	Title               string                       `gorm:"column:title;not null"`
 	Subtitle            *string                      `gorm:"column:subtitle"`
 	BodyHTML            *string                      `gorm:"column:body_html"`
+	BatchID             *string                      `gorm:"column:batch_id"`
+	MetricTag           *string                      `gorm:"column:metric_tag"`
+	Barcode             *string                      `gorm:"column:barcode"`
 	Category            enums.ProductCategory        `gorm:"column:category;type:category;not null"`
 	Feelings            pq.StringArray               `gorm:"column:feelings;type:feelings[];not null;default:ARRAY[]::feelings[]"`
 	Flavors             pq.StringArray               `gorm:"column:flavors;type:flavors[];not null;default:ARRAY[]::flavors[]"`
@@ -37,6 +40,7 @@ type Product struct {
 	Inventory           *InventoryItem               `gorm:"foreignKey:ProductID;constraint:OnDelete:CASCADE"`
 	VolumeDiscounts     []ProductVolumeDiscount      `gorm:"foreignKey:ProductID;constraint:OnDelete:CASCADE"`
 	Media               []ProductMedia               `gorm:"foreignKey:ProductID;constraint:OnDelete:CASCADE"`
+	PackagingType       *string                      `gorm:"column:packaging_type"`
 	CreatedAt           time.Time                    `gorm:"column:created_at;autoCreateTime"`
 	UpdatedAt           time.Time                    `gorm:"column:updated_at;autoUpdateTime"`
 }

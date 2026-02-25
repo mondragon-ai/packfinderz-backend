@@ -86,6 +86,10 @@ type createProductRequest struct {
 	Usage               []string                      `json:"usage"    validate:"required,min=1,dive,required"`
 	Strain              *string                       `json:"strain,omitempty"`
 	Classification      *string                       `json:"classification,omitempty"`
+	BatchID             *string                       `json:"batch_id,omitempty"`
+	MetricTag           *string                       `json:"metric_tag,omitempty"`
+	Barcode             *string                       `json:"barcode,omitempty"`
+	PackagingType       *string                       `json:"packaging_type,omitempty"`
 	Unit                string                        `json:"unit" validate:"required"`
 	MOQ                 int                           `json:"moq" validate:"required,min=1"`
 	PriceCents          int                           `json:"price_cents" validate:"required,min=0"`
@@ -182,6 +186,10 @@ type updateProductRequest struct {
 	Usage               *[]string                      `json:"usage,omitempty"`
 	Strain              *string                        `json:"strain,omitempty"`
 	Classification      *string                        `json:"classification,omitempty"`
+	BatchID             *string                        `json:"batch_id,omitempty"`
+	MetricTag           *string                        `json:"metric_tag,omitempty"`
+	Barcode             *string                        `json:"barcode,omitempty"`
+	PackagingType       *string                        `json:"packaging_type,omitempty"`
 	Unit                *string                        `json:"unit,omitempty"`
 	MOQ                 *int                           `json:"moq,omitempty" validate:"omitempty,min=1"`
 	PriceCents          *int                           `json:"price_cents,omitempty" validate:"omitempty,min=0"`
@@ -195,6 +203,17 @@ type updateProductRequest struct {
 	VolumeDiscounts     *[]updateVolumeDiscountRequest `json:"volume_discounts,omitempty"`
 	CoaMediaID          *string                        `json:"coa_media_id,omitempty"`
 	MaxQty              *int                           `json:"max_qty,omitempty" validate:"omitempty,min=0"`
+}
+
+type updateInventoryRequest struct {
+	AvailableQty      *int `json:"available_qty,omitempty" validate:"omitempty,min=0"`
+	ReservedQty       *int `json:"reserved_qty,omitempty" validate:"omitempty,min=0"`
+	LowStockThreshold *int `json:"low_stock_threshold,omitempty" validate:"omitempty,min=0"`
+}
+
+type updateVolumeDiscountRequest struct {
+	MinQty          int     `json:"min_qty" validate:"required,min=1"`
+	DiscountPercent float64 `json:"discount_percent" validate:"required,gte=0,lte=100"`
 }
 
 func (r updateProductRequest) toUpdateInput() (productsvc.UpdateProductInput, error) {
@@ -258,6 +277,18 @@ func (r updateProductRequest) toUpdateInput() (productsvc.UpdateProductInput, er
 		}
 		input.Classification = &parsed
 	}
+	if r.BatchID != nil {
+		input.BatchID = nonEmptyStringPtr(strings.TrimSpace(*r.BatchID))
+	}
+	if r.MetricTag != nil {
+		input.MetricTag = nonEmptyStringPtr(strings.TrimSpace(*r.MetricTag))
+	}
+	if r.Barcode != nil {
+		input.Barcode = nonEmptyStringPtr(strings.TrimSpace(*r.Barcode))
+	}
+	if r.PackagingType != nil {
+		input.PackagingType = nonEmptyStringPtr(strings.TrimSpace(*r.PackagingType))
+	}
 	if r.Unit != nil {
 		parsed, err := enums.ParseProductUnit(strings.TrimSpace(*r.Unit))
 		if err != nil {
@@ -319,6 +350,8 @@ func (r updateProductRequest) toUpdateInput() (productsvc.UpdateProductInput, er
 		}
 		input.VolumeDiscounts = &tiers
 	}
+
+	input.PackagingType = r.PackagingType
 
 	if r.CoaMediaID != nil {
 		coaID, err := parseOptionalUUID(r.CoaMediaID)
@@ -598,17 +631,6 @@ func VendorProductList(svc productsvc.Service, logg *logger.Logger) http.Handler
 	}
 }
 
-type updateInventoryRequest struct {
-	AvailableQty      *int `json:"available_qty,omitempty" validate:"omitempty,min=0"`
-	ReservedQty       *int `json:"reserved_qty,omitempty" validate:"omitempty,min=0"`
-	LowStockThreshold *int `json:"low_stock_threshold,omitempty" validate:"omitempty,min=0"`
-}
-
-type updateVolumeDiscountRequest struct {
-	MinQty          int     `json:"min_qty" validate:"required,min=1"`
-	DiscountPercent float64 `json:"discount_percent" validate:"required,gte=0,lte=100"`
-}
-
 func (r createProductRequest) toCreateInput() (productsvc.CreateProductInput, error) {
 	category, err := enums.ParseProductCategory(strings.TrimSpace(r.Category))
 	if err != nil {
@@ -668,11 +690,31 @@ func (r createProductRequest) toCreateInput() (productsvc.CreateProductInput, er
 		isFeatured = *r.IsFeatured
 	}
 
+	batchID := (*string)(nil)
+	if r.BatchID != nil {
+		batchID = nonEmptyStringPtr(strings.TrimSpace(*r.BatchID))
+	}
+	metricTag := (*string)(nil)
+	if r.MetricTag != nil {
+		metricTag = nonEmptyStringPtr(strings.TrimSpace(*r.MetricTag))
+	}
+	barcode := (*string)(nil)
+	if r.Barcode != nil {
+		barcode = nonEmptyStringPtr(strings.TrimSpace(*r.Barcode))
+	}
+	packagingTypeCopy := (*string)(nil)
+	if r.PackagingType != nil {
+		packagingTypeCopy = nonEmptyStringPtr(strings.TrimSpace(*r.PackagingType))
+	}
+
 	return productsvc.CreateProductInput{
 		SKU:                 strings.TrimSpace(r.SKU),
 		Title:               strings.TrimSpace(r.Title),
 		Subtitle:            r.Subtitle,
 		BodyHTML:            r.BodyHTML,
+		BatchID:             batchID,
+		MetricTag:           metricTag,
+		Barcode:             barcode,
 		Category:            category,
 		Feelings:            feelings,
 		Flavors:             flavors,
@@ -696,6 +738,7 @@ func (r createProductRequest) toCreateInput() (productsvc.CreateProductInput, er
 		VolumeDiscounts: discounts,
 		COAMediaID:      coaID,
 		MaxQty:          intValue(r.MaxQty),
+		PackagingType:   packagingTypeCopy,
 	}, nil
 }
 
@@ -855,4 +898,11 @@ func intValue(ptr *int) int {
 		return 0
 	}
 	return *ptr
+}
+
+func nonEmptyStringPtr(value string) *string {
+	if strings.TrimSpace(value) == "" {
+		return nil
+	}
+	return &value
 }

@@ -1,0 +1,13 @@
+-- +goose Up
+ALTER TABLE IF EXISTS products
+  ADD COLUMN IF NOT EXISTS batch_id TEXT NULL,
+  ADD COLUMN IF NOT EXISTS metric_tag TEXT NULL,
+  ADD COLUMN IF NOT EXISTS barcode TEXT NULL,
+  ADD COLUMN IF NOT EXISTS packaging_type TEXT NULL;
+
+-- +goose Down
+ALTER TABLE IF EXISTS products
+  DROP COLUMN IF EXISTS packaging_type,
+  DROP COLUMN IF EXISTS barcode,
+  DROP COLUMN IF EXISTS metric_tag,
+  DROP COLUMN IF EXISTS batch_id;

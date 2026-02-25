@@ -30,6 +30,9 @@ type CreateProductInput struct {
 	Title               string
 	Subtitle            *string
 	BodyHTML            *string
+	BatchID             *string
+	MetricTag           *string
+	Barcode             *string
 	Category            enums.ProductCategory
 	Feelings            []string
 	Flavors             []string
@@ -49,6 +52,7 @@ type CreateProductInput struct {
 	VolumeDiscounts     []VolumeDiscountInput
 	MaxQty              int
 	COAMediaID          *uuid.UUID
+	PackagingType       *string
 }
 
 // InventoryInput captures the starting quantity for a product.
@@ -166,6 +170,9 @@ func (s *service) CreateProduct(ctx context.Context, userID, storeID uuid.UUID, 
 			Title:               input.Title,
 			Subtitle:            input.Subtitle,
 			BodyHTML:            input.BodyHTML,
+			BatchID:             input.BatchID,
+			MetricTag:           input.MetricTag,
+			Barcode:             input.Barcode,
 			Category:            input.Category,
 			Feelings:            input.Feelings,
 			Flavors:             input.Flavors,
@@ -181,6 +188,7 @@ func (s *service) CreateProduct(ctx context.Context, userID, storeID uuid.UUID, 
 			THCPercent:          input.THCPercent,
 			CBDPercent:          input.CBDPercent,
 			MaxQty:              input.MaxQty,
+			PackagingType:       input.PackagingType,
 			COAMediaID:          input.COAMediaID,
 			COAAdded:            input.COAMediaID != nil,
 		}
@@ -271,6 +279,10 @@ type UpdateProductInput struct {
 	MaxQty              *int
 	COAMediaID          *uuid.UUID
 	COAMediaIDSet       bool
+	BatchID             *string
+	MetricTag           *string
+	Barcode             *string
+	PackagingType       *string
 }
 
 // UpdateProduct updates an existing product and related rows.
@@ -303,6 +315,13 @@ func (s *service) UpdateProduct(ctx context.Context, userID, storeID, productID 
 	}
 	if input.MediaIDs != nil {
 		fmt.Printf("[UpdateProduct] input.MediaIDs count=%d\n", len(*input.MediaIDs))
+	}
+
+	if input.MetricTag != nil {
+		fmt.Printf("[UpdateProduct] input.MetricTag text=%s\n", *input.MetricTag)
+	}
+	if input.BatchID != nil {
+		fmt.Printf("[UpdateProduct] input.BatchID text=%s\n", *input.BatchID)
 	}
 
 	if input.Inventory != nil && input.Inventory.ReservedQty > input.Inventory.AvailableQty {
@@ -694,6 +713,15 @@ func applyUpdateToProduct(product *models.Product, input UpdateProductInput) {
 	if input.BodyHTML != nil {
 		product.BodyHTML = input.BodyHTML
 	}
+	if input.BatchID != nil {
+		product.BatchID = nonEmptyStringPtr(strings.TrimSpace(*input.BatchID))
+	}
+	if input.MetricTag != nil {
+		product.MetricTag = nonEmptyStringPtr(strings.TrimSpace(*input.MetricTag))
+	}
+	if input.Barcode != nil {
+		product.Barcode = nonEmptyStringPtr(strings.TrimSpace(*input.Barcode))
+	}
 	if input.Category != nil {
 		product.Category = *input.Category
 	}
@@ -738,6 +766,9 @@ func applyUpdateToProduct(product *models.Product, input UpdateProductInput) {
 	}
 	if input.MaxQty != nil {
 		product.MaxQty = *input.MaxQty
+	}
+	if input.PackagingType != nil {
+		product.PackagingType = input.PackagingType
 	}
 }
 

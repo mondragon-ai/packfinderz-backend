@@ -14,6 +14,9 @@ type ProductDTO struct {
 	Title               string              `json:"title"`
 	Subtitle            *string             `json:"subtitle,omitempty"`
 	BodyHTML            *string             `json:"body_html,omitempty"`
+	BatchID             *string             `json:"batch_id,omitempty"`
+	MetricTag           *string             `json:"metric_tag,omitempty"`
+	Barcode             *string             `json:"barcode,omitempty"`
 	Category            string              `json:"category"`
 	Feelings            []string            `json:"feelings"`
 	Flavors             []string            `json:"flavors"`
@@ -37,6 +40,41 @@ type ProductDTO struct {
 	MaxQty              int                 `json:"max_qty"`
 	CreatedAt           time.Time           `json:"created_at"`
 	UpdatedAt           time.Time           `json:"updated_at"`
+	PackagingType       *string             `json:"packaging_type"`
+}
+
+// InventoryDTO exposes inventory counts.
+type InventoryDTO struct {
+	AvailableQty      int       `json:"available_qty"`
+	ReservedQty       int       `json:"reserved_qty"`
+	UpdatedAt         time.Time `json:"updated_at"`
+	LowStockThreshold int       `json:"low_stock_threshold"`
+}
+
+// VolumeDiscountDTO represents a tiered unit price.
+type VolumeDiscountDTO struct {
+	ID              uuid.UUID `json:"id"`
+	MinQty          int       `json:"min_qty"`
+	DiscountPercent float64   `json:"discount_percent"`
+	CreatedAt       time.Time `json:"created_at"`
+}
+
+// ProductMediaDTO captures product media metadata.
+type ProductMediaDTO struct {
+	ID        uuid.UUID  `json:"id"`
+	URL       *string    `json:"url,omitempty"`
+	GCSKey    string     `json:"gcs_key"`
+	MediaID   *uuid.UUID `json:"media_id,omitempty"`
+	Position  int        `json:"position"`
+	CreatedAt time.Time  `json:"created_at"`
+}
+
+// VendorSummaryDTO surfaces limited store data for product responses.
+type VendorSummaryDTO struct {
+	StoreID     uuid.UUID  `json:"store_id"`
+	CompanyName string     `json:"company_name"`
+	LogoMediaID *uuid.UUID `json:"logo_media_id,omitempty"`
+	LogoGCSKey  *string    `json:"logo_gcs_key,omitempty"`
 }
 
 // CONSIDER ADDING:
@@ -83,40 +121,6 @@ type ProductPagination struct {
 type ProductListResult struct {
 	Products   []ProductSummary  `json:"products"`
 	Pagination ProductPagination `json:"pagination"`
-}
-
-// InventoryDTO exposes inventory counts.
-type InventoryDTO struct {
-	AvailableQty      int       `json:"available_qty"`
-	ReservedQty       int       `json:"reserved_qty"`
-	UpdatedAt         time.Time `json:"updated_at"`
-	LowStockThreshold int       `json:"low_stock_threshold"`
-}
-
-// VolumeDiscountDTO represents a tiered unit price.
-type VolumeDiscountDTO struct {
-	ID              uuid.UUID `json:"id"`
-	MinQty          int       `json:"min_qty"`
-	DiscountPercent float64   `json:"discount_percent"`
-	CreatedAt       time.Time `json:"created_at"`
-}
-
-// ProductMediaDTO captures product media metadata.
-type ProductMediaDTO struct {
-	ID        uuid.UUID  `json:"id"`
-	URL       *string    `json:"url,omitempty"`
-	GCSKey    string     `json:"gcs_key"`
-	MediaID   *uuid.UUID `json:"media_id,omitempty"`
-	Position  int        `json:"position"`
-	CreatedAt time.Time  `json:"created_at"`
-}
-
-// VendorSummaryDTO surfaces limited store data for product responses.
-type VendorSummaryDTO struct {
-	StoreID     uuid.UUID  `json:"store_id"`
-	CompanyName string     `json:"company_name"`
-	LogoMediaID *uuid.UUID `json:"logo_media_id,omitempty"`
-	LogoGCSKey  *string    `json:"logo_gcs_key,omitempty"`
 }
 
 // NewProductDTO builds a DTO from the persisted model and vendor summary.
@@ -184,6 +188,10 @@ func NewProductDTO(product *models.Product, summary *VendorSummary) *ProductDTO 
 		}
 	}
 	dto.COAMediaID = product.COAMediaID
+	dto.PackagingType = product.PackagingType
+	dto.Barcode = product.Barcode
+	dto.BatchID = product.BatchID
+	dto.MetricTag = product.MetricTag
 
 	if summary != nil {
 		dto.Vendor = VendorSummaryDTO{
