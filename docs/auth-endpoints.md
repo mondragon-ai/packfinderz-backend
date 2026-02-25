@@ -1348,7 +1348,7 @@ curl -G "{{API_BASE_URL}}/api/v1/products" \
 ```
 
 ### GET /api/v1/vendor/products
-Vendor users hit this endpoint to list only their store’s catalog. It reuses the same `ProductSummary` DTO/Pagination result and filter syntax as `GET /api/v1/products` but constrains the query to `store_id = activeStoreId`, so every response includes listings the vendor actually owns even if the `state` query parameter differs. The handler enforces the vendor store context and the same role guard as the other vendor routes.
+Vendor users hit this endpoint to list only their store’s catalog. It reuses the same `ProductSummary` DTO/Pagination result and filter syntax as `GET /api/v1/products` but constrains the query to `store_id = activeStoreId`, so every response includes listings the vendor actually owns even if the `state` query parameter differs. The handler enforces the vendor store context and the same role guard as the other vendor routes. Each summary includes an optional `inventory` object with `available_qty`, `reserved_qty`, `low_stock_threshold`, and `updated_at`, giving vendors the counts they need to manage stock on this page.
 
 #### Query parameters
 - All filters listed above are supported (`limit`, `cursor`, `category`, `classification`, `price_*`, `thc_*`, `cbd_*`, `has_promo`, `q`) plus `state` (ignored for result scoping but still accepted for parity).

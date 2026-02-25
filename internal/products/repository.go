@@ -355,7 +355,13 @@ func (r *Repository) ListProductSummaries(ctx context.Context, query productList
 			"p.max_qty",
 			promoExistsClause + " AS has_promo",
 			"pm_thumb.thumbnail_url AS thumbnail_url",
+			"inv.available_qty AS inventory_available",
+			"inv.reserved_qty AS inventory_reserved",
+			"inv.low_stock_threshold AS inventory_low_stock",
+			"inv.updated_at AS inventory_updated_at",
+			"inv.low_stock_threshold AS inventory_low_stock_threshold",
 		}, ", ")).
+		Joins("LEFT JOIN inventory_items inv ON inv.product_id = p.id").
 		Joins(`LEFT JOIN LATERAL (
   SELECT COALESCE(pm.url, m.public_url) AS thumbnail_url
   FROM product_media pm
@@ -448,6 +454,10 @@ type productSummaryRecord struct {
 	UpdatedAt           time.Time
 	ThumbnailURL        sql.NullString
 	MaxQty              int
+	InventoryAvailable  sql.NullInt64
+	InventoryReserved   sql.NullInt64
+	InventoryUpdatedAt  sql.NullTime
+	InventoryLowStock   sql.NullInt64
 }
 
 func (r productSummaryRecord) toSummary() ProductSummary {
@@ -471,6 +481,7 @@ func (r productSummaryRecord) toSummary() ProductSummary {
 		UpdatedAt:           r.UpdatedAt,
 		ThumbnailURL:        nullStringPtr(r.ThumbnailURL),
 		MaxQty:              r.MaxQty,
+		Inventory:           r.inventoryDTO(),
 	}
 }
 
@@ -488,6 +499,26 @@ func nullIntPtr(value sql.NullInt64) *int {
 	}
 	v := int(value.Int64)
 	return &v
+}
+
+func (r productSummaryRecord) inventoryDTO() *InventoryDTO {
+	if !r.InventoryAvailable.Valid && !r.InventoryReserved.Valid && !r.InventoryUpdatedAt.Valid && !r.InventoryLowStock.Valid {
+		return nil
+	}
+	dto := &InventoryDTO{}
+	if r.InventoryAvailable.Valid {
+		dto.AvailableQty = int(r.InventoryAvailable.Int64)
+	}
+	if r.InventoryReserved.Valid {
+		dto.ReservedQty = int(r.InventoryReserved.Int64)
+	}
+	if r.InventoryLowStock.Valid {
+		dto.LowStockThreshold = int(r.InventoryLowStock.Int64)
+	}
+	if r.InventoryUpdatedAt.Valid {
+		dto.UpdatedAt = r.InventoryUpdatedAt.Time
+	}
+	return dto
 }
 
 func nullFloatPtr(value sql.NullFloat64) *float64 {

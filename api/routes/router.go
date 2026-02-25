@@ -163,6 +163,7 @@ func NewRouter(
 				r.Post("/products", controllers.VendorCreateProduct(productService, logg))
 				r.Patch("/products/{productId}", controllers.VendorUpdateProduct(productService, logg))
 				r.Delete("/products/{productId}", controllers.VendorDeleteProduct(productService, logg))
+
 				r.Get("/billing/charges", billingcontrollers.VendorBillingCharges(billingService, logg))
 				r.Route("/payment-methods", func(r chi.Router) {
 					r.Use(middleware.RequireStoreRoles(membershipChecker, logg, vendorBillingRoles...))
@@ -172,8 +173,10 @@ func NewRouter(
 					r.Get("/", billingcontrollers.VendorBillingPlansList(billingPlanService, logg))
 					r.Get("/{planId}", billingcontrollers.VendorBillingPlanDetail(billingPlanService, logg))
 				})
+
 				r.Post("/orders/{orderId}/decision", ordercontrollers.VendorOrderDecision(ordersSvc, logg))
 				r.Post("/orders/{orderId}/line-items/decision", ordercontrollers.VendorLineItemDecision(ordersSvc, logg))
+
 				r.Route("/subscriptions", func(r chi.Router) {
 					r.Use(middleware.RequireStoreRoles(membershipChecker, logg, vendorBillingRoles...))
 					r.Post("/", subscriptionControllers.VendorSubscriptionCreate(subscriptionsService, logg))
@@ -183,9 +186,11 @@ func NewRouter(
 					r.Get("/", subscriptionControllers.VendorSubscriptionFetch(subscriptionsService, logg))
 				})
 			})
+
 			r.Route("/v1/analytics", func(r chi.Router) {
 				r.Get("/marketplace", analysiscontrollers.MarketplaceAnalytics(analyticsService, logg))
 			})
+
 			r.Route("/v1/stores", func(r chi.Router) {
 				r.Get("/me", controllers.StoreProfile(storeService, logg))
 				r.Put("/me", controllers.StoreUpdate(storeService, logg))
@@ -193,33 +198,40 @@ func NewRouter(
 				r.Post("/me/users/invite", controllers.StoreInvite(storeService, logg))
 				r.Delete("/me/users/{userId}", controllers.StoreRemoveUser(storeService, logg))
 			})
+
 			r.Route("/v1/media", func(r chi.Router) {
 				r.Get("/", controllers.MediaList(mediaService, logg))
 				r.Post("/presign", controllers.MediaPresign(mediaService, logg))
 				r.Delete("/{mediaId}", controllers.MediaDelete(mediaService, logg))
 			})
+
 			r.Route("/v1/licenses", func(r chi.Router) {
 				r.Get("/", controllers.LicenseList(licenseService, logg))
 				r.Post("/", controllers.LicenseCreate(licenseService, logg))
 				r.Delete("/{licenseId}", controllers.LicenseDelete(licenseService, logg))
 			})
+
 			r.Route("/v1/notifications", func(r chi.Router) {
 				r.Get("/", controllers.ListNotifications(notificationsService, logg))
 				r.Post("/{notificationId}/read", controllers.MarkNotificationRead(notificationsService, logg))
 				r.Post("/read-all", controllers.MarkAllNotificationsRead(notificationsService, logg))
 			})
+
 			r.Route("/v1/wishlist", func(r chi.Router) {
 				r.Get("/", controllers.WishlistList(wishlistService, logg))
 				r.Get("/ids", controllers.WishlistIDs(wishlistService, logg))
 				r.Post("/items", controllers.WishlistAddItem(wishlistService, logg))
 				r.Delete("/items/{productId}", controllers.WishlistRemoveItem(wishlistService, logg))
 			})
+
 			r.Get("/v1/products", controllers.BrowseProducts(productService, storeService, logg))
 			r.Get("/v1/products/{productId}", controllers.ProductDetail(productService, logg))
+
 			r.Route("/v1/cart", func(r chi.Router) {
 				r.Get("/", cartcontrollers.CartFetch(cartService, logg))
 				r.Post("/", cartcontrollers.CartQuote(cartService, logg))
 			})
+
 			r.Route("/v1/orders", func(r chi.Router) {
 				r.Get("/", ordercontrollers.List(ordersRepo, logg))
 				r.Get("/{orderId}", ordercontrollers.Detail(ordersRepo, logg))
@@ -227,6 +239,7 @@ func NewRouter(
 				r.Post("/{orderId}/nudge", ordercontrollers.NudgeVendor(ordersSvc, logg))
 				r.Post("/{orderId}/retry", ordercontrollers.RetryOrder(ordersSvc, logg))
 			})
+
 			r.Post("/v1/checkout", controllers.Checkout(checkoutService, storeService, logg))
 			r.Get("/v1/checkout/{identifier}/confirmation", controllers.CheckoutConfirmation(checkoutRepo, storeService, logg))
 		})

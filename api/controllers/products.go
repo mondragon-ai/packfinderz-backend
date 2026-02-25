@@ -486,9 +486,9 @@ func BrowseProducts(svc productsvc.Service, storeSvc stores.Service, logg *logge
 			},
 			Page: page,
 		}
-		if storeType != enums.StoreTypeBuyer {
-			input.RequestedState = ""
-		}
+		// if storeType != enums.StoreTypeBuyer {
+		// 	input.RequestedState = ""
+		// }
 
 		list, err := svc.ListProducts(r.Context(), input)
 		if err != nil {

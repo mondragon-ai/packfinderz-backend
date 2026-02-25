@@ -476,17 +476,15 @@ func (s *service) ListProducts(ctx context.Context, input ListProductsInput) (*P
 			Page:           page,
 		})
 	case enums.StoreTypeVendor:
-		requested := strings.TrimSpace(input.RequestedState)
-		if requested == "" {
-			return nil, pkgerrors.New(pkgerrors.CodeValidation, "state is required")
+		if err := s.ensureVendorStore(ctx, input.StoreID); err != nil {
+			return nil, err
 		}
 		vendorID := input.StoreID
 		return s.repo.ListProductSummaries(ctx, productListQuery{
-			Pagination:     input.Pagination,
-			Filters:        input.Filters,
-			VendorStoreID:  &vendorID,
-			RequestedState: requested,
-			Page:           page,
+			Pagination:    input.Pagination,
+			Filters:       input.Filters,
+			VendorStoreID: &vendorID,
+			Page:          page,
 		})
 	default:
 		return nil, pkgerrors.New(pkgerrors.CodeForbidden, "unsupported store type")
@@ -536,6 +534,7 @@ func (s *service) GetProductDetail(ctx context.Context, storeID uuid.UUID, store
 
 	return s.newProductDTO(ctx, product, summary)
 }
+
 func (s *service) newProductDTO(ctx context.Context, product *models.Product, summary *VendorSummary) (*ProductDTO, error) {
 	dto := NewProductDTO(product, summary)
 

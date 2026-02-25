@@ -46,25 +46,26 @@ type ProductDTO struct {
 
 // ProductSummary captures the lightweight product payload returned by listing endpoints.
 type ProductSummary struct {
-	ID                  uuid.UUID `json:"id"`
-	SKU                 string    `json:"sku"`
-	Title               string    `json:"title"`
-	Subtitle            *string   `json:"subtitle,omitempty"`
-	Category            string    `json:"category"`
-	Classification      *string   `json:"classification,omitempty"`
-	Unit                string    `json:"unit"`
-	MOQ                 int       `json:"moq"`
-	PriceCents          int       `json:"price_cents"`
-	CompareAtPriceCents *int      `json:"compare_at_price_cents,omitempty"`
-	THCPercent          *float64  `json:"thc_percent,omitempty"`
-	CBDPercent          *float64  `json:"cbd_percent,omitempty"`
-	HasPromo            bool      `json:"has_promo"`
-	VendorStoreID       uuid.UUID `json:"vendor_store_id"`
-	COAAdded            bool      `json:"coa_added"`
-	CreatedAt           time.Time `json:"created_at"`
-	UpdatedAt           time.Time `json:"updated_at"`
-	MaxQty              int       `json:"max_qty"`
-	ThumbnailURL        *string   `json:"thumbnail_url,omitempty"`
+	ID                  uuid.UUID     `json:"id"`
+	SKU                 string        `json:"sku"`
+	Title               string        `json:"title"`
+	Subtitle            *string       `json:"subtitle,omitempty"`
+	Category            string        `json:"category"`
+	Classification      *string       `json:"classification,omitempty"`
+	Unit                string        `json:"unit"`
+	MOQ                 int           `json:"moq"`
+	PriceCents          int           `json:"price_cents"`
+	CompareAtPriceCents *int          `json:"compare_at_price_cents,omitempty"`
+	THCPercent          *float64      `json:"thc_percent,omitempty"`
+	CBDPercent          *float64      `json:"cbd_percent,omitempty"`
+	HasPromo            bool          `json:"has_promo"`
+	VendorStoreID       uuid.UUID     `json:"vendor_store_id"`
+	COAAdded            bool          `json:"coa_added"`
+	CreatedAt           time.Time     `json:"created_at"`
+	UpdatedAt           time.Time     `json:"updated_at"`
+	MaxQty              int           `json:"max_qty"`
+	ThumbnailURL        *string       `json:"thumbnail_url,omitempty"`
+	Inventory           *InventoryDTO `json:"inventory,omitempty"`
 }
 
 // ProductListResult wraps a page of product summaries plus the cursor for the next page.
