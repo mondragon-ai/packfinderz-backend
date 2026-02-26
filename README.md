@@ -299,6 +299,7 @@ Re-running the migration is safe because the statements use `CREATE EXTENSION IF
 * Ads, subscriptions
 * Outbox events
 * Reviews table backed by the `review_type` enum (values `store`, `product`) so buyer stores can rate vendor stores: captures `buyer_store_id`, `buyer_user_id`, optional `vendor_store_id`/`product_id`/`order_id`, rating (1-5), `title`, `body`, `is_verified_purchase`, `is_visible`, timestamps, and indexes on `vendor_store_id` + `created_at` for pagination.
+* `internal/reviews/service` enforces that the requesting user is an active member of the buyer store and that a qualifying delivered/closed vendor order exists before persisting a review (marking `is_verified_purchase=true` when that check passes) and exposes `ListVisibleReviews` so the storefront can page only `is_visible=true` rows with the link-style pagination metadata.
 * Audit logs
 * Google Cloud Storage (pkg/storage/gcs) verified via `/health/ready`
   * Media metadata (`media` + `media_attachments`, which tie `entity_type`/`entity_id` to `store_id` and cache `gcs_key` so usage lookups stay tenant-scoped)

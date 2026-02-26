@@ -1528,6 +1528,11 @@ type stubOrdersRepository struct {
 	createOrderCalls int
 }
 
+// HasBuyerStorePurchasedFromVendor implements [orders.Repository].
+func (s *stubOrdersRepository) HasBuyerStorePurchasedFromVendor(ctx context.Context, buyerStoreID uuid.UUID, vendorStoreID uuid.UUID) (bool, error) {
+	panic("unimplemented")
+}
+
 func newStubOrdersRepository() *stubOrdersRepository {
 	return &stubOrdersRepository{
 		vendorOrders:   make(map[uuid.UUID]*models.VendorOrder),

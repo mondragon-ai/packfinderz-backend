@@ -558,6 +558,7 @@ All enums implement:
 * `store`
 * `product`
 * Drives `reviews.review_type` so the persistence layer can distinguish vendor-store vs. product feedback while services remain agnostic to the underlying enum.
+* `internal/reviews/service` enforces buyer memberships + qualifying delivered/closed vendor orders before marking `is_verified_purchase=true` and persisting a review, and it exposes `ListVisibleReviews` so storefront pages paginate only `is_visible=true` rows using the shared `Page/Total/Current/First/Last/Prev/Next` metadata.
 
 ---
 

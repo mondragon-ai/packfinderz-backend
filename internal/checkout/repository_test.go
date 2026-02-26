@@ -115,6 +115,11 @@ type stubOrdersRepo struct {
 	vendorOrders map[uuid.UUID][]models.VendorOrder
 }
 
+// HasBuyerStorePurchasedFromVendor implements [orders.Repository].
+func (s *stubOrdersRepo) HasBuyerStorePurchasedFromVendor(ctx context.Context, buyerStoreID uuid.UUID, vendorStoreID uuid.UUID) (bool, error) {
+	panic("unimplemented")
+}
+
 func (s *stubOrdersRepo) WithTx(tx *gorm.DB) orders.Repository {
 	return s
 }

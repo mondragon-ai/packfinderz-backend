@@ -285,6 +285,11 @@ type stubOrdersRepo struct {
 	detail        func(ctx context.Context, orderID uuid.UUID) (*ordersrepo.OrderDetail, error)
 }
 
+// HasBuyerStorePurchasedFromVendor implements [orders.Repository].
+func (s *stubOrdersRepo) HasBuyerStorePurchasedFromVendor(ctx context.Context, buyerStoreID uuid.UUID, vendorStoreID uuid.UUID) (bool, error) {
+	panic("unimplemented")
+}
+
 func (s *stubOrdersRepo) FindVendorOrderByCheckoutGroupAndVendor(ctx context.Context, checkoutGroupID uuid.UUID, vendorStoreID uuid.UUID) (*models.VendorOrder, error) {
 	panic("unimplemented")
 }

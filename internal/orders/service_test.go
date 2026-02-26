@@ -33,6 +33,11 @@ type stubOrdersRepo struct {
 	updatePaymentIntent  func(ctx context.Context, orderID uuid.UUID, updates map[string]any) error
 }
 
+// HasBuyerStorePurchasedFromVendor implements [Repository].
+func (s *stubOrdersRepo) HasBuyerStorePurchasedFromVendor(ctx context.Context, buyerStoreID uuid.UUID, vendorStoreID uuid.UUID) (bool, error) {
+	panic("unimplemented")
+}
+
 // FindVendorOrderByCheckoutGroupAndVendor implements [Repository].
 func (s *stubOrdersRepo) FindVendorOrderByCheckoutGroupAndVendor(ctx context.Context, checkoutGroupID uuid.UUID, vendorStoreID uuid.UUID) (*models.VendorOrder, error) {
 	panic("unimplemented")

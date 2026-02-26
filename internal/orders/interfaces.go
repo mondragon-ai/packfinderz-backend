@@ -35,4 +35,5 @@ type Repository interface {
 	UpdateVendorOrder(ctx context.Context, orderID uuid.UUID, updates map[string]any) error
 	UpdatePaymentIntent(ctx context.Context, orderID uuid.UUID, updates map[string]any) error
 	UpdateOrderAssignment(ctx context.Context, assignmentID uuid.UUID, updates map[string]any) error
+	HasBuyerStorePurchasedFromVendor(ctx context.Context, buyerStoreID, vendorStoreID uuid.UUID) (bool, error)
 }

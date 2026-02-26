@@ -27,6 +27,11 @@ type stubControllerOrdersRepo struct {
 	detail     func(ctx context.Context, orderID uuid.UUID) (*internalorders.OrderDetail, error)
 }
 
+// HasBuyerStorePurchasedFromVendor implements [orders.Repository].
+func (s *stubControllerOrdersRepo) HasBuyerStorePurchasedFromVendor(ctx context.Context, buyerStoreID uuid.UUID, vendorStoreID uuid.UUID) (bool, error) {
+	panic("unimplemented")
+}
+
 // FindVendorOrderByCheckoutGroupAndVendor implements [orders.Repository].
 func (s *stubControllerOrdersRepo) FindVendorOrderByCheckoutGroupAndVendor(ctx context.Context, checkoutGroupID uuid.UUID, vendorStoreID uuid.UUID) (*models.VendorOrder, error) {
 	panic("unimplemented")

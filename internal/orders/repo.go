@@ -16,6 +16,17 @@ type repository struct {
 	db *gorm.DB
 }
 
+var completedVendorOrderStatuses = []enums.VendorOrderStatus{
+	enums.VendorOrderStatusDelivered,
+	enums.VendorOrderStatusClosed,
+	enums.VendorOrderStatusCreatedPending,
+	enums.VendorOrderStatusAccepted,
+	enums.VendorOrderStatusCanceled,
+	enums.VendorOrderStatusExpired,
+	enums.VendorOrderStatusHoldForPickup,
+	enums.VendorOrderStatusRejected,
+}
+
 // NewRepository builds an orders repository bound to the provided DB.
 func NewRepository(db *gorm.DB) Repository {
 	return &repository{db: db}
@@ -121,6 +132,18 @@ func (r *repository) FindVendorOrder(ctx context.Context, orderID uuid.UUID) (*m
 		return nil, err
 	}
 	return &order, nil
+}
+
+func (r *repository) HasBuyerStorePurchasedFromVendor(ctx context.Context, buyerStoreID, vendorStoreID uuid.UUID) (bool, error) {
+	var count int64
+	err := r.db.WithContext(ctx).
+		Model(&models.VendorOrder{}).
+		Where("buyer_store_id = ? AND vendor_store_id = ? AND status IN ?", buyerStoreID, vendorStoreID, completedVendorOrderStatuses).
+		Count(&count).Error
+	if err != nil {
+		return false, err
+	}
+	return count > 0, nil
 }
 
 func (r *repository) FindPendingOrdersBefore(ctx context.Context, cutoff time.Time) ([]models.VendorOrder, error) {
