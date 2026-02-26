@@ -133,6 +133,69 @@ Response body:
 }
 ```
 
+## Analytics
+
+`/api/v1/analytics` lives inside the `/api` group, so every route needs `Authorization: Bearer {{ACCESS_TOKEN}}` and runs through `middleware.StoreContext`. The middleware populates `store_id` + `store_type` from the JWT (HTTP 403 if either claim is missing), letting the handler automatically scope BigQuery filters to the active vendor or buyer store.
+
+### `GET /api/v1/analytics/marketplace`
+
+Returns marketplace KPIs grouped by the active store. Query parameters follow the analytics controller helpers:
+
+- `preset` – optional string (`7d`, `30d`, `90d`); defaults to `30d` if absent.
+- `from` / `to` – RFC3339 timestamps that must be provided together; specifying them overrides the preset.
+
+```bash
+curl -G "{{API_BASE_URL}}/api/v1/analytics/marketplace" \
+  -H "Authorization: Bearer {{ACCESS_TOKEN}}" \
+  --data-urlencode "preset=30d"
+```
+
+Response payload mirrors `internal/analytics/types.MarketplaceQueryResponse`:
+
+```json
+{
+  "data": {
+    "orders": [
+      { "date": "2025-01-01", "value": 42 },
+      { "date": "2025-01-02", "value": 38 }
+    ],
+    "gross_revenue": [
+      { "date": "2025-01-01", "value": 125000 },
+      { "date": "2025-01-02", "value": 112000 }
+    ],
+    "discounts": [
+      { "date": "2025-01-01", "value": 5200 },
+      { "date": "2025-01-02", "value": 4300 }
+    ],
+    "net_revenue": [
+      { "date": "2025-01-01", "value": 119800 },
+      { "date": "2025-01-02", "value": 107700 }
+    ],
+    "top_products": [
+      { "label": "product-123", "value": 55000 },
+      { "label": "product-456", "value": 42000 }
+    ],
+    "top_categories": [
+      { "label": "beverages", "value": 72000 },
+      { "label": "snacks", "value": 38000 }
+    ],
+    "top_classifications": [
+      { "label": "flower", "value": 52000 },
+      { "label": "edibles", "value": 21000 }
+    ],
+    "top_zips": [
+      { "label": "94103", "value": 82000 },
+      { "label": "94105", "value": 61000 }
+    ],
+    "aov": 110.75,
+    "new_customers": 7,
+    "returning_customers": 3
+  }
+}
+```
+
+`orders`, `gross_revenue`, `discounts`, and `net_revenue` are time-series slices (`date` + `value`), `top_products`, `top_categories`, `top_classifications`, and `top_zips` list the top label revenue in cents, and `aov`/customer counts summarize aggregate performance. Absent revenue or buyers yield zeroed fields instead of `null`.
+
 ## Stores
 
 Routes under `/api/v1/stores` require the standard `/api` auth + store context guards. `middleware.StoreContext` extracts the buyer or vendor store ID from the token, so only requests backed by an `activeStoreId` can reach these handlers.

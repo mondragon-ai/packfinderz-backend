@@ -35,6 +35,7 @@ type MarketplaceQueryResponse struct {
 	TopProducts        []LabelValue      `json:"top_products"`
 	TopCategories      []LabelValue      `json:"top_categories"`
 	TopZIPs            []LabelValue      `json:"top_zips"`
+	TopClassifications []LabelValue      `json:"top_classifications"`
 	AOV                float64           `json:"aov"`
 	NewCustomers       int64             `json:"new_customers"`
 	ReturningCustomers int64             `json:"returning_customers"`

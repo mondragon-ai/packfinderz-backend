@@ -53,12 +53,18 @@ func presetDuration(value string) (time.Duration, bool) {
 		value = "30d"
 	}
 	switch strings.ToLower(value) {
+	case "1d":
+		return 1 * 24 * time.Hour, true
 	case "7d":
 		return 7 * 24 * time.Hour, true
 	case "30d":
 		return 30 * 24 * time.Hour, true
 	case "90d":
 		return 90 * 24 * time.Hour, true
+	case "1m":
+		return 180 * 24 * time.Hour, true
+	case "1y":
+		return 365 * 24 * time.Hour, true
 	default:
 		return 0, false
 	}

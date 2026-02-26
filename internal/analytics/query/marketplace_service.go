@@ -12,54 +12,56 @@ import (
 	"google.golang.org/api/iterator"
 )
 
+// const (
+// 	timeSeriesOrdersSQL = `
+// SELECT
+//   FORMAT_DATE('%%F', DATE_TRUNC(occurred_at, DAY)) AS day,
+//   COUNTIF(event_type = 'order_created') AS value
+// FROM %s
+// WHERE %s
+//   AND event_type = 'order_created'
+//   AND occurred_at BETWEEN @start AND @end
+// GROUP BY day
+// ORDER BY day ASC
+// `
+
+// 	timeSeriesRevenueSQL = `
+// SELECT
+//   FORMAT_DATE('%%F', DATE_TRUNC(occurred_at, DAY)) AS day,
+//   SUM(COALESCE(%s, 0)) AS value
+// FROM %s
+// WHERE %s
+//   AND event_type IN ('order_paid', 'cash_collected')
+//   AND occurred_at BETWEEN @start AND @end
+// GROUP BY day
+// ORDER BY day ASC
+// `
+
+// 	timeSeriesDiscountsSQL = `
+// SELECT
+//   FORMAT_DATE('%%F', DATE_TRUNC(occurred_at, DAY)) AS day,
+//   SUM(COALESCE(discounts_cents, 0)) AS value
+// FROM %s
+// WHERE %s
+//   AND event_type = 'order_created'
+//   AND occurred_at BETWEEN @start AND @end
+// GROUP BY day
+// ORDER BY day ASC
+// `
+
 const (
-	timeSeriesOrdersSQL = `
-SELECT
-  FORMAT_DATE('%%F', DATE_TRUNC(occurred_at, DAY)) AS day,
-  COUNTIF(event_type = 'order_created') AS value
-FROM %s
-WHERE %s
-  AND event_type = 'order_created'
-  AND occurred_at BETWEEN @start AND @end
-GROUP BY day
-ORDER BY day ASC
-`
-
-	timeSeriesRevenueSQL = `
-SELECT
-  FORMAT_DATE('%%F', DATE_TRUNC(occurred_at, DAY)) AS day,
-  SUM(COALESCE(%s, 0)) AS value
-FROM %s
-WHERE %s
-  AND event_type IN ('order_paid', 'cash_collected')
-  AND occurred_at BETWEEN @start AND @end
-GROUP BY day
-ORDER BY day ASC
-`
-
-	timeSeriesDiscountsSQL = `
-SELECT
-  FORMAT_DATE('%%F', DATE_TRUNC(occurred_at, DAY)) AS day,
-  SUM(COALESCE(discounts_cents, 0)) AS value
-FROM %s
-WHERE %s
-  AND event_type = 'order_created'
-  AND occurred_at BETWEEN @start AND @end
-GROUP BY day
-ORDER BY day ASC
-`
-
 	topProductsSQL = `
-SELECT label, SUM(value) AS value FROM (
+SELECT label, SUM(value) AS value
+FROM (
   SELECT
     JSON_VALUE(item, '$.product_id') AS label,
     SAFE_CAST(JSON_VALUE(item, '$.line_total_cents') AS INT64) AS value
-  FROM %s
+  FROM %s,
+  UNNEST(JSON_EXTRACT_ARRAY(items)) AS item
   WHERE %s
     AND items IS NOT NULL
     AND event_type = 'order_created'
-    AND occurred_at BETWEEN @start AND @end,
-  UNNEST(JSON_EXTRACT_ARRAY(items)) AS item
+    AND occurred_at BETWEEN @start AND @end
 )
 WHERE label IS NOT NULL
 GROUP BY label
@@ -68,16 +70,36 @@ LIMIT 5
 `
 
 	topCategoriesSQL = `
-SELECT label, SUM(value) AS value FROM (
+SELECT label, SUM(value) AS value
+FROM (
   SELECT
     JSON_VALUE(item, '$.category') AS label,
     SAFE_CAST(JSON_VALUE(item, '$.line_total_cents') AS INT64) AS value
-  FROM %s
+  FROM %s,
+  UNNEST(JSON_EXTRACT_ARRAY(items)) AS item
   WHERE %s
     AND items IS NOT NULL
     AND event_type = 'order_created'
-    AND occurred_at BETWEEN @start AND @end,
+    AND occurred_at BETWEEN @start AND @end
+)
+WHERE label IS NOT NULL
+GROUP BY label
+ORDER BY value DESC
+LIMIT 5
+`
+
+	topClassificationsSQL = `
+SELECT label, SUM(value) AS value
+FROM (
+  SELECT
+    JSON_VALUE(item, '$.classification') AS label,
+    SAFE_CAST(JSON_VALUE(item, '$.line_total_cents') AS INT64) AS value
+  FROM %s,
   UNNEST(JSON_EXTRACT_ARRAY(items)) AS item
+  WHERE %s
+    AND items IS NOT NULL
+    AND event_type = 'order_created'
+    AND occurred_at BETWEEN @start AND @end
 )
 WHERE label IS NOT NULL
 GROUP BY label
@@ -167,28 +189,50 @@ func (s *marketplaceService) Query(ctx context.Context, req types.MarketplaceQue
 	}
 	params := s.baseParams(req)
 
-	orders, err := s.querySeries(ctx, fmt.Sprintf(timeSeriesOrdersSQL, s.tableRef, storeClause), params)
+	// orders, err := s.querySeries(ctx, fmt.Sprintf(timeSeriesOrdersSQL, s.tableRef, storeClause), params)
+	// if err != nil {
+	// 	return nil, err
+	// }
+	// grossRevenue, err := s.querySeries(ctx, fmt.Sprintf(timeSeriesRevenueSQL, "gross_revenue_cents", s.tableRef, storeClause), params)
+	// if err != nil {
+	// 	return nil, err
+	// }
+	// netRevenue, err := s.querySeries(ctx, fmt.Sprintf(timeSeriesRevenueSQL, "net_revenue_cents", s.tableRef, storeClause), params)
+	// if err != nil {
+	// 	return nil, err
+	// }
+	// discounts, err := s.querySeries(ctx, fmt.Sprintf(timeSeriesDiscountsSQL, s.tableRef, storeClause), params)
+	// if err != nil {
+	// 	return nil, err
+	// }
+
+	series, err := s.queryBucketedSeries(
+		ctx,
+		s.tableRef,
+		storeClause,
+		req.Start,
+		req.End,
+		req.StoreID,
+		req.StoreType,
+	)
 	if err != nil {
 		return nil, err
 	}
-	grossRevenue, err := s.querySeries(ctx, fmt.Sprintf(timeSeriesRevenueSQL, "gross_revenue_cents", s.tableRef, storeClause), params)
-	if err != nil {
-		return nil, err
-	}
-	netRevenue, err := s.querySeries(ctx, fmt.Sprintf(timeSeriesRevenueSQL, "net_revenue_cents", s.tableRef, storeClause), params)
-	if err != nil {
-		return nil, err
-	}
-	discounts, err := s.querySeries(ctx, fmt.Sprintf(timeSeriesDiscountsSQL, s.tableRef, storeClause), params)
-	if err != nil {
-		return nil, err
-	}
+
+	orders := series.Orders
+	grossRevenue := series.Gross
+	netRevenue := series.Net
+	discounts := series.Discounts
 
 	topProducts, err := s.queryTopLabels(ctx, fmt.Sprintf(topProductsSQL, s.tableRef, storeClause), params)
 	if err != nil {
 		return nil, err
 	}
 	topCategories, err := s.queryTopLabels(ctx, fmt.Sprintf(topCategoriesSQL, s.tableRef, storeClause), params)
+	if err != nil {
+		return nil, err
+	}
+	topClassifications, err := s.queryTopLabels(ctx, fmt.Sprintf(topClassificationsSQL, s.tableRef, storeClause), params)
 	if err != nil {
 		return nil, err
 	}
@@ -214,6 +258,7 @@ func (s *marketplaceService) Query(ctx context.Context, req types.MarketplaceQue
 		NetRevenue:         netRevenue,
 		TopProducts:        topProducts,
 		TopCategories:      topCategories,
+		TopClassifications: topClassifications,
 		TopZIPs:            topZIPs,
 		AOV:                aov,
 		NewCustomers:       newCustomers,
@@ -256,28 +301,28 @@ func (s *marketplaceService) baseParams(req types.MarketplaceQueryRequest) []clo
 	}
 }
 
-func (s *marketplaceService) querySeries(ctx context.Context, sql string, params []cloudbigquery.QueryParameter) ([]types.TimeSeriesPoint, error) {
-	iter, err := s.client.Query(ctx, sql, params)
-	if err != nil {
-		return nil, fmt.Errorf("query series: %w", err)
-	}
+// func (s *marketplaceService) querySeries(ctx context.Context, sql string, params []cloudbigquery.QueryParameter) ([]types.TimeSeriesPoint, error) {
+// 	iter, err := s.client.Query(ctx, sql, params)
+// 	if err != nil {
+// 		return nil, fmt.Errorf("query series: %w", err)
+// 	}
 
-	var points []types.TimeSeriesPoint
-	for {
-		var row struct {
-			Day   string `bigquery:"day"`
-			Value int64  `bigquery:"value"`
-		}
-		if err := iter.Next(&row); err != nil {
-			if err == iterator.Done {
-				break
-			}
-			return nil, fmt.Errorf("reading series row: %w", err)
-		}
-		points = append(points, types.TimeSeriesPoint{Date: row.Day, Value: row.Value})
-	}
-	return points, nil
-}
+// 	var points []types.TimeSeriesPoint
+// 	for {
+// 		var row struct {
+// 			Day   string `bigquery:"day"`
+// 			Value int64  `bigquery:"value"`
+// 		}
+// 		if err := iter.Next(&row); err != nil {
+// 			if err == iterator.Done {
+// 				break
+// 			}
+// 			return nil, fmt.Errorf("reading series row: %w", err)
+// 		}
+// 		points = append(points, types.TimeSeriesPoint{Date: row.Day, Value: row.Value})
+// 	}
+// 	return points, nil
+// }
 
 func (s *marketplaceService) queryTopLabels(ctx context.Context, sql string, params []cloudbigquery.QueryParameter) ([]types.LabelValue, error) {
 	iter, err := s.client.Query(ctx, sql, params)

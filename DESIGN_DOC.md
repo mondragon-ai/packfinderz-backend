@@ -4483,3 +4483,10 @@ Isolation:
   * app deploy rollback first
   * DB rollback only if safe (no data loss)
 * Feature flags SHOULD be used for risky changes.
+
+## 8) Reviews & Feedback
+
+* Buyers can submit reviews for vendor stores (and eventual product reviews) via the new `reviews` table, keeping the store page feedback flow separate from order/product persistence.
+* A `review_type` enum (`store`, `product`) drives the `reviews.review_type` column so we can distinguish the reviewed resource without scattering string literals across the stack.
+* Each row stores the rating (1-5), optional title/body (max 150 chars/title), `is_verified_purchase`, `is_visible`, and timestamps (`created_at`, `updated_at`) plus the required `buyer_store_id`/`buyer_user_id` FKs (`ON DELETE CASCADE`) and the optional `vendor_store_id`, `product_id`, and `order_id` FKs (`vendor_store_id` cascades, `order_id` uses `SET NULL` to preserve historical reviews even if the order is removed).
+* Indexes on `vendor_store_id`, `created_at`, and `(vendor_store_id, created_at)` make the vendor-focused, chronologically ordered queries (e.g., store “Reviews” tab) performant while keeping the table lean.

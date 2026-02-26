@@ -169,6 +169,7 @@ func NewRouter(
 					r.Use(middleware.RequireStoreRoles(membershipChecker, logg, vendorBillingRoles...))
 					r.Post("/cc", billingcontrollers.VendorPaymentMethodCreate(paymentMethodService, logg))
 				})
+
 				r.Route("/billing/plans", func(r chi.Router) {
 					r.Get("/", billingcontrollers.VendorBillingPlansList(billingPlanService, logg))
 					r.Get("/{planId}", billingcontrollers.VendorBillingPlanDetail(billingPlanService, logg))

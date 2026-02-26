@@ -554,6 +554,11 @@ All enums implement:
 * `feelings`: `relaxed`, `happy`, `euphoric`, `focused`, `hungry`, `talkative`, `creative`, `sleepy`, `uplifted`, `calm`
 * `usage`: `stress_relief`, `pain_relief`, `sleep`, `depression`, `muscle_relaxant`, `nausea`, `anxiety`, `appetite_stimulation`
 
+### `ReviewType`
+* `store`
+* `product`
+* Drives `reviews.review_type` so the persistence layer can distinguish vendor-store vs. product feedback while services remain agnostic to the underlying enum.
+
 ---
 
 ### `internal/licenses`
