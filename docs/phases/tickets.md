@@ -377,11 +377,16 @@
   * [x] Ticket [PF-278]: Controller — `api/controllers/wishlist.go` with handlers for `GET /api/v1/wishlist`, `GET /api/v1/wishlist/ids`, `POST /api/v1/wishlist/items` (requires `Idempotency-Key`), and `DELETE /api/v1/wishlist/items/{productId}`; parse/validate inputs, call service, write canonical response envelope &  Routes + wire-up — mount wishlist routes in `api/routes/router.go` under the authenticated `/api/v1` group with store context middleware; wire `wishlist.Repository` → `wishlist.Service` → controller in the DI bootstrap so all four endpoints are live
 
 * **Phase 16 — Reviews**
-  * [ ] Ticket [PF-287]: Create `reviews` table migration (Goose) + DB types
-  * [ ] Ticket [PF-288]: Implement Reviews repository (CRUD + pagination queries)
-  * [ ] Ticket [PF-289]: Implement Reviews service: create review + verified purchase enforcement + Implement Reviews service: list reviews for vendor store (paginated)
+  * [x] Ticket [PF-287]: Create `reviews` table migration (Goose) + DB types
+  * [x] Ticket [PF-288]: Implement Reviews repository (CRUD + pagination queries)
+  * [x] Ticket [PF-289]: Implement Reviews service: create review + verified purchase enforcement + Implement Reviews service: list reviews for vendor store (paginated)
   * [ ] Ticket [PF-290]: Add Reviews CRUD controllers + routes (create, list, update, delete)
   * [ ] Ticket [PF-291]: Wire Reviews module into API binary (bootstrap + DI)
+
+
+* **Phase 17 — Store**
+  * [ ] [PF-293]: Implement GET /v1/stores/{store_id} Controller (Authenticated Viewer Access)
+  * [ ] [PF-293]: Add Service Contract Support for Viewer Store Fetch (By ID)
 
 ---
 
