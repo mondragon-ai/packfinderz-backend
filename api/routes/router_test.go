@@ -121,6 +121,11 @@ func (s stubStoreService) GetByID(ctx context.Context, id uuid.UUID) (*stores.St
 	panic("unimplemented")
 }
 
+// GetStoreByID implements [stores.Service].
+func (s stubStoreService) GetStoreByID(ctx context.Context, id uuid.UUID) (*stores.StoreDTO, error) {
+	panic("unimplemented")
+}
+
 // GetManagerView implements [stores.Service].
 func (s stubStoreService) GetManagerView(ctx context.Context, id uuid.UUID) (*stores.StoreDTO, error) {
 	panic("unimplemented")

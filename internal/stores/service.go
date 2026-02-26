@@ -57,6 +57,7 @@ type usersRepository interface {
 // Service exposes store operations.
 type Service interface {
 	GetByID(ctx context.Context, id uuid.UUID) (*StoreDTO, error)
+	GetStoreByID(ctx context.Context, id uuid.UUID) (*StoreDTO, error)
 	GetManagerView(ctx context.Context, id uuid.UUID) (*StoreDTO, error)
 	Update(ctx context.Context, userID, storeID uuid.UUID, input UpdateStoreInput) (*StoreDTO, error)
 	ListUsers(ctx context.Context, userID, storeID uuid.UUID) ([]memberships.StoreUserDTO, error)
@@ -220,7 +221,7 @@ func (s *service) GetByID(ctx context.Context, id uuid.UUID) (*StoreDTO, error) 
 	return FromModel(store, nil), nil
 }
 
-func (s *service) GetManagerView(ctx context.Context, id uuid.UUID) (*StoreDTO, error) {
+func (s *service) GetStoreByID(ctx context.Context, id uuid.UUID) (*StoreDTO, error) {
 	store, err := s.repo.FindByID(ctx, id)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -228,7 +229,14 @@ func (s *service) GetManagerView(ctx context.Context, id uuid.UUID) (*StoreDTO, 
 		}
 		return nil, pkgerrors.Wrap(pkgerrors.CodeDependency, err, "load store")
 	}
+	return s.buildStoreDTO(ctx, store)
+}
 
+func (s *service) GetManagerView(ctx context.Context, id uuid.UUID) (*StoreDTO, error) {
+	return s.GetStoreByID(ctx, id)
+}
+
+func (s *service) buildStoreDTO(ctx context.Context, store *models.Store) (*StoreDTO, error) {
 	owner, err := s.users.FindByID(ctx, store.OwnerID)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -244,13 +252,6 @@ func (s *service) GetManagerView(ctx context.Context, id uuid.UUID) (*StoreDTO, 
 		Email:        owner.Email,
 		LastActiveAt: owner.LastLoginAt,
 	}
-
-	// if membership, err := s.memberships.GetMembership(ctx, owner.ID, store.ID); err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
-	// 	return nil, pkgerrors.Wrap(pkgerrors.CodeDependency, err, "load owner membership")
-	// } else if membership != nil {
-	// 	role := membership.Role.String()
-	// 	ownerDTO.Role = &role
-	// }
 
 	licenses, err := s.licenseRepo.ListByStoreID(ctx, store.ID)
 	if err != nil {

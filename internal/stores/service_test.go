@@ -165,6 +165,76 @@ func TestServiceGetByIDDependencyError(t *testing.T) {
 	}
 }
 
+func TestServiceGetStoreByIDIncludesOwnerAndLicenses(t *testing.T) {
+	store := baseStore()
+	repo := &stubStoreRepo{store: store}
+	user := &models.User{
+		ID:        store.OwnerID,
+		FirstName: "Owner",
+		LastName:  "Keeper",
+		Email:     "owner@example.com",
+		LastLoginAt: func() *time.Time {
+			t := time.Now().UTC()
+			return &t
+		}(),
+	}
+	licenseRepo := &stubLicenseRepo{
+		list: []models.License{
+			{Number: "LIC-001", Type: enums.LicenseTypeProducer},
+			{Number: "LIC-002", Type: enums.LicenseTypeMerchant},
+		},
+	}
+	membershipsRepo := stubMembershipsRepo{
+		allowed: true,
+		existingMembership: &models.StoreMembership{
+			StoreID: store.ID,
+			UserID:  user.ID,
+			Role:    enums.MemberRoleOwner,
+		},
+	}
+	usersRepo := &stubUsersRepo{
+		user: user,
+		byID: user,
+	}
+	svc, _, err := newStoreServiceWithAttachmentStub(repo, &membershipsRepo, usersRepo, nil, nil, licenseRepo)
+	if err != nil {
+		t.Fatalf("new service: %v", err)
+	}
+
+	dto, err := svc.GetStoreByID(context.Background(), store.ID)
+	if err != nil {
+		t.Fatalf("get store: %v", err)
+	}
+	if dto.Owner.Email != user.Email {
+		t.Fatalf("expected owner email %s got %s", user.Email, dto.Owner.Email)
+	}
+	if dto.Owner.Role != nil {
+		t.Fatalf("expected nil owner role got %v", dto.Owner.Role)
+	}
+	if len(dto.Licenses) != 2 {
+		t.Fatalf("expected 2 licenses got %d", len(dto.Licenses))
+	}
+	if dto.Licenses[0].Number != "LIC-001" {
+		t.Fatalf("unexpected license number %s", dto.Licenses[0].Number)
+	}
+}
+
+func TestServiceGetStoreByIDNotFound(t *testing.T) {
+	repo := &stubStoreRepo{err: gorm.ErrRecordNotFound}
+	svc, err := newStoreService(repo, &stubMembershipsRepo{allowed: true}, &stubUsersRepo{})
+	if err != nil {
+		t.Fatalf("new service: %v", err)
+	}
+
+	_, gotErr := svc.GetStoreByID(context.Background(), uuid.New())
+	if gotErr == nil {
+		t.Fatal("expected error")
+	}
+	if typed := pkgerrors.As(gotErr); typed == nil || typed.Code() != pkgerrors.CodeNotFound {
+		t.Fatalf("expected not found code, got %v", gotErr)
+	}
+}
+
 func TestServiceGetManagerViewIncludesOwnerAndLicenses(t *testing.T) {
 	store := baseStore()
 	repo := &stubStoreRepo{store: store}

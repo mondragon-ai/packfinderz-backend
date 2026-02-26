@@ -49,6 +49,36 @@ func StoreProfile(svc stores.Service, logg *logger.Logger) http.HandlerFunc {
 	}
 }
 
+// StorePublicProfile returns any store's profile for authenticated viewers.
+func StorePublicProfile(svc stores.Service, logg *logger.Logger) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if svc == nil {
+			responses.WriteError(r.Context(), logg, w, pkgerrors.New(pkgerrors.CodeInternal, "store service unavailable"))
+			return
+		}
+
+		storeIDParam := strings.TrimSpace(chi.URLParam(r, "storeId"))
+		if storeIDParam == "" {
+			responses.WriteError(r.Context(), logg, w, pkgerrors.New(pkgerrors.CodeValidation, "store id is required"))
+			return
+		}
+
+		id, err := uuid.Parse(storeIDParam)
+		if err != nil {
+			responses.WriteError(r.Context(), logg, w, pkgerrors.Wrap(pkgerrors.CodeValidation, err, "invalid store id"))
+			return
+		}
+
+		profile, err := svc.GetManagerView(r.Context(), id)
+		if err != nil {
+			responses.WriteError(r.Context(), logg, w, err)
+			return
+		}
+
+		responses.WriteSuccess(w, profile)
+	}
+}
+
 // StoreUpdateRequest contains the payload for updating store fields.
 type storeUpdateRequest struct {
 	CompanyName   *string            `json:"company_name,omitempty" validate:"omitempty,min=1"`

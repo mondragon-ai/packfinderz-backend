@@ -38,6 +38,10 @@ func (s checkoutStubStoreService) GetByID(ctx context.Context, id uuid.UUID) (*s
 	return s.store, s.err
 }
 
+func (s checkoutStubStoreService) GetStoreByID(ctx context.Context, id uuid.UUID) (*stores.StoreDTO, error) {
+	return s.GetByID(ctx, id)
+}
+
 func (s checkoutStubStoreService) GetManagerView(ctx context.Context, id uuid.UUID) (*stores.StoreDTO, error) {
 	return s.GetByID(ctx, id)
 }

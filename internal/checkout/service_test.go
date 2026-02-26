@@ -1435,6 +1435,10 @@ func (s *stubStoreService) GetByID(ctx context.Context, id uuid.UUID) (*stores.S
 	return nil, gorm.ErrRecordNotFound
 }
 
+func (s *stubStoreService) GetStoreByID(ctx context.Context, id uuid.UUID) (*stores.StoreDTO, error) {
+	return s.GetByID(ctx, id)
+}
+
 func (s *stubStoreService) GetManagerView(ctx context.Context, id uuid.UUID) (*stores.StoreDTO, error) {
 	return s.GetByID(ctx, id)
 }

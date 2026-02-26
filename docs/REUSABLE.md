@@ -296,6 +296,15 @@ Shared vendor visibility helpers for buyer product and store queries.
 
 Applying this helper everywhere keeps buyer-facing product and directory endpoints consistent: hidden vendors always return `404` and state mismatches keep returning `422`, preventing cross-state leaks.
 
+### `stores`
+
+**Public store profile**
+
+* `controllers.StorePublicProfile` (exposed as `GET /api/v1/stores/{storeId}`) extracts the `{storeId}` path param, parses it via `uuid.Parse`, and delegates to `stores.Service.GetStoreByID` before writing the `StoreDTO` success envelope.
+* `stores.Service.GetStoreByID` is the viewer-friendly contract that loads the store, owner summary, and licenses from the same mapper that `GetManagerView` shares so view-only requests stay read-only while reusing the canonical DTO.
+* The handler runs under `middleware.Auth` but intentionally skips `middleware.StoreContext`, so any authenticated user can view another store’s profile without needing membership or `activeStoreId`.
+* Validation failures emit `pkgerrors.CodeValidation`/HTTP `400`, missing stores bubble `pkgerrors.CodeNotFound`/HTTP `404`, and service-side issues map to the standard error envelope.
+
 ## Shared Types (`pkg/types`)
 
 ---

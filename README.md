@@ -531,6 +531,8 @@ These endpoints rely on `activeStoreId` and enforce owner/manager access for mut
 * `GET /api/v1/stores/me/users` – lists memberships plus user info (`email`, `name`, `role`, `created_at`, `last_login_at`); accessible to owner/manager roles.
 * `POST /api/v1/stores/me/users/invite` – invites (or reuses) a user, creates a membership, and issues a temporary password for new accounts (passwords are never logged).
 * `DELETE /api/v1/stores/me/users/{userId}` – removes only the membership row, returns `409` if the target is the last owner, and leaves the user record intact.
+* `GET /api/v1/stores/{storeId}` – returns the full `StoreDTO` for the requested store so any authenticated user can view another store’s public profile; it is scoped by the supplied UUID (404 when missing) and does not require `activeStoreId` or membership.
+* The store service now exposes `GetStoreByID`, which powers the viewer-ready route without enforcing store membership while still returning the same owner and license metadata as the manager view.
 
 ### Licenses
 

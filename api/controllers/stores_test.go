@@ -92,6 +92,97 @@ func TestStoreProfileMissingContext(t *testing.T) {
 	}
 }
 
+func TestStorePublicProfileSuccess(t *testing.T) {
+	storeID := uuid.New()
+	dto := &stores.StoreDTO{
+		ID:                   storeID,
+		Type:                 enums.StoreTypeVendor,
+		CompanyName:          "Vendor HQ",
+		KYCStatus:            enums.KYCStatusVerified,
+		SubscriptionActive:   true,
+		DeliveryRadiusMeters: 8000,
+		Address: types.Address{
+			Line1:      "456 Market St",
+			City:       "Oklahoma City",
+			State:      "OK",
+			PostalCode: "73102",
+			Country:    "US",
+			Lat:        35.4676,
+			Lng:        -97.5164,
+		},
+		OwnerID:   uuid.New(),
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+
+	handler := StorePublicProfile(stubStoreService{dto: dto}, nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/stores/"+storeID.String(), nil)
+	req = withRouteParam(req, "storeId", storeID.String())
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 got %d", rec.Code)
+	}
+
+	var envelope struct {
+		Data stores.StoreDTO `json:"data"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&envelope); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if envelope.Data.ID != storeID {
+		t.Fatalf("expected id %s got %s", storeID, envelope.Data.ID)
+	}
+}
+
+func TestStorePublicProfileNotFound(t *testing.T) {
+	storeID := uuid.New()
+	handler := StorePublicProfile(stubStoreService{
+		err: pkgerrors.New(pkgerrors.CodeNotFound, "missing"),
+	}, nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/stores/"+storeID.String(), nil)
+	req = withRouteParam(req, "storeId", storeID.String())
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 got %d", rec.Code)
+	}
+}
+
+func TestStorePublicProfileInvalidID(t *testing.T) {
+	handler := StorePublicProfile(stubStoreService{}, nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/stores/invalid", nil)
+	req = withRouteParam(req, "storeId", "invalid")
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 got %d", rec.Code)
+	}
+}
+
+func TestStorePublicProfileMissingParam(t *testing.T) {
+	handler := StorePublicProfile(stubStoreService{}, nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/stores/", nil)
+	req = withRouteParam(req, "storeId", "")
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 got %d", rec.Code)
+	}
+}
+
 func TestStoreUpdateSuccess(t *testing.T) {
 	storeID := uuid.New()
 	userID := uuid.New()
@@ -468,6 +559,10 @@ type stubStoreService struct {
 }
 
 func (s stubStoreService) GetByID(_ context.Context, _ uuid.UUID) (*stores.StoreDTO, error) {
+	return s.dto, s.err
+}
+
+func (s stubStoreService) GetStoreByID(_ context.Context, _ uuid.UUID) (*stores.StoreDTO, error) {
 	return s.dto, s.err
 }
 

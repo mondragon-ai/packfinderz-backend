@@ -1811,6 +1811,15 @@ Headers:
   * Success: `200`
   * Errors: `401, 404`
 
+**Public store profile**
+
+* `GET /api/v1/stores/{storeId}`
+
+  * Returns the canonical `StoreDTO` for the provided store ID so any authenticated user can view another store’s profile without needing `activeStoreId` or membership.
+  * Success: `200`
+  * Errors: `401, 404`
+  * Backed by `internal/stores.Service.GetStoreByID`, which loads the store, owner, and licenses via the existing mapper so viewer access reuses the same DTO without enforcing membership checks.
+
 ---
 
 ### 5.3 Users (Store members)

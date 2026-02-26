@@ -209,12 +209,14 @@ Response payload mirrors `internal/analytics/types.MarketplaceQueryResponse` and
 
 ### `POST /api/v1/reviews`
 
-Creates a store review after verifying the authenticated buyer user/store relationship and a prior purchase from the vendor. Payload:
+Creates a store review after verifying the authenticated buyer user/store relationship and a prior purchase from the vendor. The payload matches `internal/reviews.CreateReviewRequest` and mixes required/optional fields:
 
-- `vendor_store_id` – UUID of the vendor store being reviewed (required).
-- `product_id` / `order_id` – optional UUIDs to link the review to a product/order.
+- `vendor_store_id` – UUID of the vendor store being reviewed (required, non-empty string).
+- `product_id` / `order_id` – optional UUID strings to associate the review with a product or order.
 - `rating` – integer 1–5 (DB also enforces the range).
-- `title` / `body` – optional text for the review.
+- `title` / `body` – optional text to surface buyer commentary.
+
+Include every field supported by the DTO to paste directly into Postman:
 
 ```bash
 curl -X POST "{{API_BASE_URL}}/api/v1/reviews" \
@@ -222,7 +224,9 @@ curl -X POST "{{API_BASE_URL}}/api/v1/reviews" \
   -H "Idempotency-Key: {{UNIQUE_KEY}}" \
   -H "Content-Type: application/json" \
   -d '{
-    "vendor_store_id": "vendor-store-uuid",
+    "vendor_store_id": "uuid-vendor-store",
+    "product_id": "uuid-product",
+    "order_id": "uuid-order",
     "rating": 5,
     "title": "Great vendor",
     "body": "Friendly, accurate fulfillment."
@@ -234,11 +238,13 @@ Response mirrors `internal/reviews.ReviewResponse`:
 ```json
 {
   "data": {
-    "id": "review-uuid",
+    "id": "uuid-review",
     "review_type": "store",
-    "buyer_store_id": "buyer-store-uuid",
-    "buyer_user_id": "buyer-user-uuid",
-    "vendor_store_id": "vendor-store-uuid",
+    "buyer_store_id": "uuid-buyer-store",
+    "buyer_user_id": "uuid-buyer-user",
+    "vendor_store_id": "uuid-vendor-store",
+    "product_id": "uuid-product",
+    "order_id": "uuid-order",
     "rating": 5,
     "title": "Great vendor",
     "body": "Friendly, accurate fulfillment.",
@@ -250,10 +256,7 @@ Response mirrors `internal/reviews.ReviewResponse`:
 }
 ```
 
-`GET /stores/{storeId}/reviews` returns the public list for a vendor store and sits outside the `/api` group (no auth required). It only surfaces `is_visible = true` reviews ordered by `(created_at, id)` descending and accepts the familiar cursor-style pagination fields:
-
-- `limit` – optional positive integer; defaults to 25 and caps at 100 per `pagination.NormalizeLimit`.
-- `cursor` – optional encoded value representing the bookmark (`created_at`, `id`).
+`GET /stores/{storeId}/reviews` returns the public list for a vendor store and sits outside the `/api` group (no auth required). It only surfaces `is_visible = true` reviews ordered by `(created_at, id)` descending and accepts cursor-style pagination via `limit`/`cursor` (same fields as `pagination.Params`).
 
 ### `GET /stores/{storeId}/reviews`
 
@@ -263,7 +266,7 @@ curl -G "{{API_BASE_URL}}/stores/{{STORE_ID}}/reviews" \
   --data-urlencode "cursor={{NEXT_CURSOR}}"
 ```
 
-Response body (matches `internal/reviews.ReviewListResponse`):
+Response body matches `internal/reviews.ReviewListResponse`:
 
 ```json
 {
@@ -309,6 +312,17 @@ curl -X DELETE "{{API_BASE_URL}}/api/v1/reviews/{{REVIEW_ID}}" \
 ## Stores
 
 Routes under `/api/v1/stores` require the standard `/api` auth + store context guards. `middleware.StoreContext` extracts the buyer or vendor store ID from the token, so only requests backed by an `activeStoreId` can reach these handlers.
+
+### `GET /api/v1/stores/{storeId}`
+
+Returns any store’s public profile so authenticated buyers or vendors can inspect another tenant without needing an `activeStoreId`. The handler behind `controllers.StorePublicProfile` parses the `{storeId}` path parameter, skips the store-scoped middleware claim, and delegates to `internal/stores.Service.GetStoreByID` before returning `stores.StoreDTO`.
+
+```bash
+curl "{{API_BASE_URL}}/api/v1/stores/{{STORE_ID}}" \
+  -H "Authorization: Bearer {{ACCESS_TOKEN}}"
+```
+
+Response uses the same `stores.StoreDTO` shown by `GET /api/v1/stores/me` (company info, contact/social channels, badge metadata, address, licenses, owner details, and timestamps).
 
 ### `GET /api/v1/stores/me`
 
