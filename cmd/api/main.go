@@ -21,6 +21,7 @@ import (
 	"github.com/angelmondragon/packfinderz-backend/internal/orders"
 	"github.com/angelmondragon/packfinderz-backend/internal/paymentmethods"
 	products "github.com/angelmondragon/packfinderz-backend/internal/products"
+	"github.com/angelmondragon/packfinderz-backend/internal/reviews"
 	"github.com/angelmondragon/packfinderz-backend/internal/squarecustomers"
 	"github.com/angelmondragon/packfinderz-backend/internal/stores"
 	"github.com/angelmondragon/packfinderz-backend/internal/subscriptions"
@@ -237,6 +238,9 @@ func main() {
 	ordersService, err := orders.NewService(ordersRepo, dbClient, outboxPublisher, orders.NewInventoryReleaser(), orders.NewInventoryReserver(), ledgerService)
 	requireResource(ctx, logg, "orders service", err)
 
+	reviewsRepo := reviews.NewRepository(dbClient.DB())
+	reviewsService := reviews.NewService(reviewsRepo, membershipsRepo, ordersRepo)
+
 	notificationsRepo := notifications.NewRepository(dbClient.DB())
 	notificationsService, err := notifications.NewService(notificationsRepo)
 	requireResource(ctx, logg, "notifications service", err)
@@ -308,6 +312,7 @@ func main() {
 			cartService,
 			notificationsService,
 			wishlistService,
+			reviewsService,
 			ordersRepo,
 			ordersService,
 			subscriptionsService,

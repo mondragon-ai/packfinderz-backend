@@ -15,6 +15,8 @@ import (
 type reviewRepository interface {
 	CreateReview(ctx context.Context, input CreateReviewInput) (*Review, error)
 	ListReviewsByVendorStoreID(ctx context.Context, vendorStoreID uuid.UUID, visibleOnly bool, cursor string, limit int) (ReviewListResult, error)
+	GetReviewByID(ctx context.Context, reviewID uuid.UUID) (*Review, error)
+	DeleteReview(ctx context.Context, reviewID uuid.UUID) error
 }
 
 type membershipRepository interface {
@@ -29,6 +31,7 @@ type ordersRepository interface {
 type Service interface {
 	CreateReview(ctx context.Context, input CreateReviewInput) (*Review, error)
 	ListVisibleReviews(ctx context.Context, vendorStoreID uuid.UUID, params pagination.Params) (ReviewListResult, error)
+	DeleteReview(ctx context.Context, reviewID, buyerStoreID, buyerUserID uuid.UUID) error
 }
 
 type service struct {
@@ -81,6 +84,22 @@ func (s *service) CreateReview(ctx context.Context, input CreateReviewInput) (*R
 	input.IsVerifiedPurchase = true
 
 	return s.repo.CreateReview(ctx, input)
+}
+
+func (s *service) DeleteReview(ctx context.Context, reviewID, buyerStoreID, buyerUserID uuid.UUID) error {
+	if reviewID == uuid.Nil {
+		return pkgerrors.New(pkgerrors.CodeValidation, "review id required")
+	}
+
+	review, err := s.repo.GetReviewByID(ctx, reviewID)
+	if err != nil {
+		return err
+	}
+	if review.BuyerStoreID != buyerStoreID || review.BuyerUserID != buyerUserID {
+		return pkgerrors.New(pkgerrors.CodeForbidden, "cannot delete review")
+	}
+
+	return s.repo.DeleteReview(ctx, reviewID)
 }
 
 func (s *service) ListVisibleReviews(ctx context.Context, vendorStoreID uuid.UUID, params pagination.Params) (ReviewListResult, error) {

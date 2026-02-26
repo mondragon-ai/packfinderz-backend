@@ -380,8 +380,8 @@
   * [x] Ticket [PF-287]: Create `reviews` table migration (Goose) + DB types
   * [x] Ticket [PF-288]: Implement Reviews repository (CRUD + pagination queries)
   * [x] Ticket [PF-289]: Implement Reviews service: create review + verified purchase enforcement + Implement Reviews service: list reviews for vendor store (paginated)
-  * [ ] Ticket [PF-290]: Add Reviews CRUD controllers + routes (create, list, update, delete)
-  * [ ] Ticket [PF-291]: Wire Reviews module into API binary (bootstrap + DI)
+  * [x] Ticket [PF-290]: Add Reviews CRUD controllers + routes (create, list, update, delete)
+  * [x] Ticket [PF-291]: Wire Reviews module into API binary (bootstrap + DI)
 
 
 * **Phase 17 — Store**

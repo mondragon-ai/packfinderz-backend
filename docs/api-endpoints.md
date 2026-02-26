@@ -135,14 +135,14 @@ Response body:
 
 ## Analytics
 
-`/api/v1/analytics` lives inside the `/api` group, so every route needs `Authorization: Bearer {{ACCESS_TOKEN}}` and runs through `middleware.StoreContext`. The middleware populates `store_id` + `store_type` from the JWT (HTTP 403 if either claim is missing), letting the handler automatically scope BigQuery filters to the active vendor or buyer store.
+`/api/v1/analytics` lives inside the `/api` group, so every route requires `Authorization: Bearer {{ACCESS_TOKEN}}` and runs through `middleware.StoreContext`. The middleware supplies `store_id` + `store_type` (HTTP 403 when missing), which scopes the BigQuery filters to the active vendor or buyer store without exposing tenant-specific details in the response.
 
 ### `GET /api/v1/analytics/marketplace`
 
-Returns marketplace KPIs grouped by the active store. Query parameters follow the analytics controller helpers:
+Returns marketplace KPIs for the active store. Query parameters mirror `api/controllers/analytics.resolveAnalyticsRange`:
 
-- `preset` – optional string (`7d`, `30d`, `90d`); defaults to `30d` if absent.
-- `from` / `to` – RFC3339 timestamps that must be provided together; specifying them overrides the preset.
+- `preset` – optional string; allowed values are `1d`, `7d`, `30d`, `90d`, `1m`, `1y` and it defaults to `30d` when omitted.
+- `from` / `to` – optional RFC3339 timestamps that must be supplied together; they override `preset` and are validated so `to` is after `from`.
 
 ```bash
 curl -G "{{API_BASE_URL}}/api/v1/analytics/marketplace" \
@@ -150,7 +150,14 @@ curl -G "{{API_BASE_URL}}/api/v1/analytics/marketplace" \
   --data-urlencode "preset=30d"
 ```
 
-Response payload mirrors `internal/analytics/types.MarketplaceQueryResponse`:
+```bash
+curl -G "{{API_BASE_URL}}/api/v1/analytics/marketplace" \
+  -H "Authorization: Bearer {{ACCESS_TOKEN}}" \
+  --data-urlencode "from=2025-01-01T00:00:00Z" \
+  --data-urlencode "to=2025-01-31T23:59:59Z"
+```
+
+Response payload mirrors `internal/analytics/types.MarketplaceQueryResponse` and contains only aggregated metrics (no tenant-sensitive identifiers):
 
 ```json
 {
@@ -194,7 +201,110 @@ Response payload mirrors `internal/analytics/types.MarketplaceQueryResponse`:
 }
 ```
 
-`orders`, `gross_revenue`, `discounts`, and `net_revenue` are time-series slices (`date` + `value`), `top_products`, `top_categories`, `top_classifications`, and `top_zips` list the top label revenue in cents, and `aov`/customer counts summarize aggregate performance. Absent revenue or buyers yield zeroed fields instead of `null`.
+`orders`, `gross_revenue`, `discounts`, and `net_revenue` are time-series slices (`date` + `value`); `top_products`, `top_categories`, `top_classifications`, and `top_zips` list the revenue-leading labels in cents; `aov`/customer counts summarize aggregate performance. Absence of revenue or buyers yields zeroed numerical fields instead of `null`.
+
+## Reviews
+
+`POST /api/v1/reviews` and `DELETE /api/v1/reviews/{reviewId}` live under the `/api` group, so they require `Authorization: Bearer {{ACCESS_TOKEN}}`, run through `middleware.StoreContext`, and inherit `middleware.Idempotency` for POST. The service ensures the caller belongs to the buyer store, validates that the buyer store has a qualifying purchase from the vendor, and flips `is_verified_purchase` once validated.
+
+### `POST /api/v1/reviews`
+
+Creates a store review after verifying the authenticated buyer user/store relationship and a prior purchase from the vendor. Payload:
+
+- `vendor_store_id` – UUID of the vendor store being reviewed (required).
+- `product_id` / `order_id` – optional UUIDs to link the review to a product/order.
+- `rating` – integer 1–5 (DB also enforces the range).
+- `title` / `body` – optional text for the review.
+
+```bash
+curl -X POST "{{API_BASE_URL}}/api/v1/reviews" \
+  -H "Authorization: Bearer {{ACCESS_TOKEN}}" \
+  -H "Idempotency-Key: {{UNIQUE_KEY}}" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "vendor_store_id": "vendor-store-uuid",
+    "rating": 5,
+    "title": "Great vendor",
+    "body": "Friendly, accurate fulfillment."
+  }'
+```
+
+Response mirrors `internal/reviews.ReviewResponse`:
+
+```json
+{
+  "data": {
+    "id": "review-uuid",
+    "review_type": "store",
+    "buyer_store_id": "buyer-store-uuid",
+    "buyer_user_id": "buyer-user-uuid",
+    "vendor_store_id": "vendor-store-uuid",
+    "rating": 5,
+    "title": "Great vendor",
+    "body": "Friendly, accurate fulfillment.",
+    "is_verified_purchase": true,
+    "is_visible": true,
+    "created_at": "2025-01-01T00:00:00Z",
+    "updated_at": "2025-01-01T00:00:00Z"
+  }
+}
+```
+
+`GET /stores/{storeId}/reviews` returns the public list for a vendor store and sits outside the `/api` group (no auth required). It only surfaces `is_visible = true` reviews ordered by `(created_at, id)` descending and accepts the familiar cursor-style pagination fields:
+
+- `limit` – optional positive integer; defaults to 25 and caps at 100 per `pagination.NormalizeLimit`.
+- `cursor` – optional encoded value representing the bookmark (`created_at`, `id`).
+
+### `GET /stores/{storeId}/reviews`
+
+```bash
+curl -G "{{API_BASE_URL}}/stores/{{STORE_ID}}/reviews" \
+  --data-urlencode "limit=20" \
+  --data-urlencode "cursor={{NEXT_CURSOR}}"
+```
+
+Response body (matches `internal/reviews.ReviewListResponse`):
+
+```json
+{
+  "data": {
+    "reviews": [
+      {
+        "id": "review-uuid",
+        "review_type": "store",
+        "buyer_store_id": "buyer-store-uuid",
+        "vendor_store_id": "vendor-store-uuid",
+        "rating": 5,
+        "title": "Great vendor",
+        "body": "Friendly, accurate fulfillment.",
+        "is_verified_purchase": true,
+        "is_visible": true,
+        "created_at": "2025-01-01T00:00:00Z",
+        "updated_at": "2025-01-01T00:00:00Z"
+      }
+    ],
+    "pagination": {
+      "page": 1,
+      "total": 42,
+      "current": "{{REQUEST_CURSOR}}",
+      "first": "{{FIRST_CURSOR}}",
+      "last": "{{LAST_CURSOR}}",
+      "prev": "{{REQUEST_CURSOR}}",
+      "next": "{{NEXT_CURSOR}}"
+    }
+  }
+}
+```
+
+### `DELETE /api/v1/reviews/{reviewId}`
+
+Deletes the authenticated reviewer’s own entry. The route runs inside `/api` (requires `Authorization` + `Idempotency-Key`) and returns HTTP 200 with an empty `data` payload on success.
+
+```bash
+curl -X DELETE "{{API_BASE_URL}}/api/v1/reviews/{{REVIEW_ID}}" \
+  -H "Authorization: Bearer {{ACCESS_TOKEN}}" \
+  -H "Idempotency-Key: {{UNIQUE_KEY}}"
+```
 
 ## Stores
 

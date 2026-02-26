@@ -27,6 +27,10 @@ type fakeReviewRepo struct {
 	}
 	listReturn ReviewListResult
 	listErr    error
+	getReturn  *Review
+	getErr     error
+	deleteID   uuid.UUID
+	deleteErr  error
 }
 
 func (f *fakeReviewRepo) CreateReview(ctx context.Context, input CreateReviewInput) (*Review, error) {
@@ -40,6 +44,15 @@ func (f *fakeReviewRepo) ListReviewsByVendorStoreID(ctx context.Context, vendorS
 	f.listArgs.cursor = cursor
 	f.listArgs.limit = limit
 	return f.listReturn, f.listErr
+}
+
+func (f *fakeReviewRepo) GetReviewByID(ctx context.Context, reviewID uuid.UUID) (*Review, error) {
+	return f.getReturn, f.getErr
+}
+
+func (f *fakeReviewRepo) DeleteReview(ctx context.Context, reviewID uuid.UUID) error {
+	f.deleteID = reviewID
+	return f.deleteErr
 }
 
 type fakeMembershipRepo struct {
@@ -176,4 +189,42 @@ func TestServiceListVisibleReviews(t *testing.T) {
 	assert.True(t, repo.listArgs.visibleOnly)
 	assert.Equal(t, params.Cursor, repo.listArgs.cursor)
 	assert.Equal(t, params.Limit, repo.listArgs.limit)
+}
+
+func TestServiceDeleteReviewSuccess(t *testing.T) {
+	ctx := context.Background()
+	reviewID := uuid.New()
+	storeID := uuid.New()
+	userID := uuid.New()
+	repo := &fakeReviewRepo{
+		getReturn: &Review{
+			ID:           reviewID,
+			BuyerStoreID: storeID,
+			BuyerUserID:  userID,
+		},
+	}
+	svc := NewService(repo, &fakeMembershipRepo{}, &fakeOrdersRepo{})
+	err := svc.DeleteReview(ctx, reviewID, storeID, userID)
+	require.NoError(t, err)
+	assert.Equal(t, reviewID, repo.deleteID)
+}
+
+func TestServiceDeleteReviewForbidden(t *testing.T) {
+	ctx := context.Background()
+	reviewID := uuid.New()
+	storeID := uuid.New()
+	userID := uuid.New()
+	repo := &fakeReviewRepo{
+		getReturn: &Review{
+			ID:           reviewID,
+			BuyerStoreID: storeID,
+			BuyerUserID:  userID,
+		},
+	}
+	svc := NewService(repo, &fakeMembershipRepo{}, &fakeOrdersRepo{})
+	err := svc.DeleteReview(ctx, reviewID, uuid.New(), userID)
+	require.Error(t, err)
+	typed := pkgerrors.As(err)
+	require.NotNil(t, typed)
+	assert.Equal(t, pkgerrors.CodeForbidden, typed.Code())
 }

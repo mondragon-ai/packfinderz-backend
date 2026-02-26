@@ -12,6 +12,7 @@ import (
 	billingcontrollers "github.com/angelmondragon/packfinderz-backend/api/controllers/billing"
 	cartcontrollers "github.com/angelmondragon/packfinderz-backend/api/controllers/cart"
 	ordercontrollers "github.com/angelmondragon/packfinderz-backend/api/controllers/orders"
+	reviewcontrollers "github.com/angelmondragon/packfinderz-backend/api/controllers/reviews"
 	subscriptionControllers "github.com/angelmondragon/packfinderz-backend/api/controllers/subscriptions"
 	webhookcontrollers "github.com/angelmondragon/packfinderz-backend/api/controllers/webhooks"
 	"github.com/angelmondragon/packfinderz-backend/api/middleware"
@@ -26,6 +27,7 @@ import (
 	"github.com/angelmondragon/packfinderz-backend/internal/orders"
 	paymentsvc "github.com/angelmondragon/packfinderz-backend/internal/paymentmethods"
 	products "github.com/angelmondragon/packfinderz-backend/internal/products"
+	"github.com/angelmondragon/packfinderz-backend/internal/reviews"
 	"github.com/angelmondragon/packfinderz-backend/internal/squarecustomers"
 	"github.com/angelmondragon/packfinderz-backend/internal/stores"
 	subscriptionsvc "github.com/angelmondragon/packfinderz-backend/internal/subscriptions"
@@ -79,6 +81,7 @@ func NewRouter(
 	cartService cart.Service,
 	notificationsService notifications.Service,
 	wishlistService wishlist.Service,
+	reviewsService reviews.Service,
 	ordersRepo orders.Repository,
 	ordersSvc orders.Service,
 	subscriptionsService subscriptionsvc.Service,
@@ -198,6 +201,7 @@ func NewRouter(
 				r.Get("/me/users", controllers.StoreUsers(storeService, logg))
 				r.Post("/me/users/invite", controllers.StoreInvite(storeService, logg))
 				r.Delete("/me/users/{userId}", controllers.StoreRemoveUser(storeService, logg))
+				r.Get("/{storeId}/reviews", reviewcontrollers.ListReviews(reviewsService, logg))
 			})
 
 			r.Route("/v1/media", func(r chi.Router) {
@@ -223,6 +227,11 @@ func NewRouter(
 				r.Get("/ids", controllers.WishlistIDs(wishlistService, logg))
 				r.Post("/items", controllers.WishlistAddItem(wishlistService, logg))
 				r.Delete("/items/{productId}", controllers.WishlistRemoveItem(wishlistService, logg))
+			})
+
+			r.Route("/v1/reviews", func(r chi.Router) {
+				r.Post("/", reviewcontrollers.CreateReview(reviewsService, logg))
+				r.Delete("/{reviewId}", reviewcontrollers.DeleteReview(reviewsService, logg))
 			})
 
 			r.Get("/v1/products", controllers.BrowseProducts(productService, storeService, logg))

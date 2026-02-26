@@ -24,6 +24,7 @@ import (
 	"github.com/angelmondragon/packfinderz-backend/internal/notifications"
 	ordersrepo "github.com/angelmondragon/packfinderz-backend/internal/orders"
 	product "github.com/angelmondragon/packfinderz-backend/internal/products"
+	"github.com/angelmondragon/packfinderz-backend/internal/reviews"
 	"github.com/angelmondragon/packfinderz-backend/internal/squarecustomers"
 	"github.com/angelmondragon/packfinderz-backend/internal/stores"
 	subscriptionsvc "github.com/angelmondragon/packfinderz-backend/internal/subscriptions"
@@ -227,6 +228,51 @@ func (stubNotificationsService) MarkAllRead(ctx context.Context, storeID uuid.UU
 
 type stubSubscriptionsService struct{}
 
+// AgentCashCollected implements [orders.Service].
+func (s stubSubscriptionsService) AgentCashCollected(ctx context.Context, input ordersrepo.AgentCashCollectedInput) error {
+	panic("unimplemented")
+}
+
+// AgentDeliver implements [orders.Service].
+func (s stubSubscriptionsService) AgentDeliver(ctx context.Context, input ordersrepo.AgentDeliverInput) error {
+	panic("unimplemented")
+}
+
+// AgentPickup implements [orders.Service].
+func (s stubSubscriptionsService) AgentPickup(ctx context.Context, input ordersrepo.AgentPickupInput) error {
+	panic("unimplemented")
+}
+
+// CancelOrder implements [orders.Service].
+func (s stubSubscriptionsService) CancelOrder(ctx context.Context, input ordersrepo.BuyerCancelInput) error {
+	panic("unimplemented")
+}
+
+// ConfirmPayout implements [orders.Service].
+func (s stubSubscriptionsService) ConfirmPayout(ctx context.Context, input ordersrepo.ConfirmPayoutInput) error {
+	panic("unimplemented")
+}
+
+// LineItemDecision implements [orders.Service].
+func (s stubSubscriptionsService) LineItemDecision(ctx context.Context, input ordersrepo.LineItemDecisionInput) error {
+	panic("unimplemented")
+}
+
+// NudgeVendor implements [orders.Service].
+func (s stubSubscriptionsService) NudgeVendor(ctx context.Context, input ordersrepo.BuyerNudgeInput) error {
+	panic("unimplemented")
+}
+
+// RetryOrder implements [orders.Service].
+func (s stubSubscriptionsService) RetryOrder(ctx context.Context, input ordersrepo.BuyerRetryInput) (*ordersrepo.BuyerRetryResult, error) {
+	panic("unimplemented")
+}
+
+// VendorDecision implements [orders.Service].
+func (s stubSubscriptionsService) VendorDecision(ctx context.Context, input ordersrepo.VendorDecisionInput) error {
+	panic("unimplemented")
+}
+
 func (stubSubscriptionsService) Create(ctx context.Context, storeID uuid.UUID, input subscriptionsvc.CreateSubscriptionInput) (*models.Subscription, bool, error) {
 	return nil, false, nil
 }
@@ -235,6 +281,20 @@ func (stubSubscriptionsService) Pause(ctx context.Context, storeID uuid.UUID) er
 func (stubSubscriptionsService) Resume(ctx context.Context, storeID uuid.UUID) error { return nil }
 func (stubSubscriptionsService) GetActive(ctx context.Context, storeID uuid.UUID) (*models.Subscription, error) {
 	return nil, nil
+}
+
+type stubReviewsService struct{}
+
+func (stubReviewsService) CreateReview(ctx context.Context, input reviews.CreateReviewInput) (*reviews.Review, error) {
+	return nil, nil
+}
+
+func (stubReviewsService) ListVisibleReviews(ctx context.Context, vendorStoreID uuid.UUID, params pagination.Params) (reviews.ReviewListResult, error) {
+	return reviews.ReviewListResult{}, nil
+}
+
+func (stubReviewsService) DeleteReview(ctx context.Context, reviewID, storeID, userID uuid.UUID) error {
+	return nil
 }
 
 type stubProductService struct{}
@@ -283,6 +343,21 @@ type stubOrdersRepo struct {
 	queue         func(ctx context.Context, params pagination.Params) (*ordersrepo.AgentOrderQueueList, error)
 	assignedQueue func(ctx context.Context, agentID uuid.UUID, params pagination.Params) (*ordersrepo.AgentOrderQueueList, error)
 	detail        func(ctx context.Context, orderID uuid.UUID) (*ordersrepo.OrderDetail, error)
+}
+
+// CreateReview implements [reviews.Service].
+func (s *stubOrdersRepo) CreateReview(ctx context.Context, input reviews.CreateReviewInput) (*reviews.Review, error) {
+	panic("unimplemented")
+}
+
+// DeleteReview implements [reviews.Service].
+func (s *stubOrdersRepo) DeleteReview(ctx context.Context, reviewID uuid.UUID, buyerStoreID uuid.UUID, buyerUserID uuid.UUID) error {
+	panic("unimplemented")
+}
+
+// ListVisibleReviews implements [reviews.Service].
+func (s *stubOrdersRepo) ListVisibleReviews(ctx context.Context, vendorStoreID uuid.UUID, params pagination.Params) (reviews.ReviewListResult, error) {
+	panic("unimplemented")
 }
 
 // HasBuyerStorePurchasedFromVendor implements [orders.Repository].
@@ -387,6 +462,121 @@ type stubOrdersService struct {
 	agentDeliver func(ctx context.Context, input ordersrepo.AgentDeliverInput) error
 }
 
+// CreateOrderLineItems implements [orders.Repository].
+func (s stubOrdersService) CreateOrderLineItems(ctx context.Context, items []models.OrderLineItem) error {
+	panic("unimplemented")
+}
+
+// CreatePaymentIntent implements [orders.Repository].
+func (s stubOrdersService) CreatePaymentIntent(ctx context.Context, intent *models.PaymentIntent) (*models.PaymentIntent, error) {
+	panic("unimplemented")
+}
+
+// CreateVendorOrder implements [orders.Repository].
+func (s stubOrdersService) CreateVendorOrder(ctx context.Context, order *models.VendorOrder) (*models.VendorOrder, error) {
+	panic("unimplemented")
+}
+
+// FindOrderDetail implements [orders.Repository].
+func (s stubOrdersService) FindOrderDetail(ctx context.Context, orderID uuid.UUID) (*ordersrepo.OrderDetail, error) {
+	panic("unimplemented")
+}
+
+// FindOrderLineItem implements [orders.Repository].
+func (s stubOrdersService) FindOrderLineItem(ctx context.Context, lineItemID uuid.UUID) (*models.OrderLineItem, error) {
+	panic("unimplemented")
+}
+
+// FindOrderLineItemsByOrder implements [orders.Repository].
+func (s stubOrdersService) FindOrderLineItemsByOrder(ctx context.Context, orderID uuid.UUID) ([]models.OrderLineItem, error) {
+	panic("unimplemented")
+}
+
+// FindPaymentIntentByOrder implements [orders.Repository].
+func (s stubOrdersService) FindPaymentIntentByOrder(ctx context.Context, orderID uuid.UUID) (*models.PaymentIntent, error) {
+	panic("unimplemented")
+}
+
+// FindPendingOrdersBefore implements [orders.Repository].
+func (s stubOrdersService) FindPendingOrdersBefore(ctx context.Context, cutoff time.Time) ([]models.VendorOrder, error) {
+	panic("unimplemented")
+}
+
+// FindVendorOrder implements [orders.Repository].
+func (s stubOrdersService) FindVendorOrder(ctx context.Context, orderID uuid.UUID) (*models.VendorOrder, error) {
+	panic("unimplemented")
+}
+
+// FindVendorOrderByCheckoutGroupAndVendor implements [orders.Repository].
+func (s stubOrdersService) FindVendorOrderByCheckoutGroupAndVendor(ctx context.Context, checkoutGroupID uuid.UUID, vendorStoreID uuid.UUID) (*models.VendorOrder, error) {
+	panic("unimplemented")
+}
+
+// FindVendorOrdersByCheckoutGroup implements [orders.Repository].
+func (s stubOrdersService) FindVendorOrdersByCheckoutGroup(ctx context.Context, checkoutGroupID uuid.UUID) ([]models.VendorOrder, error) {
+	panic("unimplemented")
+}
+
+// HasBuyerStorePurchasedFromVendor implements [orders.Repository].
+func (s stubOrdersService) HasBuyerStorePurchasedFromVendor(ctx context.Context, buyerStoreID uuid.UUID, vendorStoreID uuid.UUID) (bool, error) {
+	panic("unimplemented")
+}
+
+// ListAssignedOrders implements [orders.Repository].
+func (s stubOrdersService) ListAssignedOrders(ctx context.Context, agentID uuid.UUID, params pagination.Params) (*ordersrepo.AgentOrderQueueList, error) {
+	panic("unimplemented")
+}
+
+// ListBuyerOrders implements [orders.Repository].
+func (s stubOrdersService) ListBuyerOrders(ctx context.Context, buyerStoreID uuid.UUID, input ordersrepo.ListOrdersInput, filters ordersrepo.BuyerOrderFilters) (*ordersrepo.BuyerOrderListResult, error) {
+	panic("unimplemented")
+}
+
+// ListPayoutOrders implements [orders.Repository].
+func (s stubOrdersService) ListPayoutOrders(ctx context.Context, params pagination.Params) (*ordersrepo.PayoutOrderList, error) {
+	panic("unimplemented")
+}
+
+// ListUnassignedHoldOrders implements [orders.Repository].
+func (s stubOrdersService) ListUnassignedHoldOrders(ctx context.Context, params pagination.Params) (*ordersrepo.AgentOrderQueueList, error) {
+	panic("unimplemented")
+}
+
+// ListVendorOrders implements [orders.Repository].
+func (s stubOrdersService) ListVendorOrders(ctx context.Context, vendorStoreID uuid.UUID, input ordersrepo.ListOrdersInput, filters ordersrepo.VendorOrderFilters) (*ordersrepo.VendorOrderListResult, error) {
+	panic("unimplemented")
+}
+
+// UpdateOrderAssignment implements [orders.Repository].
+func (s stubOrdersService) UpdateOrderAssignment(ctx context.Context, assignmentID uuid.UUID, updates map[string]any) error {
+	panic("unimplemented")
+}
+
+// UpdateOrderLineItemStatus implements [orders.Repository].
+func (s stubOrdersService) UpdateOrderLineItemStatus(ctx context.Context, lineItemID uuid.UUID, status enums.LineItemStatus, notes *string) error {
+	panic("unimplemented")
+}
+
+// UpdatePaymentIntent implements [orders.Repository].
+func (s stubOrdersService) UpdatePaymentIntent(ctx context.Context, orderID uuid.UUID, updates map[string]any) error {
+	panic("unimplemented")
+}
+
+// UpdateVendorOrder implements [orders.Repository].
+func (s stubOrdersService) UpdateVendorOrder(ctx context.Context, orderID uuid.UUID, updates map[string]any) error {
+	panic("unimplemented")
+}
+
+// UpdateVendorOrderStatus implements [orders.Repository].
+func (s stubOrdersService) UpdateVendorOrderStatus(ctx context.Context, orderID uuid.UUID, status enums.VendorOrderStatus) error {
+	panic("unimplemented")
+}
+
+// WithTx implements [orders.Repository].
+func (s stubOrdersService) WithTx(tx *gorm.DB) ordersrepo.Repository {
+	panic("unimplemented")
+}
+
 func (s stubOrdersService) CancelOrder(ctx context.Context, input ordersrepo.BuyerCancelInput) error {
 	panic("unimplemented")
 }
@@ -480,6 +670,7 @@ func newTestRouter(cfg *config.Config) http.Handler {
 		stubCartService{},
 		stubNotificationsService{},
 		(wishlist.Service)(nil),
+		stubReviewsService{},
 		&stubOrdersRepo{},
 		stubOrdersService{},
 		stubSubscriptionsService{},
@@ -754,6 +945,7 @@ func TestAgentAssignedOrdersRequiresAgentRole(t *testing.T) {
 		stubCartService{},
 		stubNotificationsService{},
 		(wishlist.Service)(nil),
+		stubReviewsService{},
 		repo,
 		stubOrdersService{},
 		stubSubscriptionsService{},
@@ -828,6 +1020,7 @@ func TestAgentAssignedOrderDetailRequiresAgentRole(t *testing.T) {
 		stubCartService{},
 		stubNotificationsService{},
 		(wishlist.Service)(nil),
+		stubReviewsService{},
 		repo,
 		stubOrdersService{},
 		stubSubscriptionsService{},
@@ -878,6 +1071,7 @@ func TestAgentPickupRequiresAgentRole(t *testing.T) {
 		stubCartService{},
 		stubNotificationsService{},
 		(wishlist.Service)(nil),
+		stubReviewsService{},
 		repo,
 		stubOrdersService{},
 		stubSubscriptionsService{},
@@ -943,6 +1137,7 @@ func TestAgentDeliverRequiresAgentRole(t *testing.T) {
 		stubCartService{},
 		stubNotificationsService{},
 		(wishlist.Service)(nil),
+		stubReviewsService{},
 		repo,
 		stubOrdersService{},
 		stubSubscriptionsService{},
