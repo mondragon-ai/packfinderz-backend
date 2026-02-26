@@ -144,6 +144,20 @@ type VendorOrderListResult struct {
 	Pagination OrderPagination      `json:"pagination"`
 }
 
+// StorefrontOrderTotals exposes aggregated totals between a buyer and vendor.
+type StorefrontOrderTotals struct {
+	TotalOrders    int `json:"total_orders"`
+	TotalItems     int `json:"total_items"`
+	TotalSpent     int `json:"total_spent"`
+	TotalDiscounts int `json:"total_discounts"`
+}
+
+// StorefrontOrderListResponse holds the storefront-specific order list plus totals.
+type StorefrontOrderListResponse struct {
+	Orders []VendorOrderSummary  `json:"orders"`
+	Totals StorefrontOrderTotals `json:"totals"`
+}
+
 // OrderAssignmentSummary highlights the active agent assignment for an order.
 type OrderAssignmentSummary struct {
 	ID                      uuid.UUID  `json:"id"`

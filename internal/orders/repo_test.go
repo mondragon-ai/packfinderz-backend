@@ -433,6 +433,28 @@ func TestRepositoryListVendorOrders_filtersAndSearch(t *testing.T) {
 	assert.Empty(t, list.Pagination.Next)
 }
 
+func TestRepositoryListOrdersBetweenStores(t *testing.T) {
+	db := setupOrdersTestDB(t)
+	repo := NewRepository(db)
+
+	buyer := newStore(t, db, "Search Buyer", enums.StoreTypeBuyer)
+	vendor := newStore(t, db, "Portal Vendor", enums.StoreTypeVendor)
+	otherBuyer := newStore(t, db, "Other Buyer", enums.StoreTypeBuyer)
+	otherVendor := newStore(t, db, "Other Vendor", enums.StoreTypeVendor)
+
+	now := time.Now().UTC()
+	orderOne := createOrder(t, db, buyer, vendor, 1, now.Add(-time.Hour), 2, enums.PaymentStatusPaid, enums.VendorOrderStatusAccepted, enums.VendorOrderFulfillmentStatusFulfilled, enums.VendorOrderShippingStatusDelivered)
+	orderTwo := createOrder(t, db, buyer, vendor, 2, now, 1, enums.PaymentStatusPaid, enums.VendorOrderStatusDelivered, enums.VendorOrderFulfillmentStatusFulfilled, enums.VendorOrderShippingStatusDelivered)
+	createOrder(t, db, otherBuyer, vendor, 3, now.Add(-30*time.Minute), 1, enums.PaymentStatusPaid, enums.VendorOrderStatusDelivered, enums.VendorOrderFulfillmentStatusFulfilled, enums.VendorOrderShippingStatusDelivered)
+	createOrder(t, db, buyer, otherVendor, 4, now.Add(-15*time.Minute), 1, enums.PaymentStatusPaid, enums.VendorOrderStatusDelivered, enums.VendorOrderFulfillmentStatusFulfilled, enums.VendorOrderShippingStatusDelivered)
+
+	list, err := repo.ListOrdersBetweenStores(context.Background(), vendor.ID, buyer.ID)
+	require.NoError(t, err)
+	require.Len(t, list, 2)
+	assert.Equal(t, orderTwo.ID, list[0].ID)
+	assert.Equal(t, orderOne.ID, list[1].ID)
+}
+
 func TestRepositoryFindOrderDetail(t *testing.T) {
 	db := setupOrdersTestDB(t)
 	repo := NewRepository(db)

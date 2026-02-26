@@ -75,7 +75,28 @@ func StorePublicProfile(svc stores.Service, logg *logger.Logger) http.HandlerFun
 			return
 		}
 
-		responses.WriteSuccess(w, profile)
+		responses.WriteSuccess(w, stores.StoreDTO{
+			ID:                   profile.ID,
+			Type:                 profile.Type,
+			CompanyName:          profile.CompanyName,
+			DBAName:              profile.DBAName,
+			Description:          profile.Description,
+			Phone:                profile.Phone,
+			Email:                profile.Email,
+			KYCStatus:            profile.KYCStatus,
+			DeliveryRadiusMeters: profile.DeliveryRadiusMeters,
+			Address:              profile.Address,
+			Social:               profile.Social,
+			BannerURL:            profile.BannerURL,
+			LogoURL:              profile.LogoURL,
+			Ratings:              profile.Ratings,
+			Categories:           profile.Categories,
+			Badge:                profile.Badge,
+			LastActiveAt:         profile.LastActiveAt,
+			Licenses:             profile.Licenses,
+			CreatedAt:            profile.CreatedAt,
+			UpdatedAt:            profile.UpdatedAt,
+		})
 	}
 }
 

@@ -350,6 +350,11 @@ type stubOrdersRepo struct {
 	detail        func(ctx context.Context, orderID uuid.UUID) (*ordersrepo.OrderDetail, error)
 }
 
+// ListOrdersBetweenStores implements [orders.Repository].
+func (s *stubOrdersRepo) ListOrdersBetweenStores(ctx context.Context, vendorStoreID uuid.UUID, buyerStoreID uuid.UUID) ([]ordersrepo.VendorOrderSummary, error) {
+	panic("unimplemented")
+}
+
 // CreateReview implements [reviews.Service].
 func (s *stubOrdersRepo) CreateReview(ctx context.Context, input reviews.CreateReviewInput) (*reviews.Review, error) {
 	panic("unimplemented")

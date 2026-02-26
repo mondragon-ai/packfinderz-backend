@@ -15,16 +15,18 @@ import (
 
 	"github.com/angelmondragon/packfinderz-backend/api/middleware"
 	internalorders "github.com/angelmondragon/packfinderz-backend/internal/orders"
+	"github.com/angelmondragon/packfinderz-backend/internal/stores"
 	"github.com/angelmondragon/packfinderz-backend/pkg/db/models"
 	"github.com/angelmondragon/packfinderz-backend/pkg/enums"
 	"github.com/angelmondragon/packfinderz-backend/pkg/pagination"
 )
 
 type stubControllerOrdersRepo struct {
-	listBuyer  func(ctx context.Context, buyerStoreID uuid.UUID, input internalorders.ListOrdersInput, filters internalorders.BuyerOrderFilters) (*internalorders.BuyerOrderListResult, error)
-	listVendor func(ctx context.Context, vendorStoreID uuid.UUID, input internalorders.ListOrdersInput, filters internalorders.VendorOrderFilters) (*internalorders.VendorOrderListResult, error)
-	payoutList func(ctx context.Context, params pagination.Params) (*internalorders.PayoutOrderList, error)
-	detail     func(ctx context.Context, orderID uuid.UUID) (*internalorders.OrderDetail, error)
+	listBuyer       func(ctx context.Context, buyerStoreID uuid.UUID, input internalorders.ListOrdersInput, filters internalorders.BuyerOrderFilters) (*internalorders.BuyerOrderListResult, error)
+	listVendor      func(ctx context.Context, vendorStoreID uuid.UUID, input internalorders.ListOrdersInput, filters internalorders.VendorOrderFilters) (*internalorders.VendorOrderListResult, error)
+	listVendorBuyer func(ctx context.Context, vendorStoreID, buyerStoreID uuid.UUID) ([]internalorders.VendorOrderSummary, error)
+	payoutList      func(ctx context.Context, params pagination.Params) (*internalorders.PayoutOrderList, error)
+	detail          func(ctx context.Context, orderID uuid.UUID) (*internalorders.OrderDetail, error)
 }
 
 // HasBuyerStorePurchasedFromVendor implements [orders.Repository].
@@ -114,6 +116,13 @@ func (s *stubControllerOrdersRepo) ListVendorOrders(ctx context.Context, vendorS
 	return nil, nil
 }
 
+func (s *stubControllerOrdersRepo) ListOrdersBetweenStores(ctx context.Context, vendorStoreID, buyerStoreID uuid.UUID) ([]internalorders.VendorOrderSummary, error) {
+	if s.listVendorBuyer != nil {
+		return s.listVendorBuyer(ctx, vendorStoreID, buyerStoreID)
+	}
+	return nil, nil
+}
+
 func (s *stubControllerOrdersRepo) ListPayoutOrders(ctx context.Context, params pagination.Params) (*internalorders.PayoutOrderList, error) {
 	if s.payoutList != nil {
 		return s.payoutList(ctx, params)
@@ -197,6 +206,18 @@ func (s *stubControllerOrdersService) ConfirmPayout(ctx context.Context, input i
 		return s.confirmPayout(ctx, input)
 	}
 	return nil
+}
+
+type stubStoreFetcher struct {
+	store *stores.StoreDTO
+	err   error
+}
+
+func (s stubStoreFetcher) GetByID(ctx context.Context, id uuid.UUID) (*stores.StoreDTO, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+	return s.store, nil
 }
 
 func TestListBuyerPerspective(t *testing.T) {
@@ -290,6 +311,128 @@ func TestListVendorPerspectiveActionable(t *testing.T) {
 	}
 	if len(envelope.Data.Orders) != 1 || envelope.Data.Orders[0].OrderNumber != 100 {
 		t.Fatalf("unexpected vendor orders in response")
+	}
+}
+
+func TestStorefrontOrdersSuccess(t *testing.T) {
+	buyerStoreID := uuid.New()
+	vendorStoreID := uuid.New()
+
+	summaries := []internalorders.VendorOrderSummary{
+		{
+			ID:                uuid.New(),
+			OrderNumber:       1,
+			TotalCents:        200,
+			DiscountsCents:    20,
+			TotalItems:        2,
+			OrderStatus:       enums.VendorOrderStatusDelivered,
+			PaymentStatus:     enums.PaymentStatusPaid,
+			FulfillmentStatus: enums.VendorOrderFulfillmentStatusFulfilled,
+			ShippingStatus:    enums.VendorOrderShippingStatusDelivered,
+			Buyer: internalorders.OrderStoreSummary{
+				ID:          buyerStoreID,
+				CompanyName: "Buyer Store",
+			},
+		},
+		{
+			ID:                uuid.New(),
+			OrderNumber:       2,
+			TotalCents:        100,
+			DiscountsCents:    5,
+			TotalItems:        1,
+			OrderStatus:       enums.VendorOrderStatusAccepted,
+			PaymentStatus:     enums.PaymentStatusPending,
+			FulfillmentStatus: enums.VendorOrderFulfillmentStatusPartial,
+			ShippingStatus:    enums.VendorOrderShippingStatusInTransit,
+			Buyer: internalorders.OrderStoreSummary{
+				ID:          buyerStoreID,
+				CompanyName: "Buyer Store",
+			},
+		},
+	}
+
+	repo := &stubControllerOrdersRepo{
+		listVendorBuyer: func(ctx context.Context, vendorStoreIDParam, buyerStoreIDParam uuid.UUID) ([]internalorders.VendorOrderSummary, error) {
+			if vendorStoreIDParam != vendorStoreID {
+				t.Fatalf("unexpected vendor store %s", vendorStoreIDParam)
+			}
+			if buyerStoreIDParam != buyerStoreID {
+				t.Fatalf("unexpected buyer store %s", buyerStoreIDParam)
+			}
+			return summaries, nil
+		},
+	}
+
+	fetcher := stubStoreFetcher{
+		store: &stores.StoreDTO{
+			ID:   vendorStoreID,
+			Type: enums.StoreTypeVendor,
+		},
+	}
+
+	handler := StorefrontOrders(repo, fetcher, nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/stores/"+vendorStoreID.String()+"/orders", nil)
+	ctx := chi.NewRouteContext()
+	ctx.URLParams.Add("storeId", vendorStoreID.String())
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, ctx))
+	req = req.WithContext(middleware.WithStoreID(req.Context(), buyerStoreID.String()))
+	req = req.WithContext(middleware.WithStoreType(req.Context(), enums.StoreTypeBuyer))
+
+	resp := httptest.NewRecorder()
+	handler.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusOK {
+		t.Fatalf("expected 200 got %d", resp.Code)
+	}
+
+	var envelope struct {
+		Data internalorders.StorefrontOrderListResponse `json:"data"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&envelope); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+
+	if len(envelope.Data.Orders) != 2 {
+		t.Fatalf("expected 2 orders, got %d", len(envelope.Data.Orders))
+	}
+	if envelope.Data.Totals.TotalOrders != 2 {
+		t.Fatalf("unexpected total orders %d", envelope.Data.Totals.TotalOrders)
+	}
+	if envelope.Data.Totals.TotalItems != 3 {
+		t.Fatalf("unexpected total items %d", envelope.Data.Totals.TotalItems)
+	}
+	if envelope.Data.Totals.TotalSpent != 300 {
+		t.Fatalf("unexpected total spent %d", envelope.Data.Totals.TotalSpent)
+	}
+	if envelope.Data.Totals.TotalDiscounts != 25 {
+		t.Fatalf("unexpected total discounts %d", envelope.Data.Totals.TotalDiscounts)
+	}
+}
+
+func TestStorefrontOrdersInvalidVendorType(t *testing.T) {
+	buyerStoreID := uuid.New()
+	vendorStoreID := uuid.New()
+
+	repo := &stubControllerOrdersRepo{}
+	fetcher := stubStoreFetcher{
+		store: &stores.StoreDTO{
+			ID:   vendorStoreID,
+			Type: enums.StoreTypeBuyer,
+		},
+	}
+
+	handler := StorefrontOrders(repo, fetcher, nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/stores/"+vendorStoreID.String()+"/orders", nil)
+	ctx := chi.NewRouteContext()
+	ctx.URLParams.Add("storeId", vendorStoreID.String())
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, ctx))
+	req = req.WithContext(middleware.WithStoreID(req.Context(), buyerStoreID.String()))
+	req = req.WithContext(middleware.WithStoreType(req.Context(), enums.StoreTypeBuyer))
+
+	resp := httptest.NewRecorder()
+	handler.ServeHTTP(resp, req)
+	if resp.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 got %d", resp.Code)
 	}
 }
 

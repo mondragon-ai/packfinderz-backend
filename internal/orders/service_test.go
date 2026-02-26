@@ -121,6 +121,10 @@ func (s *stubOrdersRepo) ListVendorOrders(ctx context.Context, vendorStoreID uui
 	panic("not implemented")
 }
 
+func (s *stubOrdersRepo) ListOrdersBetweenStores(ctx context.Context, vendorStoreID, buyerStoreID uuid.UUID) ([]VendorOrderSummary, error) {
+	panic("not implemented")
+}
+
 func (s *stubOrdersRepo) ListPayoutOrders(ctx context.Context, params pagination.Params) (*PayoutOrderList, error) {
 	return &PayoutOrderList{}, nil
 }

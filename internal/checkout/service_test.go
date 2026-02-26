@@ -1532,6 +1532,11 @@ type stubOrdersRepository struct {
 	createOrderCalls int
 }
 
+// ListOrdersBetweenStores implements [orders.Repository].
+func (s *stubOrdersRepository) ListOrdersBetweenStores(ctx context.Context, vendorStoreID uuid.UUID, buyerStoreID uuid.UUID) ([]orders.VendorOrderSummary, error) {
+	panic("unimplemented")
+}
+
 // HasBuyerStorePurchasedFromVendor implements [orders.Repository].
 func (s *stubOrdersRepository) HasBuyerStorePurchasedFromVendor(ctx context.Context, buyerStoreID uuid.UUID, vendorStoreID uuid.UUID) (bool, error) {
 	panic("unimplemented")

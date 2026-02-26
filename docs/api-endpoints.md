@@ -324,6 +324,57 @@ curl "{{API_BASE_URL}}/api/v1/stores/{{STORE_ID}}" \
 
 Response uses the same `stores.StoreDTO` shown by `GET /api/v1/stores/me` (company info, contact/social channels, badge metadata, address, licenses, owner details, and timestamps).
 
+### `GET /api/v1/stores/{storeId}/orders`
+
+Allows the active buyer store to inspect every order placed with the viewed vendor storefront so the storefront “Orders” tab can show both the rows and the aggregated summary without a separate pagination flow. The handler validates the vendor store exists (`stores.Service.GetByID`), ensures the caller is a buyer (`StoreTypeBuyer`), calls `internal/orders.Repository.ListOrdersBetweenStores`, and returns `internal/orders.StorefrontOrderListResponse` with `totals` (`total_orders`, `total_items`, `total_spent`, `total_discounts`) plus the vendor-scoped `VendorOrderSummary` rows.
+
+```bash
+curl "{{API_BASE_URL}}/api/v1/stores/{{VENDOR_STORE_ID}}/orders" \
+  -H "Authorization: Bearer {{ACCESS_TOKEN}}"
+```
+
+Sample response:
+
+```json
+{
+  "data": {
+    "orders": [
+      {
+        "id": "order-uuid",
+        "status": "fulfilled",
+        "order_number": 12345,
+        "created_at": "2025-02-01T08:30:00Z",
+        "total_cents": 12500,
+        "discount_cents": 500,
+        "total_items": 3,
+        "order_status": "fulfilled",
+        "payment_status": "paid",
+        "fulfillment_status": "completed",
+        "shipping_status": "delivered",
+        "buyer": {
+          "id": "buyer-store-id",
+          "company_name": "Acme Groceries",
+          "address": {
+            "line1": "123 Market Street",
+            "city": "Testville",
+            "state": "CA",
+            "postal_code": "94103",
+            "country": "US"
+          }
+        },
+        "delivered_at": "2025-02-01T09:15:00Z"
+      }
+    ],
+    "totals": {
+      "total_orders": 1,
+      "total_items": 3,
+      "total_spent": 12500,
+      "total_discounts": 500
+    }
+  }
+}
+```
+
 ### `GET /api/v1/stores/me`
 
 Returns the active store’s profile. The response matches `stores.StoreDTO`, exposing company info, contact channels, curated badge status, address, ratings, owner metadata, licenses, and timestamps such as `last_active_at` / `last_logged_in_at`.

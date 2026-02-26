@@ -16,16 +16,16 @@ type repository struct {
 	db *gorm.DB
 }
 
-var completedVendorOrderStatuses = []enums.VendorOrderStatus{
-	enums.VendorOrderStatusDelivered,
-	enums.VendorOrderStatusClosed,
-	enums.VendorOrderStatusCreatedPending,
-	enums.VendorOrderStatusAccepted,
-	enums.VendorOrderStatusCanceled,
-	enums.VendorOrderStatusExpired,
-	enums.VendorOrderStatusHoldForPickup,
-	enums.VendorOrderStatusRejected,
-}
+// var completedVendorOrderStatuses = []enums.VendorOrderStatus{
+// 	enums.VendorOrderStatusDelivered,
+// 	enums.VendorOrderStatusClosed,
+// 	enums.VendorOrderStatusCreatedPending,
+// 	enums.VendorOrderStatusAccepted,
+// 	enums.VendorOrderStatusCanceled,
+// 	enums.VendorOrderStatusExpired,
+// 	enums.VendorOrderStatusHoldForPickup,
+// 	enums.VendorOrderStatusRejected,
+// }
 
 // NewRepository builds an orders repository bound to the provided DB.
 func NewRepository(db *gorm.DB) Repository {
@@ -138,7 +138,7 @@ func (r *repository) HasBuyerStorePurchasedFromVendor(ctx context.Context, buyer
 	var count int64
 	err := r.db.WithContext(ctx).
 		Model(&models.VendorOrder{}).
-		Where("buyer_store_id = ? AND vendor_store_id = ? AND status IN ?", buyerStoreID, vendorStoreID, completedVendorOrderStatuses).
+		Where("buyer_store_id = ? AND vendor_store_id = ?", buyerStoreID, vendorStoreID).
 		Count(&count).Error
 	if err != nil {
 		return false, err
@@ -331,20 +331,7 @@ func (r *repository) ListVendorOrders(ctx context.Context, vendorStoreID uuid.UU
 
 	qb := r.vendorOrderSummaryQuery(ctx, vendorStoreID)
 	qb = applyVendorOrderFilters(qb, filters)
-	qb = qb.Select(`vo.id,
-		vo.created_at,
-		vo.order_number,
-		vo.total_cents,
-		vo.discounts_cents,
-		vo.fulfillment_status,
-		vo.shipping_status,
-		vo.status AS order_status,
-		pi.status AS payment_status,
-		bs.id AS buyer_store_id,
-		bs.company_name AS buyer_company_name,
-		bs.dba_name AS buyer_dba_name,
-		bs.logo_url AS buyer_logo_url,
-		(SELECT COALESCE(SUM(qty), 0) FROM order_line_items WHERE order_id = vo.id) AS total_items`)
+	qb = r.applyVendorOrderSummarySelect(qb)
 
 	if cursor != nil {
 		qb = qb.Where("(vo.created_at < ?) OR (vo.created_at = ? AND vo.id < ?)", cursor.CreatedAt, cursor.CreatedAt, cursor.ID)
@@ -365,27 +352,7 @@ func (r *repository) ListVendorOrders(ctx context.Context, vendorStoreID uuid.UU
 		nextCursor = pagination.EncodeCursor(pagination.Cursor{CreatedAt: last.CreatedAt, ID: last.ID})
 	}
 
-	orders := make([]VendorOrderSummary, 0, len(resultRows))
-	for _, record := range resultRows {
-		orders = append(orders, VendorOrderSummary{
-			ID:                record.ID,
-			OrderStatus:       record.OrderStatus,
-			CreatedAt:         record.CreatedAt,
-			OrderNumber:       record.OrderNumber,
-			TotalCents:        record.TotalCents,
-			DiscountsCents:    record.DiscountsCents,
-			TotalItems:        record.TotalItems,
-			PaymentStatus:     record.PaymentStatus,
-			FulfillmentStatus: record.FulfillmentStatus,
-			ShippingStatus:    record.ShippingStatus,
-			Buyer: OrderStoreSummary{
-				ID:          record.BuyerStoreID,
-				CompanyName: record.BuyerCompanyName,
-				DBAName:     record.BuyerDBAName,
-				LogoURL:     record.BuyerLogoURL,
-			},
-		})
-	}
+	orders := vendorOrderRecordsToSummaries(resultRows)
 
 	countQB := r.vendorOrderBaseQuery(ctx, vendorStoreID)
 	countQB = applyVendorOrderFilters(countQB, filters)
@@ -429,6 +396,20 @@ func (r *repository) ListVendorOrders(ctx context.Context, vendorStoreID uuid.UU
 			Next:    nextCursor,
 		},
 	}, nil
+}
+
+func (r *repository) ListOrdersBetweenStores(ctx context.Context, vendorStoreID, buyerStoreID uuid.UUID) ([]VendorOrderSummary, error) {
+	qb := r.vendorOrderSummaryQuery(ctx, vendorStoreID)
+	qb = qb.Where("vo.buyer_store_id = ?", buyerStoreID)
+	qb = r.applyVendorOrderSummarySelect(qb)
+	qb = qb.Order("vo.created_at DESC").Order("vo.id DESC")
+
+	var records []vendorOrderRecord
+	if err := qb.Scan(&records).Error; err != nil {
+		return nil, err
+	}
+
+	return vendorOrderRecordsToSummaries(records), nil
 }
 
 func (r *repository) buyerOrderBaseQuery(ctx context.Context, buyerStoreID uuid.UUID) *gorm.DB {
@@ -485,6 +466,23 @@ func (r *repository) vendorOrderBaseQuery(ctx context.Context, vendorStoreID uui
 
 func (r *repository) vendorOrderSummaryQuery(ctx context.Context, vendorStoreID uuid.UUID) *gorm.DB {
 	return r.vendorOrderBaseQuery(ctx, vendorStoreID)
+}
+
+func (r *repository) applyVendorOrderSummarySelect(q *gorm.DB) *gorm.DB {
+	return q.Select(`vo.id,
+		vo.created_at,
+		vo.order_number,
+		vo.total_cents,
+		vo.discounts_cents,
+		vo.fulfillment_status,
+		vo.shipping_status,
+		vo.status AS order_status,
+		pi.status AS payment_status,
+		bs.id AS buyer_store_id,
+		bs.company_name AS buyer_company_name,
+		bs.dba_name AS buyer_dba_name,
+		bs.logo_url AS buyer_logo_url,
+		(SELECT COALESCE(SUM(qty), 0) FROM order_line_items WHERE order_id = vo.id) AS total_items`)
 }
 
 func applyVendorOrderFilters(q *gorm.DB, filters VendorOrderFilters) *gorm.DB {
@@ -873,6 +871,31 @@ type vendorOrderRecord struct {
 	BuyerDBAName      *string
 	BuyerLogoURL      *string
 	TotalItems        int
+}
+
+func vendorOrderRecordsToSummaries(records []vendorOrderRecord) []VendorOrderSummary {
+	orders := make([]VendorOrderSummary, 0, len(records))
+	for _, record := range records {
+		orders = append(orders, VendorOrderSummary{
+			ID:                record.ID,
+			OrderStatus:       record.OrderStatus,
+			CreatedAt:         record.CreatedAt,
+			OrderNumber:       record.OrderNumber,
+			TotalCents:        record.TotalCents,
+			DiscountsCents:    record.DiscountsCents,
+			TotalItems:        record.TotalItems,
+			PaymentStatus:     record.PaymentStatus,
+			FulfillmentStatus: record.FulfillmentStatus,
+			ShippingStatus:    record.ShippingStatus,
+			Buyer: OrderStoreSummary{
+				ID:          record.BuyerStoreID,
+				CompanyName: record.BuyerCompanyName,
+				DBAName:     record.BuyerDBAName,
+				LogoURL:     record.BuyerLogoURL,
+			},
+		})
+	}
+	return orders
 }
 
 type agentOrderQueueRecord struct {

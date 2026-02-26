@@ -1,6 +1,7 @@
 package orders
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"math"
@@ -16,11 +17,87 @@ import (
 	"github.com/angelmondragon/packfinderz-backend/api/responses"
 	"github.com/angelmondragon/packfinderz-backend/api/validators"
 	internalorders "github.com/angelmondragon/packfinderz-backend/internal/orders"
+	"github.com/angelmondragon/packfinderz-backend/internal/stores"
 	"github.com/angelmondragon/packfinderz-backend/pkg/enums"
 	pkgerrors "github.com/angelmondragon/packfinderz-backend/pkg/errors"
 	"github.com/angelmondragon/packfinderz-backend/pkg/logger"
 	"github.com/angelmondragon/packfinderz-backend/pkg/pagination"
 )
+
+type storeFetcher interface {
+	GetByID(ctx context.Context, id uuid.UUID) (*stores.StoreDTO, error)
+}
+
+// StorefrontOrders returns the orders created between the active buyer and the vendor storefront.
+func StorefrontOrders(repo internalorders.Repository, fetcher storeFetcher, logg *logger.Logger) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if repo == nil {
+			responses.WriteError(r.Context(), logg, w, pkgerrors.New(pkgerrors.CodeInternal, "orders repository unavailable"))
+			return
+		}
+		if fetcher == nil {
+			responses.WriteError(r.Context(), logg, w, pkgerrors.New(pkgerrors.CodeInternal, "store service unavailable"))
+			return
+		}
+
+		storeType, ok := middleware.StoreTypeFromContext(r.Context())
+		if !ok || storeType != enums.StoreTypeBuyer {
+			responses.WriteError(r.Context(), logg, w, pkgerrors.New(pkgerrors.CodeForbidden, "buyer store context required"))
+			return
+		}
+
+		buyerStoreID, err := parseStoreID(r)
+		if err != nil {
+			responses.WriteError(r.Context(), logg, w, err)
+			return
+		}
+
+		vendorIDParam := strings.TrimSpace(chi.URLParam(r, "storeId"))
+		if vendorIDParam == "" {
+			responses.WriteError(r.Context(), logg, w, pkgerrors.New(pkgerrors.CodeValidation, "vendor store id is required"))
+			return
+		}
+		vendorID, err := uuid.Parse(vendorIDParam)
+		if err != nil {
+			responses.WriteError(r.Context(), logg, w, pkgerrors.Wrap(pkgerrors.CodeValidation, err, "invalid vendor store id"))
+			return
+		}
+
+		vendorStore, err := fetcher.GetByID(r.Context(), vendorID)
+		if err != nil {
+			responses.WriteError(r.Context(), logg, w, err)
+			return
+		}
+		if vendorStore == nil {
+			responses.WriteError(r.Context(), logg, w, pkgerrors.New(pkgerrors.CodeNotFound, "vendor store not found"))
+			return
+		}
+		if vendorStore.Type != enums.StoreTypeVendor {
+			responses.WriteError(r.Context(), logg, w, pkgerrors.New(pkgerrors.CodeValidation, "vendor store id must belong to a vendor"))
+			return
+		}
+
+		orders, err := repo.ListOrdersBetweenStores(r.Context(), vendorID, buyerStoreID)
+		if err != nil {
+			responses.WriteError(r.Context(), logg, w, pkgerrors.Wrap(pkgerrors.CodeDependency, err, "list storefront orders"))
+			return
+		}
+
+		var totals internalorders.StorefrontOrderTotals
+		totals.TotalOrders = len(orders)
+		for _, order := range orders {
+			totals.TotalItems += order.TotalItems
+			totals.TotalSpent += order.TotalCents
+			totals.TotalDiscounts += order.DiscountsCents
+		}
+
+		resp := internalorders.StorefrontOrderListResponse{
+			Orders: orders,
+			Totals: totals,
+		}
+		responses.WriteSuccess(w, resp)
+	}
+}
 
 // List returns buyer- or vendor-perspective order pages depending on the active store type.
 func List(repo internalorders.Repository, logg *logger.Logger) http.HandlerFunc {

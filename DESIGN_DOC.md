@@ -1820,6 +1820,14 @@ Headers:
   * Errors: `401, 404`
   * Backed by `internal/stores.Service.GetStoreByID`, which loads the store, owner, and licenses via the existing mapper so viewer access reuses the same DTO without enforcing membership checks.
 
+**Storefront order history**
+
+* `GET /api/v1/stores/{storeId}/orders`
+
+  * Buyer stores fetch every `VendorOrderSummary` between the authenticated buyer and the vendor storefront plus aggregated totals (`total_orders`, `total_items`, `total_spent`, `total_discounts`) so the storefront Orders tab can render both rows and summary metrics without a separate pagination surface.
+  * Success: `200`
+  * Errors: `401, 403, 404`
+
 ---
 
 ### 5.3 Users (Store members)

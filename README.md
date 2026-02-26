@@ -533,6 +533,7 @@ These endpoints rely on `activeStoreId` and enforce owner/manager access for mut
 * `DELETE /api/v1/stores/me/users/{userId}` – removes only the membership row, returns `409` if the target is the last owner, and leaves the user record intact.
 * `GET /api/v1/stores/{storeId}` – returns the full `StoreDTO` for the requested store so any authenticated user can view another store’s public profile; it is scoped by the supplied UUID (404 when missing) and does not require `activeStoreId` or membership.
 * The store service now exposes `GetStoreByID`, which powers the viewer-ready route without enforcing store membership while still returning the same owner and license metadata as the manager view.
+* `GET /api/v1/stores/{storeId}/orders` – returns every order between the authenticated buyer store and the viewed vendor storefront plus aggregated `totals` (`total_discounts`, `total_spent`, `total_orders`, `total_items`) so the storefront “Orders” tab can render both rows and summary metrics without a separate pagination flow.
 
 ### Licenses
 

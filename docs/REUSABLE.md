@@ -305,6 +305,14 @@ Applying this helper everywhere keeps buyer-facing product and directory endpoin
 * The handler runs under `middleware.Auth` but intentionally skips `middleware.StoreContext`, so any authenticated user can view another store’s profile without needing membership or `activeStoreId`.
 * Validation failures emit `pkgerrors.CodeValidation`/HTTP `400`, missing stores bubble `pkgerrors.CodeNotFound`/HTTP `404`, and service-side issues map to the standard error envelope.
 
+### `orders`
+
+**Storefront order history**
+
+* `controllers.StorefrontOrders` (exposed as `GET /api/v1/stores/{storeId}/orders`) validates that the vendor store exists (via `stores.Service.GetByID`), enforces the active store is a buyer, and calls `internal/orders.Repository.ListOrdersBetweenStores` to fetch every matching `VendorOrderSummary`.
+* `internal/orders.StorefrontOrderListResponse` packages the rows with `StorefrontOrderTotals`, whose fields (`total_orders`, `total_items`, `total_spent`, `total_discounts`) are computed directly from the returned summaries so the storefront Orders tab gets both rows and aggregates in one response.
+* The route lives under `/api` with `middleware.Auth` + `middleware.StoreContext`, ensuring the buyer store context secures the query while the vendor store ID is treated as the storefront being viewed.
+
 ## Shared Types (`pkg/types`)
 
 ---

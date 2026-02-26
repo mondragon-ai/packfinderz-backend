@@ -115,6 +115,11 @@ type stubOrdersRepo struct {
 	vendorOrders map[uuid.UUID][]models.VendorOrder
 }
 
+// ListOrdersBetweenStores implements [orders.Repository].
+func (s *stubOrdersRepo) ListOrdersBetweenStores(ctx context.Context, vendorStoreID uuid.UUID, buyerStoreID uuid.UUID) ([]orders.VendorOrderSummary, error) {
+	panic("unimplemented")
+}
+
 // HasBuyerStorePurchasedFromVendor implements [orders.Repository].
 func (s *stubOrdersRepo) HasBuyerStorePurchasedFromVendor(ctx context.Context, buyerStoreID uuid.UUID, vendorStoreID uuid.UUID) (bool, error) {
 	panic("unimplemented")
