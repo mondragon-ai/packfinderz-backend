@@ -43,6 +43,7 @@ func TestServiceCreateReturnsExisting(t *testing.T) {
 	sub, created, err := svc.Create(context.Background(), storeID, CreateSubscriptionInput{
 		SquareCustomerID:      "cust-1",
 		SquarePaymentMethodID: "pm-1",
+		PriceID:               "price-123",
 	})
 	if err != nil {
 		t.Fatalf("expected success, got %v", err)
@@ -103,6 +104,7 @@ func TestServiceCreatesNewSubscription(t *testing.T) {
 	sub, created, err := svc.Create(context.Background(), storeID, CreateSubscriptionInput{
 		SquareCustomerID:      "cust-1",
 		SquarePaymentMethodID: "pm-1",
+		PriceID:               "price-123",
 	})
 	if err != nil {
 		t.Fatalf("expected success, got %v", err)

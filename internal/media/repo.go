@@ -2,11 +2,13 @@ package media
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"time"
 
 	"github.com/angelmondragon/packfinderz-backend/pkg/db/models"
 	"github.com/angelmondragon/packfinderz-backend/pkg/enums"
+	"github.com/angelmondragon/packfinderz-backend/pkg/pagination"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
@@ -57,6 +59,24 @@ func escapeLike(value string) string {
 	return value
 }
 
+func applyMediaFilters(query *gorm.DB, opts listQuery) *gorm.DB {
+	q := query.Where("store_id = ?", opts.storeID)
+	if opts.kind != nil {
+		q = q.Where("kind = ?", *opts.kind)
+	}
+	if opts.status != nil {
+		q = q.Where("status = ?", *opts.status)
+	}
+	if opts.mimeType != "" {
+		q = q.Where("mime_type = ?", opts.mimeType)
+	}
+	if opts.search != "" {
+		pattern := "%" + escapeLike(opts.search) + "%"
+		q = q.Where("file_name ILIKE ? ESCAPE '\\'", pattern)
+	}
+	return q
+}
+
 // ListPendingBefore returns pending media rows created before the cutoff.
 func (r *Repository) ListPendingBefore(ctx context.Context, cutoff time.Time) ([]models.Media, error) {
 	var results []models.Media
@@ -70,25 +90,10 @@ func (r *Repository) ListPendingBefore(ctx context.Context, cutoff time.Time) ([
 
 // List returns media rows matching the provided query.
 func (r *Repository) List(ctx context.Context, opts listQuery) ([]models.Media, error) {
-	query := r.db.WithContext(ctx).Model(&models.Media{}).Where("store_id = ?", opts.storeID)
-
-	if opts.kind != nil {
-		query = query.Where("kind = ?", *opts.kind)
-	}
-	if opts.status != nil {
-		query = query.Where("status = ?", *opts.status)
-	}
-	if opts.mimeType != "" {
-		query = query.Where("mime_type = ?", opts.mimeType)
-	}
-	if opts.search != "" {
-		pattern := "%" + escapeLike(opts.search) + "%"
-		query = query.Where("file_name ILIKE ? ESCAPE '\\'", pattern)
-	}
+	query := applyMediaFilters(r.db.WithContext(ctx).Model(&models.Media{}), opts)
 	if opts.cursor != nil {
 		query = query.Where("(created_at < ?) OR (created_at = ? AND id < ?)", opts.cursor.CreatedAt, opts.cursor.CreatedAt, opts.cursor.ID)
 	}
-
 	query = query.Order("created_at DESC").Order("id DESC").Limit(opts.limit)
 
 	var results []models.Media
@@ -96,6 +101,41 @@ func (r *Repository) List(ctx context.Context, opts listQuery) ([]models.Media, 
 		return nil, err
 	}
 	return results, nil
+}
+
+// Count returns the total number of media rows matching the filters.
+func (r *Repository) Count(ctx context.Context, opts listQuery) (int64, error) {
+	var total int64
+	query := applyMediaFilters(r.db.WithContext(ctx).Model(&models.Media{}), opts)
+	if err := query.Count(&total).Error; err != nil {
+		return 0, err
+	}
+	return total, nil
+}
+
+// FetchBoundaryCursor returns the first/last cursor for the filtered media set.
+func (r *Repository) FetchBoundaryCursor(ctx context.Context, opts listQuery, ascending bool) (string, error) {
+	var row struct {
+		CreatedAt time.Time
+		ID        uuid.UUID
+	}
+
+	query := applyMediaFilters(r.db.WithContext(ctx).Model(&models.Media{}), opts).
+		Select("created_at", "id")
+	if ascending {
+		query = query.Order("created_at ASC").Order("id ASC")
+	} else {
+		query = query.Order("created_at DESC").Order("id DESC")
+	}
+	query = query.Limit(1)
+
+	if err := query.First(&row).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return "", nil
+		}
+		return "", err
+	}
+	return pagination.EncodeCursor(pagination.Cursor{CreatedAt: row.CreatedAt, ID: row.ID}), nil
 }
 
 // FindByGCSKey retrieves a media record using its GCS key.

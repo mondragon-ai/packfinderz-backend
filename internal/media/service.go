@@ -32,6 +32,8 @@ type mediaRepository interface {
 	List(ctx context.Context, opts listQuery) ([]models.Media, error)
 	FindByID(ctx context.Context, id uuid.UUID) (*models.Media, error)
 	MarkDeleted(ctx context.Context, id uuid.UUID, deletedAt time.Time) error
+	Count(ctx context.Context, opts listQuery) (int64, error)
+	FetchBoundaryCursor(ctx context.Context, opts listQuery, ascending bool) (string, error)
 }
 
 type gcsClient interface {
@@ -46,7 +48,7 @@ type mediaAttachmentLookup interface {
 // Service exposes media-presign semantics.
 type Service interface {
 	PresignUpload(ctx context.Context, userID, storeID uuid.UUID, input PresignInput) (*PresignOutput, error)
-	ListMedia(ctx context.Context, params ListParams) (*ListResult, error)
+	ListMedia(ctx context.Context, params ListParams) (*MediaListResult, error)
 	DeleteMedia(ctx context.Context, params DeleteMediaParams) error
 	GenerateReadURL(ctx context.Context, params ReadURLParams) (*ReadURLOutput, error)
 }

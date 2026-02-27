@@ -106,7 +106,7 @@ func (s stubMediaService) GenerateReadURL(ctx context.Context, params media.Read
 }
 
 // ListMedia implements [media.Service].
-func (s stubMediaService) ListMedia(ctx context.Context, params media.ListParams) (*media.ListResult, error) {
+func (s stubMediaService) ListMedia(ctx context.Context, params media.ListParams) (*media.MediaListResult, error) {
 	panic("unimplemented")
 }
 

@@ -105,9 +105,6 @@ func (s *service) Create(ctx context.Context, storeID uuid.UUID, input CreateSub
 	}
 
 	priceID := strings.TrimSpace(input.PriceID)
-	if priceID == "" {
-		priceID = s.priceID
-	}
 	fmt.Printf("[subscriptions.Create] priceID='%s' (input=%t default=%t)\n", priceID, strings.TrimSpace(input.PriceID) != "", s.priceID != "")
 	if priceID == "" {
 		fmt.Printf("[subscriptions.Create] FAIL missing priceID\n")

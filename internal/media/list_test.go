@@ -14,9 +14,14 @@ import (
 
 type stubListRepo struct {
 	stubMediaRepo
-	listRows  []models.Media
-	listErr   error
-	lastQuery listQuery
+	listRows    []models.Media
+	listErr     error
+	lastQuery   listQuery
+	count       int64
+	countErr    error
+	firstCursor string
+	lastCursor  string
+	boundaryErr error
 }
 
 func (s *stubListRepo) List(ctx context.Context, opts listQuery) ([]models.Media, error) {
@@ -25,6 +30,26 @@ func (s *stubListRepo) List(ctx context.Context, opts listQuery) ([]models.Media
 		return nil, s.listErr
 	}
 	return s.listRows, nil
+}
+
+func (s *stubListRepo) Count(ctx context.Context, opts listQuery) (int64, error) {
+	if s.countErr != nil {
+		return 0, s.countErr
+	}
+	if s.count != 0 {
+		return s.count, nil
+	}
+	return int64(len(s.listRows)), nil
+}
+
+func (s *stubListRepo) FetchBoundaryCursor(ctx context.Context, opts listQuery, ascending bool) (string, error) {
+	if s.boundaryErr != nil {
+		return "", s.boundaryErr
+	}
+	if ascending {
+		return s.lastCursor, nil
+	}
+	return s.firstCursor, nil
 }
 
 func newServiceWithRepo(repo mediaRepository) *service {
@@ -61,6 +86,14 @@ func TestListMediaCursorPagination(t *testing.T) {
 		},
 	}
 	repo := &stubListRepo{listRows: rows}
+	repo.firstCursor = pagination.EncodeCursor(pagination.Cursor{
+		CreatedAt: rows[0].CreatedAt,
+		ID:        rows[0].ID,
+	})
+	repo.lastCursor = pagination.EncodeCursor(pagination.Cursor{
+		CreatedAt: rows[1].CreatedAt,
+		ID:        rows[1].ID,
+	})
 	svc := newServiceWithRepo(repo)
 	storeID := uuid.New()
 
@@ -78,15 +111,27 @@ func TestListMediaCursorPagination(t *testing.T) {
 	if res.Items[0].SignedURL == nil || *res.Items[0].SignedURL != rows[0].PublicURL {
 		t.Fatalf("expected signed url %s got %v", rows[0].PublicURL, res.Items[0].SignedURL)
 	}
-	if res.Cursor == "" {
+	if res.Pagination.Next == "" {
 		t.Fatal("expected cursor for next page")
 	}
 	expected := pagination.EncodeCursor(pagination.Cursor{
 		CreatedAt: rows[1].CreatedAt,
 		ID:        rows[1].ID,
 	})
-	if res.Cursor != expected {
-		t.Fatalf("expected cursor %s got %s", expected, res.Cursor)
+	if res.Pagination.Next != expected {
+		t.Fatalf("expected cursor %s got %s", expected, res.Pagination.Next)
+	}
+	if res.Pagination.Total != len(rows) {
+		t.Fatalf("expected total %d got %d", len(rows), res.Pagination.Total)
+	}
+	if res.Pagination.First != repo.firstCursor {
+		t.Fatalf("expected first cursor %s got %s", repo.firstCursor, res.Pagination.First)
+	}
+	if res.Pagination.Last != repo.lastCursor {
+		t.Fatalf("expected last cursor %s got %s", repo.lastCursor, res.Pagination.Last)
+	}
+	if res.Pagination.Page != 1 {
+		t.Fatalf("expected page 1, got %d", res.Pagination.Page)
 	}
 }
 

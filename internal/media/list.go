@@ -21,13 +21,25 @@ type ListParams struct {
 	Status    enums.MediaStatus
 	MimeType  string
 	Search    string
+	Page      int
 	pkgpagination.Params
 }
 
-// ListResult returns paginated media metadata.
-type ListResult struct {
-	Items  []ListItem `json:"items"`
-	Cursor string     `json:"cursor"`
+// MediaPagination mirrors the canonical ProductPagination contract.
+type MediaPagination struct {
+	Page    int    `json:"page"`
+	Total   int    `json:"total"`
+	Current string `json:"current,omitempty"`
+	First   string `json:"first,omitempty"`
+	Last    string `json:"last,omitempty"`
+	Prev    string `json:"prev,omitempty"`
+	Next    string `json:"next,omitempty"`
+}
+
+// MediaListResult returns paginated media metadata plus pagination metadata.
+type MediaListResult struct {
+	Items      []ListItem      `json:"items"`
+	Pagination MediaPagination `json:"pagination"`
 }
 
 // ListItem represents returned media metadata.
@@ -55,7 +67,7 @@ type listQuery struct {
 	cursor   *pkgpagination.Cursor
 }
 
-func (s *service) ListMedia(ctx context.Context, params ListParams) (*ListResult, error) {
+func (s *service) ListMedia(ctx context.Context, params ListParams) (*MediaListResult, error) {
 	if params.StoreID == uuid.Nil {
 		return nil, pkgerrors.New(pkgerrors.CodeValidation, "active store id required")
 	}
@@ -106,9 +118,45 @@ func (s *service) ListMedia(ctx context.Context, params ListParams) (*ListResult
 		items[i].SignedURL = stringPtr(signedURL)
 	}
 
-	return &ListResult{
-		Items:  items,
-		Cursor: nextCursor,
+	boundaryQuery := query
+	boundaryQuery.cursor = nil
+
+	totalCount, err := s.repo.Count(ctx, boundaryQuery)
+	if err != nil {
+		return nil, pkgerrors.Wrap(pkgerrors.CodeDependency, err, "count media")
+	}
+
+	firstCursor, err := s.repo.FetchBoundaryCursor(ctx, boundaryQuery, false)
+	if err != nil {
+		return nil, pkgerrors.Wrap(pkgerrors.CodeDependency, err, "boundary cursor")
+	}
+	lastCursor, err := s.repo.FetchBoundaryCursor(ctx, boundaryQuery, true)
+	if err != nil {
+		return nil, pkgerrors.Wrap(pkgerrors.CodeDependency, err, "boundary cursor")
+	}
+
+	currentCursor := strings.TrimSpace(params.Cursor)
+	prevCursor := ""
+	if currentCursor != "" {
+		prevCursor = currentCursor
+	}
+
+	page := params.Page
+	if page < 1 || currentCursor == "" {
+		page = 1
+	}
+
+	return &MediaListResult{
+		Items: items,
+		Pagination: MediaPagination{
+			Page:    page,
+			Total:   int(totalCount),
+			Current: currentCursor,
+			First:   firstCursor,
+			Last:    lastCursor,
+			Prev:    prevCursor,
+			Next:    nextCursor,
+		},
 	}, nil
 }
 

@@ -15,6 +15,7 @@ import (
 	"github.com/angelmondragon/packfinderz-backend/pkg/enums"
 	pkgerrors "github.com/angelmondragon/packfinderz-backend/pkg/errors"
 	"github.com/angelmondragon/packfinderz-backend/pkg/logger"
+	pkgpagination "github.com/angelmondragon/packfinderz-backend/pkg/pagination"
 )
 
 type mediaPresignRequest struct {
@@ -156,6 +157,9 @@ func MediaList(svc media.Service, logg *logger.Logger) http.HandlerFunc {
 			StoreID:  sid,
 			MimeType: strings.TrimSpace(q.Get("mime_type")),
 			Search:   strings.TrimSpace(q.Get("search")),
+			Params: pkgpagination.Params{
+				Cursor: strings.TrimSpace(q.Get("cursor")),
+			},
 		}
 
 		if limit := strings.TrimSpace(q.Get("limit")); limit != "" {
@@ -165,6 +169,15 @@ func MediaList(svc media.Service, logg *logger.Logger) http.HandlerFunc {
 				return
 			}
 			params.Limit = value
+		}
+
+		if page := strings.TrimSpace(q.Get("page")); page != "" {
+			value, err := strconv.Atoi(page)
+			if err != nil || value <= 0 {
+				responses.WriteError(r.Context(), logg, w, pkgerrors.New(pkgerrors.CodeValidation, "page must be a positive integer"))
+				return
+			}
+			params.Page = value
 		}
 
 		if kind := strings.TrimSpace(q.Get("kind")); kind != "" {

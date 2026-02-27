@@ -404,7 +404,7 @@ Manifest approach (MVP):
 * Media ingestion pipeline (`internal/media/service`) is the gatekeeper for these uploads:
 
   * `PresignUpload` validates the uploader’s role/kind/size, persists a `Media` row in `pending`, and returns a signed PUT URL plus `media_id` so the client can upload directly to GCS (internal/media/service.go:94-195).
-  * `ListMedia` applies filter/cursor pagination, attaches signed GET URLs for `uploaded`/`ready` items, and is used by stores/admins to manage licenses/COAs/manifests (internal/media/list.go:15-139).
+ * `ListMedia` applies filter/cursor pagination, attaches signed GET URLs for `uploaded`/`ready` items, and returns the canonical `MediaListResult` (items + `pagination` metadata) so stores/admins can manage licenses/COAs/manifests while following the same cursor contract as products/wishlist (internal/media/list.go:15-139).
   * `DeleteMedia` enforces ownership/status, removes the GCS object via `pkg/storage/gcs.DeleteObject`, and marks the row `deleted` only after the deletion succeeds, keeping storage & metadata consistent (internal/media/service.go:242-284).
 
 ---
@@ -507,7 +507,7 @@ Manifest approach (MVP):
 * `GET /api/v1/stores/me/users` – owner/manager only, lists memberships with role/status/last_login (api/controllers/stores.go:126-165).
 * `POST /api/v1/stores/me/users/invite` – owner/manager only, requires `Idempotency-Key`, invites new users, returns membership DTO +/- temporary password (api/controllers/stores.go:221-302).
 * `DELETE /api/v1/stores/me/users/{userId}` – owner/manager only, enforces the last-owner guard, removes memberships, returns `204` (api/controllers/stores.go:168-219).
-* `GET /api/v1/media` – paginated results with signed GET URLs via `internal/media/list.go` for the requested kind/status (api/controllers/media.go:134-198).
+* `GET /api/v1/media` – paginated results with signed GET URLs via `internal/media/list.go`; accepts `cursor`, `limit`, optional `page`, and filters for `kind`, `status`, `mime_type`, `search`, then returns `items` plus `pagination` metadata (`page`, `total`, `current`, `first`, `last`, `prev`, `next`) so storefronts can track dataset boundaries while reusing the same contract as products/wishlist (api/controllers/media.go:134-198).
 * `POST /api/v1/media/presign` – requires `Idempotency-Key`, validates role/kind/size, saves a pending `Media` row, and issues a signed PUT URL (api/controllers/media.go:20-91; internal/media/service.go:94-195).
 * `DELETE /api/v1/media/{mediaId}` – ownership/status check, deletes the GCS object, and lets the media deletion worker handle the row removal/logging once GCS propagates the `OBJECT_DELETE` event (api/controllers/media.go:94-132; internal/media/service.go:242-284).
 * `POST /api/v1/licenses` – requires `Idempotency-Key`, ties uploads to approved media, enforces issuing state/type/dates, and returns the license record (api/controllers/licenses.go:21-103; internal/licenses/service.go:18-165).
@@ -1931,7 +1931,7 @@ Headers:
 
 * `GET /api/v1/media`
 
-  * Returns media metadata scoped to `activeStoreId` and supports filters (`kind`, `status`, `mime_type`, `search`) plus cursor pagination (`limit` + `cursor`).
+  * Returns media metadata scoped to `activeStoreId`, supports filters (`kind`, `status`, `mime_type`, `search`), and accepts cursor pagination inputs (`limit`, `cursor`, optional `page`), while the response carries the canonical `MediaListResult` (`items`, `pagination` block with `page`, `total`, `current`, `first`, `last`, `prev`, `next`).
   * Success: `200`
   * Errors: `401, 403`
 * `DELETE /api/v1/media/{mediaId}` first loads `media_attachments` for the media and rejects the call if any `entity_type` is `license` or `ad` (per `ProtectedAttachmentEntities`), ensuring protected assets cannot be orphaned before it deletes the GCS object so the deletion worker can consume the eventual `OBJECT_DELETE` notification. The worker removes non-protected attachments, deletes the media row, and logs both steps once GCS signals completion; other stores or statuses continue to return `403`/`409` and protected attachments trigger a clear forbidden/conflict response.

@@ -549,7 +549,7 @@ These endpoints rely on `activeStoreId` and enforce owner/manager access for mut
   * Requires `activeStoreId` + store role (owner/admin/manager/staff/ops), `Idempotency-Key`, and a sanitized `file_name`.
   * Validates `media_kind`, `mime_type`, and `size_bytes ≤ 20MB`; the signed URL enforces the supplied `Content-Type`.
   * TTL honors `PACKFINDERZ_GCS_UPLOAD_URL_EXPIRY`, and clients must not proxy uploads through the API (use the signed PUT directly).
-* `GET /api/v1/media` – lists media owned by `activeStoreId`, returning metadata only (`id`, `kind`, `status`, `file_name`, `mime_type`, `size_bytes`, `created_at`, `uploaded_at`). Supports filters (`kind`, `status`, `mime_type`, `search`) and cursor pagination (`limit` + `cursor`).
+* `GET /api/v1/media` – lists media owned by `activeStoreId`, returning metadata only (`id`, `kind`, `status`, `file_name`, `mime_type`, `size_bytes`, `created_at`, `uploaded_at`). Supports filters (`kind`, `status`, `mime_type`, `search`) and cursor pagination (`limit`, `cursor`, optional `page`), returning `items` plus a `pagination` block (`page`, `total`, `current`, `first`, `last`, `prev`, `next`) so clients can track bounds while keeping the signed read URLs intact.
 * Signed READ URLs for `uploaded`/`ready` media are generated via the media service helper and expire according to `PACKFINDERZ_GCS_DOWNLOAD_URL_EXPIRY`.
 * `DELETE /api/v1/media/{mediaId}` – removes media whose status is `uploaded`/`ready`, deletes the GCS object (ignores missing objects), and marks the row as `deleted`; rejects mismatched stores or invalid states with `403`/`409`.
 

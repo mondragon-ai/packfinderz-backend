@@ -63,6 +63,14 @@ func (s *stubMediaRepo) MarkDeleted(ctx context.Context, id uuid.UUID, deletedAt
 	return nil
 }
 
+func (s *stubMediaRepo) Count(ctx context.Context, opts listQuery) (int64, error) {
+	return 0, nil
+}
+
+func (s *stubMediaRepo) FetchBoundaryCursor(ctx context.Context, opts listQuery, ascending bool) (string, error) {
+	return "", nil
+}
+
 type stubMemberships struct {
 	ok  bool
 	err error

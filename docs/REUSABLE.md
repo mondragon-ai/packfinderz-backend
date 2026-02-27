@@ -205,6 +205,10 @@ Cursor-based limit/cursor helpers reused across list endpoints.
 * `ProductListFilters` exposes filters for `category`, `classification`, `price_min_cents`, `price_max_cents`, `thc_min`, `thc_max`, `cbd_min`, `cbd_max`, `has_promo`, and `q`; pagination is wired through `pkg/pagination` (`limit`, `cursor` plus `EncodeCursor`/`ParseCursor` helpers).
 * `GET /api/v1/products` powers the buyer/vendor catalog grid. Buyers must pass `state` (which must match their own store), receive only `is_active=true` listings from verified, subscribed vendors whose `address.state` equals the requested state, and can scope results with the filters listed above. Vendor users always see their own store’s products, ignoring the state filter so the management UI stays operational while the query still respects the same filter syntax; `has_promo` maps to `product_volume_discounts` existence and the service orders by `created_at DESC, id DESC`. Each volume tier stores `discount_percent` (numeric 0-100) so promo-aware clients can compute the discounted unit price when rendering cart/checkout totals.
 * `GET /api/v1/stores/{storeId}/products` mirrors the same DTO/filters but resolves the vendor storefront via `internal/stores.Service.GetStoreByID` (returning 404 if missing), enforces `store.type == vendor`, and scopes `internal/products.Service.ListProducts` to that vendor so clients can browse a storefront catalog without relying on their `activeStoreId`.
+### `media`
+
+* `internal/media.MediaListResult` and `MediaPagination` reuse the same cursor metadata as `ProductPagination` (`page`, `total`, `current`, `first`, `last`, `prev`, `next`) so every list handler can share the canonical navigation block.
+* `GET /api/v1/media` lists the active store’s assets (filters: `kind`, `status`, `mime_type`, `search`), accepts the cursor contract (`limit`, `cursor`, optional `page`), and returns `items` plus the `pagination` block while keeping the signed read URLs for `uploaded`/`ready` media (`internal/media/list.go:15-139`).
 
 ### `logger`
 

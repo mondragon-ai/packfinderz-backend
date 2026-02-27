@@ -44,6 +44,14 @@ func (s *stubAttachmentMediaRepo) List(ctx context.Context, opts listQuery) ([]m
 	return nil, nil
 }
 
+func (s *stubAttachmentMediaRepo) Count(ctx context.Context, opts listQuery) (int64, error) {
+	return 0, nil
+}
+
+func (s *stubAttachmentMediaRepo) FetchBoundaryCursor(ctx context.Context, opts listQuery, ascending bool) (string, error) {
+	return "", nil
+}
+
 func (s *stubAttachmentMediaRepo) FindByID(ctx context.Context, id uuid.UUID) (*models.Media, error) {
 	if s.findErr != nil {
 		return nil, s.findErr
