@@ -194,11 +194,10 @@ type OutboxConfig struct {
 }
 
 type SquareConfig struct {
-	AccessToken        string `envconfig:"PACKFINDERZ_SQUARE_ACCESS_TOKEN"`
-	WebhookSecret      string `envconfig:"PACKFINDERZ_SQUARE_WEBHOOK_SECRET"`
-	Env                string `envconfig:"PACKFINDERZ_SQUARE_ENV" default:"sandbox"`
-	SubscriptionPlanID string `envconfig:"PACKFINDERZ_SQUARE_SUBSCRIPTION_PLAN_ID"`
-	LocationID         string `envconfig:"PACKFINDERZ_SQUARE_LOCATION_ID"`
+	AccessToken   string `envconfig:"PACKFINDERZ_SQUARE_ACCESS_TOKEN"`
+	WebhookSecret string `envconfig:"PACKFINDERZ_SQUARE_WEBHOOK_SECRET"`
+	Env           string `envconfig:"PACKFINDERZ_SQUARE_ENV" default:"sandbox"`
+	LocationID    string `envconfig:"PACKFINDERZ_SQUARE_LOCATION_ID"`
 }
 
 type SendgridConfig struct {

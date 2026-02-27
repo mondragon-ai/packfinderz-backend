@@ -41,7 +41,6 @@ type ServiceParams struct {
 	BillingRepo       billing.Repository
 	StoreRepo         storeRepository
 	SquareClient      SquareSubscriptionClient
-	DefaultPriceID    string
 	TransactionRunner txRunner
 }
 
@@ -74,14 +73,10 @@ func NewService(params ServiceParams) (Service, error) {
 	if params.TransactionRunner == nil {
 		return nil, fmt.Errorf("transaction runner required")
 	}
-	if strings.TrimSpace(params.DefaultPriceID) == "" {
-		return nil, fmt.Errorf("default price id required")
-	}
 	return &service{
 		billingRepo: params.BillingRepo,
 		storeRepo:   params.StoreRepo,
 		square:      params.SquareClient,
-		priceID:     strings.TrimSpace(params.DefaultPriceID),
 		txRunner:    params.TransactionRunner,
 	}, nil
 }

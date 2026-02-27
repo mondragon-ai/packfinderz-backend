@@ -158,7 +158,6 @@ func main() {
 		BillingRepo:       billingRepo,
 		StoreRepo:         storeRepo,
 		SquareClient:      squareSubsClient,
-		DefaultPriceID:    cfg.Square.SubscriptionPlanID,
 		TransactionRunner: dbClient,
 	})
 	requireResource(ctx, logg, "subscription service", err)

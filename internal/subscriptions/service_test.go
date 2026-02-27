@@ -30,10 +30,10 @@ func TestServiceCreateReturnsExisting(t *testing.T) {
 	}
 	store := &models.Store{SubscriptionActive: true}
 	svc, err := NewService(ServiceParams{
-		BillingRepo:       billingRepo,
-		StoreRepo:         &stubStoreRepo{store: store},
-		SquareClient:      &stubSquareSubscriptionClient{},
-		DefaultPriceID:    "price-default",
+		BillingRepo:  billingRepo,
+		StoreRepo:    &stubStoreRepo{store: store},
+		SquareClient: &stubSquareSubscriptionClient{},
+
 		TransactionRunner: &stubTxRunner{},
 	})
 	if err != nil {
@@ -90,10 +90,10 @@ func TestServiceCreatesNewSubscription(t *testing.T) {
 		},
 	}
 	svc, err := NewService(ServiceParams{
-		BillingRepo:       billingRepo,
-		StoreRepo:         &stubStoreRepo{store: store},
-		SquareClient:      squareClient,
-		DefaultPriceID:    "price-default",
+		BillingRepo:  billingRepo,
+		StoreRepo:    &stubStoreRepo{store: store},
+		SquareClient: squareClient,
+
 		TransactionRunner: &stubTxRunner{},
 	})
 	if err != nil {
@@ -153,10 +153,10 @@ func TestServiceCancelsSubscription(t *testing.T) {
 		},
 	}
 	svc, err := NewService(ServiceParams{
-		BillingRepo:       billingRepo,
-		StoreRepo:         &stubStoreRepo{store: store},
-		SquareClient:      squareClient,
-		DefaultPriceID:    "price-default",
+		BillingRepo:  billingRepo,
+		StoreRepo:    &stubStoreRepo{store: store},
+		SquareClient: squareClient,
+
 		TransactionRunner: &stubTxRunner{},
 	})
 	if err != nil {
@@ -202,10 +202,10 @@ func TestServiceCancelIgnoresPendingCancelError(t *testing.T) {
 		cancelErr: pkgerrors.Wrap(pkgerrors.CodeStateConflict, sqcore.NewAPIError(http.StatusBadRequest, errors.New(payload)), "square cancel subscription failed"),
 	}
 	svc, err := NewService(ServiceParams{
-		BillingRepo:       billingRepo,
-		StoreRepo:         &stubStoreRepo{store: store},
-		SquareClient:      squareClient,
-		DefaultPriceID:    "price-default",
+		BillingRepo:  billingRepo,
+		StoreRepo:    &stubStoreRepo{store: store},
+		SquareClient: squareClient,
+
 		TransactionRunner: &stubTxRunner{},
 	})
 	if err != nil {
@@ -261,10 +261,10 @@ func TestServicePausesSubscription(t *testing.T) {
 		},
 	}
 	svc, err := NewService(ServiceParams{
-		BillingRepo:       billingRepo,
-		StoreRepo:         &stubStoreRepo{store: store},
-		SquareClient:      squareClient,
-		DefaultPriceID:    "price-default",
+		BillingRepo:  billingRepo,
+		StoreRepo:    &stubStoreRepo{store: store},
+		SquareClient: squareClient,
+
 		TransactionRunner: &stubTxRunner{},
 	})
 	if err != nil {
@@ -334,10 +334,10 @@ func TestServicePauseIgnoresPendingPauseError(t *testing.T) {
 		pauseErr: pkgerrors.Wrap(pkgerrors.CodeStateConflict, sqcore.NewAPIError(http.StatusBadRequest, errors.New(payload)), "square pause subscription failed"),
 	}
 	svc, err := NewService(ServiceParams{
-		BillingRepo:       billingRepo,
-		StoreRepo:         &stubStoreRepo{store: store},
-		SquareClient:      squareClient,
-		DefaultPriceID:    "price-default",
+		BillingRepo:  billingRepo,
+		StoreRepo:    &stubStoreRepo{store: store},
+		SquareClient: squareClient,
+
 		TransactionRunner: &stubTxRunner{},
 	})
 	if err != nil {
@@ -386,10 +386,10 @@ func TestServiceResumesSubscription(t *testing.T) {
 		},
 	}
 	svc, err := NewService(ServiceParams{
-		BillingRepo:       billingRepo,
-		StoreRepo:         &stubStoreRepo{store: store},
-		SquareClient:      squareClient,
-		DefaultPriceID:    "price-default",
+		BillingRepo:  billingRepo,
+		StoreRepo:    &stubStoreRepo{store: store},
+		SquareClient: squareClient,
+
 		TransactionRunner: &stubTxRunner{},
 	})
 	if err != nil {
@@ -450,10 +450,10 @@ func TestServiceResumeCancelsPendingPauseAction(t *testing.T) {
 		},
 	}
 	svc, err := NewService(ServiceParams{
-		BillingRepo:       billingRepo,
-		StoreRepo:         &stubStoreRepo{store: store},
-		SquareClient:      squareClient,
-		DefaultPriceID:    "price-default",
+		BillingRepo:  billingRepo,
+		StoreRepo:    &stubStoreRepo{store: store},
+		SquareClient: squareClient,
+
 		TransactionRunner: &stubTxRunner{},
 	})
 	if err != nil {
@@ -504,7 +504,6 @@ func TestServiceGetActiveReconcilesSquare(t *testing.T) {
 		BillingRepo:       billingRepo,
 		StoreRepo:         &stubStoreRepo{store: store},
 		SquareClient:      squareClient,
-		DefaultPriceID:    "price-default",
 		TransactionRunner: &stubTxRunner{},
 	})
 	if err != nil {
