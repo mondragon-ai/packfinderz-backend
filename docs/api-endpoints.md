@@ -375,6 +375,84 @@ Sample response:
 }
 ```
 
+### `GET /api/v1/stores/{storeId}/products`
+
+Lists the vendor storefront’s catalog while the authenticated store browses the vendor page. The request runs under `/api` (`Authorization`, `StoreContext`, `RateLimit`) and ensures the `{storeId}` path parameter resolves to a vendor store before calling `controllers.StorefrontProducts`. The handler returns `internal/products.ProductListResult`, containing `products` (`ProductSummary`) and `pagination` metadata.
+
+Supported query parameters:
+
+- `limit` – optional positive integer, defaults to 25 and caps at 100 (`pagination.NormalizeLimit`).
+- `page` – optional positive integer, defaults to 1.
+- `cursor` – optional cursor string for `(created_at, id)` cursor pagination.
+- `category` – optional `pkg/enums.ProductCategory`.
+- `classification` – optional `pkg/enums.ProductClassification`.
+- `price_min_cents` / `price_max_cents` – optional integer bounds on `price_cents`.
+- `thc_min` / `thc_max` – optional floats for `thc_percent`.
+- `cbd_min` / `cbd_max` – optional floats for `cbd_percent`.
+- `has_promo` – optional boolean; `true` limits the list to promo-enabled products.
+- `q` – optional text search term applied to the catalog.
+
+All supported filters included in the curl example for easy Postman pasting:
+
+```bash
+curl -G "{{API_BASE_URL}}/api/v1/stores/{{VENDOR_STORE_ID}}/products" \
+  -H "Authorization: Bearer {{ACCESS_TOKEN}}" \
+  --data-urlencode "limit=25" \
+  --data-urlencode "page=1" \
+  --data-urlencode "cursor={{NEXT_CURSOR}}" \
+  --data-urlencode "category=flower" \
+  --data-urlencode "classification=indica" \
+  --data-urlencode "price_min_cents=1000" \
+  --data-urlencode "price_max_cents=7500" \
+  --data-urlencode "thc_min=10.5" \
+  --data-urlencode "thc_max=25.0" \
+  --data-urlencode "cbd_min=0.0" \
+  --data-urlencode "cbd_max=5.0" \
+  --data-urlencode "has_promo=true" \
+  --data-urlencode "q=blueberry"
+```
+
+Response sketch (`internal/products.ProductListResult`):
+
+```json
+{
+  "data": {
+    "products": [
+      {
+        "id": "product-uuid",
+        "sku": "SKU-123",
+        "title": "Blueberry Kush",
+        "subtitle": "Smooth indica flower",
+        "category": "flower",
+        "classification": "indica",
+        "unit": "g",
+        "moq": 1,
+        "price_cents": 1500,
+        "compare_at_price_cents": 1800,
+        "thc_percent": 22.5,
+        "cbd_percent": 0.5,
+        "has_promo": true,
+        "vendor_store_id": "{{VENDOR_STORE_ID}}",
+        "coa_added": true,
+        "created_at": "2024-12-01T12:00:00Z",
+        "updated_at": "2024-12-15T12:00:00Z",
+        "max_qty": 5,
+        "thumbnail_url": "https://cdn.packfinderz.com/products/blueberry-kush.jpg"
+      }
+    ],
+    "pagination": {
+      "page": 1,
+      "total": 42,
+      "current": "{{REQUEST_CURSOR}}",
+      "first": "{{FIRST_CURSOR}}",
+      "last": "{{LAST_CURSOR}}",
+      "prev": "{{REQUEST_CURSOR}}",
+      "next": "{{NEXT_CURSOR}}"
+    }
+  }
+}
+```
+
 ### `GET /api/v1/stores/me`
 
 Returns the active store’s profile. The response matches `stores.StoreDTO`, exposing company info, contact channels, curated badge status, address, ratings, owner metadata, licenses, and timestamps such as `last_active_at` / `last_logged_in_at`.

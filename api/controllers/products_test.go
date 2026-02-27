@@ -285,6 +285,119 @@ func TestVendorProductList(t *testing.T) {
 	})
 }
 
+func TestStorefrontProducts(t *testing.T) {
+	logg := logger.New(logger.Options{ServiceName: "test", Level: logger.ParseLevel("debug"), Output: io.Discard})
+	storeID := uuid.New()
+
+	t.Run("missing store id", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/stores//products", nil)
+		rec := httptest.NewRecorder()
+		StorefrontProducts(&stubProductListService{}, stubStoreService{}, logg).ServeHTTP(rec, req)
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("expected 400 when store id missing, got %d", rec.Code)
+		}
+	})
+
+	t.Run("invalid store id", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/stores/not-a-uuid/products", nil)
+		req = withRouteParam(req, "storeId", "not-a-uuid")
+		rec := httptest.NewRecorder()
+		StorefrontProducts(&stubProductListService{}, stubStoreService{}, logg).ServeHTTP(rec, req)
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("expected 400 for invalid store id, got %d", rec.Code)
+		}
+	})
+
+	t.Run("store not found", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/stores/"+storeID.String()+"/products", nil)
+		req = withRouteParam(req, "storeId", storeID.String())
+		rec := httptest.NewRecorder()
+		StorefrontProducts(&stubProductListService{}, stubStoreService{}, logg).ServeHTTP(rec, req)
+		if rec.Code != http.StatusNotFound {
+			t.Fatalf("expected 404 when store missing, got %d", rec.Code)
+		}
+	})
+
+	t.Run("store not vendor", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/stores/"+storeID.String()+"/products", nil)
+		req = withRouteParam(req, "storeId", storeID.String())
+		rec := httptest.NewRecorder()
+		storeSvc := stubStoreService{
+			dto: &stores.StoreDTO{
+				ID:   storeID,
+				Type: enums.StoreTypeBuyer,
+			},
+		}
+		StorefrontProducts(&stubProductListService{}, storeSvc, logg).ServeHTTP(rec, req)
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("expected 400 when store not vendor, got %d", rec.Code)
+		}
+	})
+
+	t.Run("success", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/stores/"+storeID.String()+"/products?limit=2&page=3&cursor=next&q=grid&has_promo=false", nil)
+		req = withRouteParam(req, "storeId", storeID.String())
+		rec := httptest.NewRecorder()
+
+		stubSvc := &stubProductListService{
+			result: &productsvc.ProductListResult{
+				Products: []productsvc.ProductSummary{{ID: uuid.New()}},
+				Pagination: productsvc.ProductPagination{
+					Page:  3,
+					Total: 1,
+					Next:  "next",
+				},
+			},
+		}
+		storeSvc := stubStoreService{
+			dto: &stores.StoreDTO{
+				ID:   storeID,
+				Type: enums.StoreTypeVendor,
+			},
+		}
+
+		StorefrontProducts(stubSvc, storeSvc, logg).ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Fatalf("expected 200 on success, got %d", rec.Code)
+		}
+
+		var envelope struct {
+			Data productsvc.ProductListResult `json:"data"`
+		}
+		if err := json.NewDecoder(rec.Body).Decode(&envelope); err != nil {
+			t.Fatalf("decode response: %v", err)
+		}
+		if len(envelope.Data.Products) != 1 {
+			t.Fatalf("expected 1 product, got %d", len(envelope.Data.Products))
+		}
+		if envelope.Data.Pagination.Next != "next" {
+			t.Fatalf("expected next cursor, got %s", envelope.Data.Pagination.Next)
+		}
+		if stubSvc.lastInput.StoreID != storeID {
+			t.Fatalf("expected store id %s, got %s", storeID, stubSvc.lastInput.StoreID)
+		}
+		if stubSvc.lastInput.StoreType != enums.StoreTypeVendor {
+			t.Fatalf("expected vendor store type, got %s", stubSvc.lastInput.StoreType)
+		}
+		if stubSvc.lastInput.Filters.Query != "grid" {
+			t.Fatalf("expected query %q, got %q", "grid", stubSvc.lastInput.Filters.Query)
+		}
+		if stubSvc.lastInput.Filters.HasPromo == nil || *stubSvc.lastInput.Filters.HasPromo {
+			t.Fatalf("expected has_promo false filter")
+		}
+		if stubSvc.lastInput.Pagination.Limit != 2 {
+			t.Fatalf("expected limit 2, got %d", stubSvc.lastInput.Pagination.Limit)
+		}
+		if stubSvc.lastInput.Pagination.Cursor != "next" {
+			t.Fatalf("expected cursor next, got %s", stubSvc.lastInput.Pagination.Cursor)
+		}
+		if stubSvc.lastInput.Page != 3 {
+			t.Fatalf("expected page 3, got %d", stubSvc.lastInput.Page)
+		}
+	})
+}
+
 func TestProductDetail(t *testing.T) {
 	logg := logger.New(logger.Options{ServiceName: "test", Level: logger.ParseLevel("debug"), Output: io.Discard})
 	storeID := uuid.New()

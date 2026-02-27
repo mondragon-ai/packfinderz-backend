@@ -385,8 +385,10 @@
 
 
 * **Phase 17 — Store**
-  * [ ] [PF-293]: Implement GET /v1/stores/{store_id} Controller (Authenticated Viewer Access)
-  * [ ] [PF-293]: Add Service Contract Support for Viewer Store Fetch (By ID)
+  * [x] [PF-293]: Implement GET /v1/stores/{store_id} Controller (Authenticated Viewer Access)
+  * [x] [PF-293]: Add Service Contract Support for Viewer Store Fetch (By ID)
+  * [x] [PF-294]: Add authenticated route to fetch orders between viewer store and vendor store (Storefront “Orders” tab)
+  * [x] [PF-295]: Add vendor-scoped public product browse route by store slug (paginated)
 
 ---
 

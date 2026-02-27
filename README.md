@@ -534,6 +534,7 @@ These endpoints rely on `activeStoreId` and enforce owner/manager access for mut
 * `GET /api/v1/stores/{storeId}` – returns the full `StoreDTO` for the requested store so any authenticated user can view another store’s public profile; it is scoped by the supplied UUID (404 when missing) and does not require `activeStoreId` or membership.
 * The store service now exposes `GetStoreByID`, which powers the viewer-ready route without enforcing store membership while still returning the same owner and license metadata as the manager view.
 * `GET /api/v1/stores/{storeId}/orders` – returns every order between the authenticated buyer store and the viewed vendor storefront plus aggregated `totals` (`total_discounts`, `total_spent`, `total_orders`, `total_items`) so the storefront “Orders” tab can render both rows and summary metrics without a separate pagination flow.
+* `GET /api/v1/stores/{storeId}/products` – resolves the vendor storefront via `internal/stores.Service.GetStoreByID`, enforces `store.type == vendor`, and returns cursor-paginated `ProductSummary` rows scoped to that vendor using the same filters/pagination as `GET /api/v1/products`, letting any authenticated viewer browse a storefront catalog without relying on their `activeStoreId`.
 
 ### Licenses
 

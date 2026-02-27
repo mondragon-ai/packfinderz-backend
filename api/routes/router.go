@@ -203,6 +203,7 @@ func NewRouter(
 				r.Delete("/me/users/{userId}", controllers.StoreRemoveUser(storeService, logg))
 				r.Get("/{storeId}/reviews", reviewcontrollers.ListReviews(reviewsService, logg))
 				r.Get("/{storeId}/orders", ordercontrollers.StorefrontOrders(ordersRepo, storeService, logg))
+				r.Get("/{storeId}/products", controllers.StorefrontProducts(productService, storeService, logg))
 				r.Get("/{storeId}", controllers.StorePublicProfile(storeService, logg))
 			})
 

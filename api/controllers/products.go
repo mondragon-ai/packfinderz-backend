@@ -533,6 +533,80 @@ func BrowseProducts(svc productsvc.Service, storeSvc stores.Service, logg *logge
 	}
 }
 
+func StorefrontProducts(svc productsvc.Service, storeSvc stores.Service, logg *logger.Logger) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if svc == nil {
+			responses.WriteError(r.Context(), logg, w, pkgerrors.New(pkgerrors.CodeInternal, "product service unavailable"))
+			return
+		}
+		if storeSvc == nil {
+			responses.WriteError(r.Context(), logg, w, pkgerrors.New(pkgerrors.CodeInternal, "store service unavailable"))
+			return
+		}
+
+		storeIDParam := strings.TrimSpace(chi.URLParam(r, "storeId"))
+		if storeIDParam == "" {
+			responses.WriteError(r.Context(), logg, w, pkgerrors.New(pkgerrors.CodeValidation, "store id is required"))
+			return
+		}
+
+		storeID, err := uuid.Parse(storeIDParam)
+		if err != nil {
+			responses.WriteError(r.Context(), logg, w, pkgerrors.Wrap(pkgerrors.CodeValidation, err, "invalid store id"))
+			return
+		}
+
+		store, err := storeSvc.GetStoreByID(r.Context(), storeID)
+		if err != nil {
+			responses.WriteError(r.Context(), logg, w, err)
+			return
+		}
+		if store == nil {
+			responses.WriteError(r.Context(), logg, w, pkgerrors.New(pkgerrors.CodeNotFound, "store not found"))
+			return
+		}
+		if store.Type != enums.StoreTypeVendor {
+			responses.WriteError(r.Context(), logg, w, pkgerrors.New(pkgerrors.CodeValidation, "store must be a vendor"))
+			return
+		}
+
+		limit, err := validators.ParseQueryInt(r, "limit", pagination.DefaultLimit, 1, pagination.MaxLimit)
+		if err != nil {
+			responses.WriteError(r.Context(), logg, w, err)
+			return
+		}
+		page, err := validators.ParseQueryInt(r, "page", 1, 1, int(math.MaxInt32))
+		if err != nil {
+			responses.WriteError(r.Context(), logg, w, err)
+			return
+		}
+		cursor := strings.TrimSpace(r.URL.Query().Get("cursor"))
+
+		filters, err := decodeProductFilters(r)
+		if err != nil {
+			responses.WriteError(r.Context(), logg, w, err)
+			return
+		}
+
+		list, err := svc.ListProducts(r.Context(), productsvc.ListProductsInput{
+			StoreID:   store.ID,
+			StoreType: enums.StoreTypeVendor,
+			Filters:   filters,
+			Pagination: pagination.Params{
+				Limit:  limit,
+				Cursor: cursor,
+			},
+			Page: page,
+		})
+		if err != nil {
+			responses.WriteError(r.Context(), logg, w, pkgerrors.Wrap(pkgerrors.CodeDependency, err, "list products"))
+			return
+		}
+
+		responses.WriteSuccess(w, list)
+	}
+}
+
 // ProductDetail returns the full product payload for the requested product ID.
 func ProductDetail(svc productsvc.Service, logg *logger.Logger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {

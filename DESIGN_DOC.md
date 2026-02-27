@@ -1828,6 +1828,14 @@ Headers:
   * Success: `200`
   * Errors: `401, 403, 404`
 
+**Vendor storefront catalog**
+
+* `GET /api/v1/stores/{storeId}/products`
+
+  * Authenticated viewers resolve the vendor identifier via `internal/stores.Service.GetStoreByID`, ensure the store type is `vendor`, and then call `internal/products.Service.ListProducts` with `StoreTypeVendor` so the query uses the same filters/pagination/DTOs as `GET /api/v1/products` while staying scoped to the requested storefront.
+  * Success: `200`
+  * Errors: `400` (invalid UUID or non-vendor store), `401`, `404`
+
 ---
 
 ### 5.3 Users (Store members)
