@@ -388,6 +388,10 @@
   - [ ] Ticket [PF-XXX]: Impliment
   - [ ] Ticket [PF-XXX]: Implement SendGrid adapter (future swap)
 
+- **Phase 3 — Ads: Inital CRUD & Logic**
+  **Goal:** Create ads and server them. Later will be charges.
+  - [x] [PF-298]: Create Ads Core Tables + GORM Models + Goose Migrations (ads, creatives, placements, rollups)
+
 - **Phase 3 — COA → OpenAI Product Drafts**
   **Goal:** Parse COA PDFs into structured product draftsmusing document AI & open toproduct product JSOn draft to return to client to be confirmed.
 
