@@ -13,6 +13,11 @@ type testAnalyticsService struct {
 	err      error
 }
 
+// QueryAd implements [analytics.Service].
+func (s *testAnalyticsService) QueryAd(ctx context.Context, req types.AdQueryRequest) (*types.AdQueryResponse, error) {
+	panic("unimplemented")
+}
+
 func (s *testAnalyticsService) Query(ctx context.Context, req types.MarketplaceQueryRequest) (*types.MarketplaceQueryResponse, error) {
 	s.last = req
 	if s.err != nil {

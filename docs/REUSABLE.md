@@ -611,6 +611,7 @@ All enums implement:
 * `Consumer` decodes `order_created`, `cash_collected`, and `order_paid` outbox payloads, guards with `pf:evt:processed:analytics:<event_id>`, and inserts a single `marketplace_events` row per event via `pkg/bigquery.Client.InsertRows`.
 * Rows capture `event_id`, `event_type`, `occurred_at`, optional store/order IDs, and the raw JSON payload stored through `bigquery.NullJSON`.
 * Canonical analytics DTOs (envelope, marketplace/ad row, query request/response) now live under `internal/analytics/types`, and the analytics/enumeration helpers live in `pkg/enums/analytics_event_type.go` + `pkg/enums/ad_event_fact_type.go`.
+* Ad query helpers reuse `types.AdAnalyticsMetrics`, `types.AdAnalyticsSeriesPoint`, and `types.AdQueryResponse` so the ads detail endpoint can mirror the analytics warehouse payload without reinventing the DTO surface.
 * Any payload or insert failure deletes the idempotency key so retries are allowed, and the handler logs via `pkg/logger`.
 * `cmd/analytics-worker` now wires an analytics service that decodes the canonical envelope, writes `pf:evt:processed:analytics:<event_id>` with `PACKFINDERZ_EVENTING_IDEMPOTENCY_TTL`, and routes to the handler stencil so duplicate Pub/Sub deliveries stay idempotent.
 * `internal/analytics/router` validates canonical `event_type` routing and decodes the typed payload before invoking each handler stub, keeping the BigQuery writer interface consistent across events.

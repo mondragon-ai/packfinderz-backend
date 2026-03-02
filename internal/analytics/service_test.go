@@ -76,3 +76,70 @@ func TestServiceQueryPropagatesError(t *testing.T) {
 		t.Fatalf("expected nil response on error")
 	}
 }
+
+type fakeAdService struct {
+	lastReq  types.AdQueryRequest
+	response *types.AdQueryResponse
+	err      error
+}
+
+func (f *fakeAdService) Query(ctx context.Context, req types.AdQueryRequest) (*types.AdQueryResponse, error) {
+	f.lastReq = req
+	if f.err != nil {
+		return nil, f.err
+	}
+	if f.response == nil {
+		f.response = &types.AdQueryResponse{}
+	}
+	return f.response, nil
+}
+
+func TestServiceQueryAdReturnsResponse(t *testing.T) {
+	fake := &fakeAdService{}
+	srv := &service{ad: fake}
+	now := time.Now().UTC()
+	req := types.AdQueryRequest{
+		VendorStoreID: "store-id",
+		AdID:          "ad-id",
+		Start:         now,
+		End:           now.Add(time.Hour),
+	}
+
+	resp, err := srv.QueryAd(context.Background(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if resp != fake.response {
+		t.Fatalf("expected response to be forwarded")
+	}
+	if fake.lastReq.VendorStoreID != req.VendorStoreID {
+		t.Fatalf("unexpected vendor store id: %s", fake.lastReq.VendorStoreID)
+	}
+	if fake.lastReq.AdID != req.AdID {
+		t.Fatalf("unexpected ad id: %s", fake.lastReq.AdID)
+	}
+	if !fake.lastReq.Start.Equal(req.Start) || !fake.lastReq.End.Equal(req.End) {
+		t.Fatalf("unexpected request window: %v - %v", fake.lastReq.Start, fake.lastReq.End)
+	}
+}
+
+func TestServiceQueryAdPropagatesError(t *testing.T) {
+	want := errors.New("query failed")
+	fake := &fakeAdService{err: want}
+	srv := &service{ad: fake}
+	now := time.Now().UTC()
+	req := types.AdQueryRequest{
+		VendorStoreID: "store",
+		AdID:          "ad",
+		Start:         now,
+		End:           now.Add(time.Minute),
+	}
+
+	resp, err := srv.QueryAd(context.Background(), req)
+	if err != want {
+		t.Fatalf("expected error %v, got %v", want, err)
+	}
+	if resp != nil {
+		t.Fatalf("expected nil response on error")
+	}
+}

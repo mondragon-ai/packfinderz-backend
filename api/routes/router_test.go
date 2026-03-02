@@ -14,6 +14,7 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/angelmondragon/packfinderz-backend/api/middleware"
+	"github.com/angelmondragon/packfinderz-backend/internal/ads"
 	"github.com/angelmondragon/packfinderz-backend/internal/analytics/types"
 	"github.com/angelmondragon/packfinderz-backend/internal/auth"
 	cart "github.com/angelmondragon/packfinderz-backend/internal/cart"
@@ -167,6 +168,11 @@ type stubAnalyticsService struct {
 	last     types.MarketplaceQueryRequest
 	response *types.MarketplaceQueryResponse
 	err      error
+}
+
+// QueryAd implements [analytics.Service].
+func (s *stubAnalyticsService) QueryAd(ctx context.Context, req types.AdQueryRequest) (*types.AdQueryResponse, error) {
+	panic("unimplemented")
 }
 
 func (s *stubAnalyticsService) Query(ctx context.Context, req types.MarketplaceQueryRequest) (*types.MarketplaceQueryResponse, error) {
@@ -641,6 +647,23 @@ func (stubCheckoutRepo) FindByCartID(ctx context.Context, cartID uuid.UUID) (*mo
 	return nil, nil
 }
 
+type stubAdService struct{}
+
+// CreateAd implements [ads.Service].
+func (s stubAdService) CreateAd(ctx context.Context, input ads.CreateAdInput) (*ads.AdDTO, error) {
+	panic("unimplemented")
+}
+
+// GetAdDetail implements [ads.Service].
+func (s stubAdService) GetAdDetail(ctx context.Context, input ads.GetAdDetailInput) (*ads.AdDetail, error) {
+	panic("unimplemented")
+}
+
+// ListAds implements [ads.Service].
+func (s stubAdService) ListAds(ctx context.Context, input ads.ListAdsInput) (ads.AdListResult, error) {
+	panic("unimplemented")
+}
+
 func testConfig() *config.Config {
 	return &config.Config{
 		App: config.AppConfig{Env: "test", Port: "0"},
@@ -664,6 +687,7 @@ func newTestRouter(cfg *config.Config) http.Handler {
 		stubPinger{},            // bigquery.Pinger
 		stubSessionManager{},    // sessionManager
 		&stubAnalyticsService{}, // analytics.Service
+		stubAdService{},         // auth.Ad
 		stubAuthService{},       // auth.Service
 		stubRegisterService{},   // auth.RegisterService
 		stubAdminRegisterService{},
@@ -939,6 +963,7 @@ func TestAgentAssignedOrdersRequiresAgentRole(t *testing.T) {
 		stubPinger{},         // bigquery.Pinger
 		stubSessionManager{},
 		&stubAnalyticsService{},
+		stubAdService{}, // auth.Ad
 		stubAuthService{},
 		stubRegisterService{},
 		stubAdminRegisterService{},
@@ -1014,6 +1039,7 @@ func TestAgentAssignedOrderDetailRequiresAgentRole(t *testing.T) {
 		stubPinger{},         // bigquery.Pinger
 		stubSessionManager{},
 		&stubAnalyticsService{},
+		stubAdService{}, // auth.Ad
 		stubAuthService{},
 		stubRegisterService{},
 		stubAdminRegisterService{},
@@ -1065,6 +1091,7 @@ func TestAgentPickupRequiresAgentRole(t *testing.T) {
 		stubPinger{},         // bigquery.Pinger
 		stubSessionManager{},
 		&stubAnalyticsService{},
+		stubAdService{}, // auth.Ad
 		stubAuthService{},
 		stubRegisterService{},
 		stubAdminRegisterService{},
@@ -1131,6 +1158,7 @@ func TestAgentDeliverRequiresAgentRole(t *testing.T) {
 		stubPinger{},         // bigquery.Pinger
 		stubSessionManager{},
 		&stubAnalyticsService{},
+		stubAdService{}, // auth.Ad
 		stubAuthService{},
 		stubRegisterService{},
 		stubAdminRegisterService{},

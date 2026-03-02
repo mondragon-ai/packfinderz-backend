@@ -8,6 +8,7 @@ import (
 
 	"github.com/angelmondragon/packfinderz-backend/api/routes"
 	"github.com/angelmondragon/packfinderz-backend/internal/address"
+	"github.com/angelmondragon/packfinderz-backend/internal/ads"
 	"github.com/angelmondragon/packfinderz-backend/internal/analytics"
 	"github.com/angelmondragon/packfinderz-backend/internal/auth"
 	"github.com/angelmondragon/packfinderz-backend/internal/billing"
@@ -106,7 +107,13 @@ func main() {
 		}
 	}()
 
-	analyticsService, err := analytics.NewService(bqClient, cfg.GCP.ProjectID, cfg.BigQuery.Dataset, cfg.BigQuery.MarketplaceEventsTable)
+	analyticsService, err := analytics.NewService(
+		bqClient,
+		cfg.GCP.ProjectID,
+		cfg.BigQuery.Dataset,
+		cfg.BigQuery.MarketplaceEventsTable,
+		cfg.BigQuery.AdEventsTable,
+	)
 	requireResource(ctx, logg, "analytics service", err)
 
 	usersRepo := users.NewRepository(dbClient.DB())
@@ -187,6 +194,14 @@ func main() {
 	requireResource(ctx, logg, "media service", err)
 	attachmentReconciler, err := media.NewAttachmentReconciler(mediaAttachmentRepo, mediaRepo)
 	requireResource(ctx, logg, "attachment reconciler", err)
+	adsRepo := ads.NewRepository(dbClient.DB())
+	adsService, err := ads.NewService(ads.ServiceParams{
+		Repo:                 adsRepo,
+		DB:                   dbClient,
+		AttachmentReconciler: attachmentReconciler,
+		Analytics:            analyticsService,
+	})
+	requireResource(ctx, logg, "ads service", err)
 	licenseRepo := licenses.NewRepository(dbClient.DB())
 	storeService, err := stores.NewService(stores.ServiceParams{
 		Repo:                 storeRepo,
@@ -295,6 +310,7 @@ func main() {
 			bqClient,
 			sessionManager,
 			analyticsService,
+			adsService,
 			authService,
 			registerService,
 			adminRegisterService,

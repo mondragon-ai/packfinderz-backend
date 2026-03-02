@@ -3,6 +3,7 @@ package ads
 import (
 	"time"
 
+	"github.com/angelmondragon/packfinderz-backend/internal/analytics/types"
 	"github.com/angelmondragon/packfinderz-backend/pkg/enums"
 	"github.com/angelmondragon/packfinderz-backend/pkg/pagination"
 	"github.com/google/uuid"
@@ -95,4 +96,10 @@ type ListAdsInput struct {
 	Filters    ListAdsFilters    `json:"filters"`
 	Pagination pagination.Params `json:"pagination"`
 	Page       int               `json:"page"`
+}
+
+// AdDetail pairs the ad configuration with its analytics snapshot.
+type AdDetail struct {
+	Ad        AdDTO                 `json:"ad"`
+	Analytics types.AdQueryResponse `json:"analytics"`
 }

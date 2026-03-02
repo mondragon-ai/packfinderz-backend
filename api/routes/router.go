@@ -17,6 +17,7 @@ import (
 	webhookcontrollers "github.com/angelmondragon/packfinderz-backend/api/controllers/webhooks"
 	"github.com/angelmondragon/packfinderz-backend/api/middleware"
 	"github.com/angelmondragon/packfinderz-backend/internal/address"
+	"github.com/angelmondragon/packfinderz-backend/internal/ads"
 	"github.com/angelmondragon/packfinderz-backend/internal/analytics"
 	"github.com/angelmondragon/packfinderz-backend/internal/auth"
 	"github.com/angelmondragon/packfinderz-backend/internal/cart"
@@ -65,6 +66,7 @@ func NewRouter(
 	bigqueryClient bigquery.Pinger,
 	sessionManager sessionManager,
 	analyticsService analytics.Service,
+	adsService ads.Service,
 	authService auth.Service,
 	registerService auth.RegisterService,
 	adminRegisterService auth.AdminRegisterService,
@@ -189,6 +191,12 @@ func NewRouter(
 					r.Post("/resume", subscriptionControllers.VendorSubscriptionResume(subscriptionsService, logg))
 					r.Get("/", subscriptionControllers.VendorSubscriptionFetch(subscriptionsService, logg))
 				})
+			})
+
+			r.Route("/v1/vendors/ads", func(r chi.Router) {
+				r.Post("/", controllers.VendorCreateAd(adsService, logg))
+				r.Get("/", controllers.VendorListAds(adsService, logg))
+				r.Get("/{adId}", controllers.VendorGetAdDetail(adsService, logg))
 			})
 
 			r.Route("/v1/analytics", func(r chi.Router) {
