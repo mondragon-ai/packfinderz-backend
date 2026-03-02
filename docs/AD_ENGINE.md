@@ -221,7 +221,7 @@ For each `vendor_order` (one per vendor in checkout):
   * tie-break hash
 * Store as:
 
-  * `vendor_orders.attribution` JSONB (order.primary_attributed_token)
+  * `vendor_orders.ad_token` text (order.primary_attributed_token)
 
 ### 6.3 Line-item attribution (product-level only)
 
@@ -238,7 +238,7 @@ For each `vendor_order_line_item`:
   * tie-break hash
 * Store as:
 
-  * `vendor_order_line_items.attribution` JSONB (line_item.attributed_token)
+  * `vendor_order_line_items.ad_token` text[] (line_item.attributed_token)
 * If no matching product token exists:
 
   * line_item attribution is `null` in MVP (see v2 fallback below)
@@ -250,15 +250,15 @@ For each `vendor_order_line_item`:
 ```mermaid
 flowchart TD
   A[Checkout validation starts] --> B[Load CartRecord + line items grouped by vendor]
-  B --> C[Load cart_record.attribution_tokens[]]
+  B --> C[Load cart_record.ad_token[]]
   C --> D[Validate tokens:\nsignature + expiry + buyer_store_id]
   D --> E[Group tokens by:\nstore target_id\nproduct target_id]
 
   E --> F[For each vendor_order:\ncompute order.primary_attributed_token\n(store tokens only)]
   E --> G[For each line_item:\ncompute line_item.attributed_token\n(product tokens only)]
 
-  F --> H[Persist vendor_orders.attribution]
-  G --> I[Persist vendor_order_line_items.attribution]
+  F --> H[Persist vendor_orders.ad_token]
+  G --> I[Persist vendor_order_line_items.ad_token]
 
   H --> J[Checkout creates\ncheckout_group + vendor_orders + line_items]
   I --> J
@@ -305,6 +305,12 @@ flowchart LR
 ## 9) Daily rollup + billing bridge (Phase 19C)
 
 Postgres becomes the auditable receipt via deterministic daily settlement.
+
+* Schema additions:
+
+  * `ads`/`ad_creatives` capture the campaign, placement, target (store/product), bid, budget, and creative metadata backed by `ad_status`/`ad_target_type` enums plus the new indexes required by eligibility queries.
+  * `ad_daily_rollups` (unique on `(ad_id, day)`), `usage_charges(store_id, usage_type, for_date)`, and their rollup indexes serve as the canonical daily counters that the scheduler sinks into Postgres before emitting billing events.
+  * `usage_charges` now enforces uniqueness on `(store_id, usage_type, for_date)` so the nightly charge job remains idempotent while the new `ads` tables feed the rollups.
 
 ```mermaid
 flowchart TD
@@ -374,9 +380,9 @@ This allows ROAS calculations without reconstructing attribution later.
 ### Postgres (truth + audit + billing artifacts)
 
 * ads / creatives / bids / budgets / status
-* `cart_records.attribution_tokens` (validated “memory”)
-* `vendor_orders.attribution` (order.primary_attributed_token)
-* `vendor_order_line_items.attribution` (line_item.attributed_token)
+* `cart_records.ad_token` (validated “memory”)
+* `vendor_orders.ad_token` (order.primary_attributed_token)
+* `vendor_order_line_items.ad_token` (line_item.attributed_token)
 * `ad_daily_rollups`
 * `usage_charges`
 
@@ -413,7 +419,3 @@ This allows ROAS calculations without reconstructing attribution later.
 * (ASSUMPTION) Token signing format: HMAC payload vs JWT HS256 — choose one and standardize.
 * (ASSUMPTION) Max token list size + dedupe rule — recommend max 50 + keep most recent per (event_type, target_type, target_id).
 * (ASSUMPTION) Whether checkout stores raw token bag in checkout_group in addition to computed attributions (optional for debugging).
-
-```
-::contentReference[oaicite:0]{index=0}
-```

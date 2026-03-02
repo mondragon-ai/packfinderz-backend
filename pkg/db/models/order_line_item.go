@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/lib/pq"
 
 	"github.com/angelmondragon/packfinderz-backend/pkg/enums"
 	"github.com/angelmondragon/packfinderz-backend/pkg/types"
@@ -30,7 +31,8 @@ type OrderLineItem struct {
 	TotalCents            int                          `gorm:"column:total_cents;not null"`
 	Warnings              types.CartItemWarnings       `gorm:"column:warnings;type:jsonb;serializer:json"`
 	AppliedVolumeDiscount *types.AppliedVolumeDiscount `gorm:"column:applied_volume_discount;type:jsonb;serializer:json"`
-	AttributedToken       *types.JSONMap               `gorm:"column:attributed_token;type:jsonb;serializer:json"`
+	AdToken               pq.StringArray               `gorm:"column:ad_token;type:text[]"`
+	AttributedToken       *types.JSONMap               `gorm:"column:attributed_token;type:jsonb;serializer:json"` // SWITCH TO ad_token && *STRING
 	Status                enums.LineItemStatus         `gorm:"column:status;type:line_item_status;not null;default:'pending'"`
 	Notes                 *string                      `gorm:"column:notes"`
 	CreatedAt             time.Time                    `gorm:"column:created_at;autoCreateTime"`

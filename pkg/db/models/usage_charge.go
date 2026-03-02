@@ -13,6 +13,8 @@ type UsageCharge struct {
 	StoreID             uuid.UUID       `gorm:"column:store_id;type:uuid;not null;index"`
 	SubscriptionID      *uuid.UUID      `gorm:"column:subscription_id;type:uuid"`
 	ChargeID            *uuid.UUID      `gorm:"column:charge_id;type:uuid"`
+	UsageType           string          `gorm:"column:usage_type;type:text;not null;default:'ad_spend'"`
+	ForDate             time.Time       `gorm:"column:for_date;type:date;not null"`
 	SquareUsageChargeID string          `gorm:"column:square_usage_charge_id;not null;unique"`
 	Quantity            int64           `gorm:"column:quantity;not null"`
 	AmountCents         int64           `gorm:"column:amount_cents;not null"`

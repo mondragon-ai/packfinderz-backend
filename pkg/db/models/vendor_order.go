@@ -35,7 +35,8 @@ type VendorOrder struct {
 	Warnings          types.VendorGroupWarnings          `gorm:"column:warnings;type:jsonb;serializer:json"`
 	Promo             *types.VendorGroupPromo            `gorm:"column:promo;type:jsonb;serializer:json"`
 	ShippingLine      *types.ShippingLine                `gorm:"column:shipping_line;type:jsonb;serializer:json"`
-	AttributedToken   *types.JSONMap                     `gorm:"column:attributed_token;type:jsonb;serializer:json"`
+	AttributedToken   *types.JSONMap                     `gorm:"column:attributed_token;type:jsonb;serializer:json"` // SWITCH TO ad_token && *STRING
+	AdToken           *string                            `gorm:"column:ad_token"`
 	FulfilledAt       *time.Time                         `gorm:"column:fulfilled_at"`
 	DeliveredAt       *time.Time                         `gorm:"column:delivered_at"`
 	CanceledAt        *time.Time                         `gorm:"column:canceled_at"`

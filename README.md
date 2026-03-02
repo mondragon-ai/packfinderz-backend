@@ -296,7 +296,7 @@ Re-running the migration is safe because the statements use `CREATE EXTENSION IF
 * Cart staging tables (`cart_records`, `cart_items`, `cart_vendor_groups`) persist the authoritative quote (cart totals, vendor aggregates, item warnings) at checkout confirmation (status `active|converted`) before creating checkout groups
 * Checkout tables (`vendor_orders`, `order_line_items`, `payment_intents`) capture the per-vendor order state, line items, and payment intent before checkout execution hands off to fulfillment while `checkout_group_id` remains the shared anchor stored on carts/orders.
 * Payments, ledger events, and Square billing tables (`subscriptions`, `payment_methods`, `charges`, `usage_charges`, `billing_plans`)
-* Ads, subscriptions
+* Ads core tables (`ads`, `ad_creatives`, `ad_daily_rollups`) plus the new `usage_charges(store_id, usage_type, for_date)` uniqueness guard so the nightly rollups can charge each advertiser exactly once per day.
 * Outbox events
 * Reviews table backed by the `review_type` enum (values `store`, `product`) so buyer stores can rate vendor stores: captures `buyer_store_id`, `buyer_user_id`, optional `vendor_store_id`/`product_id`/`order_id`, rating (1-5), `title`, `body`, `is_verified_purchase`, `is_visible`, timestamps, and indexes on `vendor_store_id` + `created_at` for pagination.
 * `internal/reviews/service` enforces that the requesting user is an active member of the buyer store and that a qualifying delivered/closed vendor order exists before persisting a review (marking `is_verified_purchase=true` when that check passes) and exposes `ListVisibleReviews` so the storefront can page only `is_visible=true` rows with the link-style pagination metadata.

@@ -2358,6 +2358,10 @@ Headers:
   * Success: `200`
   * Errors: `400, 401, 403, 404, 409`
 
+**Schema**
+
+* Postgres now includes the `ads`, `ad_creatives`, and `ad_daily_rollups` tables (with `ad_status`/`ad_target_type` enums, creative/media bindings, unique `(ad_id, day)` rollups, and the indexes required by placement/eligibility queries), and the nightly scheduler writes into `usage_charges` rows with enforced `(store_id, usage_type, for_date)` uniqueness so daily ad spend can be billed exactly once per store/day.
+
 **Delete ad**
 
 * `DELETE /api/v1/vendor/ads/{adId}`

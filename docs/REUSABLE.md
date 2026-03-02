@@ -205,6 +205,12 @@ Cursor-based limit/cursor helpers reused across list endpoints.
 * `ProductListFilters` exposes filters for `category`, `classification`, `price_min_cents`, `price_max_cents`, `thc_min`, `thc_max`, `cbd_min`, `cbd_max`, `has_promo`, and `q`; pagination is wired through `pkg/pagination` (`limit`, `cursor` plus `EncodeCursor`/`ParseCursor` helpers).
 * `GET /api/v1/products` powers the buyer/vendor catalog grid. Buyers must pass `state` (which must match their own store), receive only `is_active=true` listings from verified, subscribed vendors whose `address.state` equals the requested state, and can scope results with the filters listed above. Vendor users always see their own store’s products, ignoring the state filter so the management UI stays operational while the query still respects the same filter syntax; `has_promo` maps to `product_volume_discounts` existence and the service orders by `created_at DESC, id DESC`. Each volume tier stores `discount_percent` (numeric 0-100) so promo-aware clients can compute the discounted unit price when rendering cart/checkout totals.
 * `GET /api/v1/stores/{storeId}/products` mirrors the same DTO/filters but resolves the vendor storefront via `internal/stores.Service.GetStoreByID` (returning 404 if missing), enforces `store.type == vendor`, and scopes `internal/products.Service.ListProducts` to that vendor so clients can browse a storefront catalog without relying on their `activeStoreId`.
+
+### `ads`
+
+* `ads`/`ad_creatives` store every campaign, placement/target, bid, budget, creative media, destination URL, and copy while the `ad_status`/`ad_target_type` enums keep values consistent across eligibility queries and the targeting index scopes (placement + window + store) plus the `(target_type, target_id)` index.
+* `ad_daily_rollups` is the daily counter table (`day` + `(ad_id, day)` unique) used by the nightly scheduler that all rollups/lifetime totals and `usage_charges` rely on.
+* `usage_charges` now carries `usage_type` and `for_date` columns and enforces `(store_id, usage_type, for_date)` uniqueness so the ad billing worker can insert daily charges without duplicates, keeping the `amount_cents` rows tied to the canonical rollups.
 ### `media`
 
 * `internal/media.MediaListResult` and `MediaPagination` reuse the same cursor metadata as `ProductPagination` (`page`, `total`, `current`, `first`, `last`, `prev`, `next`) so every list handler can share the canonical navigation block.
