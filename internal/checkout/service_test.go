@@ -12,6 +12,7 @@ import (
 	"github.com/angelmondragon/packfinderz-backend/internal/memberships"
 	"github.com/angelmondragon/packfinderz-backend/internal/orders"
 	"github.com/angelmondragon/packfinderz-backend/internal/stores"
+	"github.com/angelmondragon/packfinderz-backend/pkg/ads/token"
 	"github.com/angelmondragon/packfinderz-backend/pkg/db/models"
 	"github.com/angelmondragon/packfinderz-backend/pkg/enums"
 	pkgerrors "github.com/angelmondragon/packfinderz-backend/pkg/errors"
@@ -19,6 +20,7 @@ import (
 	"github.com/angelmondragon/packfinderz-backend/pkg/pagination"
 	"github.com/angelmondragon/packfinderz-backend/pkg/types"
 	"github.com/google/uuid"
+	"github.com/lib/pq"
 	"gorm.io/gorm"
 )
 
@@ -140,6 +142,7 @@ func TestServiceUsesVendorGroupTotals(t *testing.T) {
 		productLoader,
 		reserver,
 		publisher,
+		newStubCheckoutTokenParser(nil),
 		false,
 	)
 	if err != nil {
@@ -238,6 +241,187 @@ func TestServiceUsesVendorGroupTotals(t *testing.T) {
 	}
 }
 
+func TestServiceAttributesAdTokens(t *testing.T) {
+	t.Parallel()
+
+	buyerID := uuid.New()
+	vendorID := uuid.New()
+	productID := uuid.New()
+
+	storeSvc := &stubStoreService{
+		records: map[uuid.UUID]*stores.StoreDTO{
+			buyerID: {
+				ID:        buyerID,
+				Type:      enums.StoreTypeBuyer,
+				KYCStatus: enums.KYCStatusVerified,
+				Address:   types.Address{State: "OK"},
+			},
+			vendorID: {
+				ID:                 vendorID,
+				Type:               enums.StoreTypeVendor,
+				KYCStatus:          enums.KYCStatusVerified,
+				SubscriptionActive: true,
+				Address:            types.Address{State: "OK"},
+			},
+		},
+	}
+
+	productLoader := stubProductLoader{
+		products: map[uuid.UUID]*models.Product{
+			productID: {
+				ID:         productID,
+				StoreID:    vendorID,
+				SKU:        "SKU",
+				Unit:       enums.ProductUnitGram,
+				MOQ:        1,
+				PriceCents: 1000,
+				IsActive:   true,
+			},
+		},
+	}
+
+	now := time.Now().UTC()
+	storeClickToken := "store-click"
+	storeImpressionToken := "store-impression"
+	productClickToken := "product-click"
+
+	parser := newStubCheckoutTokenParser(map[string]token.Payload{
+		storeClickToken: {
+			TokenID:        uuid.New(),
+			AdID:           uuid.New(),
+			CreativeID:     uuid.New(),
+			Placement:      enums.AdPlacementHero,
+			TargetType:     enums.AdTargetTypeStore,
+			TargetID:       vendorID,
+			BuyerStoreID:   buyerID,
+			EventType:      enums.AdEventFactTypeClick,
+			OccurredAt:     now,
+			ExpiresAt:      now.Add(30 * time.Minute),
+			RequestID:      "req-click",
+			BidCents:       100,
+			DestinationURL: "https://example.com",
+		},
+		storeImpressionToken: {
+			TokenID:        uuid.New(),
+			AdID:           uuid.New(),
+			CreativeID:     uuid.New(),
+			Placement:      enums.AdPlacementHero,
+			TargetType:     enums.AdTargetTypeStore,
+			TargetID:       vendorID,
+			BuyerStoreID:   buyerID,
+			EventType:      enums.AdEventFactTypeImpression,
+			OccurredAt:     now.Add(1 * time.Minute),
+			ExpiresAt:      now.Add(40 * time.Minute),
+			RequestID:      "req-impr",
+			BidCents:       50,
+			DestinationURL: "https://example.com",
+		},
+		productClickToken: {
+			TokenID:        uuid.New(),
+			AdID:           uuid.New(),
+			CreativeID:     uuid.New(),
+			Placement:      enums.AdPlacementProduct,
+			TargetType:     enums.AdTargetTypeProduct,
+			TargetID:       productID,
+			BuyerStoreID:   buyerID,
+			EventType:      enums.AdEventFactTypeClick,
+			OccurredAt:     now.Add(-time.Minute),
+			ExpiresAt:      now.Add(25 * time.Minute),
+			RequestID:      "req-prod",
+			BidCents:       150,
+			DestinationURL: "https://example.com",
+		},
+	})
+
+	cartRecord := &models.CartRecord{
+		ID:           uuid.New(),
+		BuyerStoreID: buyerID,
+		Status:       enums.CartStatusActive,
+		Currency:     enums.CurrencyUSD,
+		ValidUntil:   time.Now().Add(10 * time.Minute),
+		ShippingAddress: &types.Address{
+			Line1:      "123 Market",
+			City:       "City",
+			State:      "OK",
+			PostalCode: "73102",
+			Country:    "US",
+		},
+		Items: []models.CartItem{
+			{
+				ID:                uuid.New(),
+				ProductID:         productID,
+				VendorStoreID:     vendorID,
+				Quantity:          1,
+				UnitPriceCents:    1000,
+				LineSubtotalCents: 1000,
+				Status:            enums.CartItemStatusOK,
+			},
+		},
+		VendorGroups: []models.CartVendorGroup{
+			{
+				VendorStoreID: vendorID,
+				Status:        enums.VendorGroupStatusOK,
+				SubtotalCents: 1000,
+				TotalCents:    1000,
+			},
+		},
+		AdTokens: pq.StringArray{storeImpressionToken, storeClickToken, productClickToken},
+	}
+
+	cartRepo := &stubCartRepo{record: cartRecord}
+	reserver := stubReservationRunner{
+		results: map[uuid.UUID]reservation.InventoryReservationResult{
+			cartRecord.Items[0].ID: {
+				CartItemID: cartRecord.Items[0].ID,
+				ProductID:  cartRecord.Items[0].ProductID,
+				Qty:        cartRecord.Items[0].Quantity,
+				Reserved:   true,
+			},
+		},
+	}
+	orderRepo := newStubOrdersRepository()
+	publisher := &stubOutboxPublisher{}
+
+	service, err := NewService(
+		stubTxRunner{},
+		cartRepo,
+		orderRepo,
+		storeSvc,
+		productLoader,
+		reserver,
+		publisher,
+		parser,
+		false,
+	)
+	if err != nil {
+		t.Fatalf("build service: %v", err)
+	}
+
+	result, err := service.Execute(context.Background(), buyerID, cartRecord.ID, CheckoutInput{
+		IdempotencyKey: "key",
+		PaymentMethod:  enums.PaymentMethodCash,
+	})
+	if err != nil {
+		t.Fatalf("execute checkout: %v", err)
+	}
+
+	if len(result.VendorOrders) != 1 {
+		t.Fatalf("expected 1 vendor order, got %d", len(result.VendorOrders))
+	}
+	order := result.VendorOrders[0]
+	if order.AdToken == nil || *order.AdToken != storeClickToken {
+		t.Fatalf("expected store click attribution, got %v", order.AdToken)
+	}
+	if len(order.Items) != 1 {
+		t.Fatalf("expected 1 line item, got %d", len(order.Items))
+	}
+	line := order.Items[0]
+	gotLineTokens := []string(line.AdToken)
+	if len(gotLineTokens) != 1 || gotLineTokens[0] != productClickToken {
+		t.Fatalf("expected product click attribution, got %v", gotLineTokens)
+	}
+}
+
 func TestServicePersistsBillingAddressAndTip(t *testing.T) {
 	t.Parallel()
 
@@ -323,6 +507,7 @@ func TestServicePersistsBillingAddressAndTip(t *testing.T) {
 		productLoader,
 		reserver,
 		publisher,
+		newStubCheckoutTokenParser(nil),
 		false,
 	)
 	if err != nil {
@@ -448,6 +633,7 @@ func TestServiceDefaultsBillingAddressToShippingAddress(t *testing.T) {
 		productLoader,
 		reserver,
 		publisher,
+		newStubCheckoutTokenParser(nil),
 		false,
 	)
 	if err != nil {
@@ -603,6 +789,7 @@ func TestServiceReusesExistingVendorOrderAndOutbox(t *testing.T) {
 		productLoader,
 		reserver,
 		publisher,
+		newStubCheckoutTokenParser(nil),
 		false,
 	)
 	if err != nil {
@@ -714,6 +901,7 @@ func TestServiceAllowsACHWhenFlagEnabled(t *testing.T) {
 		productLoader,
 		reserver,
 		publisher,
+		newStubCheckoutTokenParser(nil),
 		true,
 	)
 	if err != nil {
@@ -835,6 +1023,7 @@ func TestServiceRejectsACHWhenFlagDisabled(t *testing.T) {
 		productLoader,
 		reserver,
 		publisher,
+		newStubCheckoutTokenParser(nil),
 		false,
 	)
 	if err != nil {
@@ -942,6 +1131,7 @@ func TestServiceRejectsExpiredCartQuote(t *testing.T) {
 		productLoader,
 		reserver,
 		publisher,
+		newStubCheckoutTokenParser(nil),
 		false,
 	)
 	if err != nil {
@@ -1045,6 +1235,7 @@ func TestServiceReplaysConvertedCart(t *testing.T) {
 		stubProductLoader{products: map[uuid.UUID]*models.Product{}},
 		stubReservationRunner{},
 		publisher,
+		newStubCheckoutTokenParser(nil),
 		false,
 	)
 	if err != nil {
@@ -1162,6 +1353,7 @@ func TestServiceRejectsVendorWhenAllReservationsFail(t *testing.T) {
 		productLoader,
 		reserver,
 		publisher,
+		newStubCheckoutTokenParser(nil),
 		false,
 	)
 	if err != nil {
@@ -1321,6 +1513,7 @@ func TestServiceAdjustsTotalsWhenSomeReservationsFail(t *testing.T) {
 		productLoader,
 		reserver,
 		publisher,
+		newStubCheckoutTokenParser(nil),
 		false,
 	)
 	if err != nil {
@@ -1457,6 +1650,25 @@ func (*stubStoreService) InviteUser(ctx context.Context, inviterID, storeID uuid
 
 func (*stubStoreService) RemoveUser(ctx context.Context, actorID, storeID, targetUserID uuid.UUID) error {
 	return errors.New("not implemented")
+}
+
+type stubCheckoutTokenParser struct {
+	parsed map[string]token.Payload
+}
+
+func newStubCheckoutTokenParser(entries map[string]token.Payload) stubCheckoutTokenParser {
+	if entries == nil {
+		entries = map[string]token.Payload{}
+	}
+	return stubCheckoutTokenParser{parsed: entries}
+}
+
+func (s stubCheckoutTokenParser) Parse(value string) (token.Payload, error) {
+	payload, ok := s.parsed[value]
+	if !ok {
+		return token.Payload{}, fmt.Errorf("token %s invalid", value)
+	}
+	return payload, nil
 }
 
 type stubProductLoader struct {

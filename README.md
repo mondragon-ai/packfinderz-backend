@@ -50,6 +50,7 @@
 * Append-only **ledger events**
 * Subscription-gated vendor visibility
 * Ads with **last-click attribution**
+* Ads-driven checkout attribution now validates signed tokens, deduplicates/caps them, and persists deterministic store/product attribution on `vendor_orders.ad_token` and `order_line_items.ad_token`.
 * BigQuery analytics (analytics-only)
 
 ### Architecture Summary

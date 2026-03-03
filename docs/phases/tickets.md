@@ -392,8 +392,8 @@
   **Goal:** Create ads and server them. Later will be charges.
   - [x] [PF-298]: Create Ads Core Tables + GORM Models + Goose Migrations (ads, creatives, placements, rollups)
   - [x] [PF-299]: Implement Ads Repository Layer + DTOs + Mappers (Create/List/Detail)
-  - [x] [PF-298]: Create Ads Core Tables + GORM Models + Goose Migrations (ads, creatives, placements, rollups)
-  - [x] [PF-298]: Create Ads Core Tables + GORM Models + Goose Migrations (ads, creatives, placements, rollups)
+  - [x] [PF-300]: Ads CRUD API — Create/List/Detail Endpoints + Service Wiring (Include BigQuery Analytics in Detail)
+  - [x] [PF-301]: Ads Serve + Tracking Engine — Signed Tokens + /ads/serve, /ads/impression, /ads/click (Redis Counters + Dedupe)
 
 - **Phase 3 — COA → OpenAI Product Drafts**
   **Goal:** Parse COA PDFs into structured product draftsmusing document AI & open toproduct product JSOn draft to return to client to be confirmed.

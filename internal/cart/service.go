@@ -10,6 +10,7 @@ import (
 	checkouthelpers "github.com/angelmondragon/packfinderz-backend/internal/checkout/helpers"
 	product "github.com/angelmondragon/packfinderz-backend/internal/products"
 	"github.com/angelmondragon/packfinderz-backend/internal/stores"
+	"github.com/angelmondragon/packfinderz-backend/pkg/ads/token"
 	"github.com/angelmondragon/packfinderz-backend/pkg/db/models"
 	"github.com/angelmondragon/packfinderz-backend/pkg/enums"
 	pkgerrors "github.com/angelmondragon/packfinderz-backend/pkg/errors"
@@ -38,16 +39,16 @@ type Service interface {
 }
 
 type service struct {
-	repo           CartRepository
-	tx             txRunner
-	store          storeLoader
-	productRepo    productLoader
-	promo          promoLoader
-	tokenValidator attributionTokenValidator
+	repo        CartRepository
+	tx          txRunner
+	store       storeLoader
+	productRepo productLoader
+	promo       promoLoader
+	tokenParser token.Parser
 }
 
 // NewService builds a cart service backed by the provided stack.
-func NewService(repo CartRepository, tx txRunner, store storeLoader, productRepo productLoader, promo promoLoader, tokenValidator attributionTokenValidator) (Service, error) {
+func NewService(repo CartRepository, tx txRunner, store storeLoader, productRepo productLoader, promo promoLoader, tokenParser token.Parser) (Service, error) {
 	if repo == nil {
 		return nil, fmt.Errorf("cart repository required")
 	}
@@ -63,16 +64,16 @@ func NewService(repo CartRepository, tx txRunner, store storeLoader, productRepo
 	if promo == nil {
 		return nil, fmt.Errorf("promo loader required")
 	}
-	if tokenValidator == nil {
-		return nil, fmt.Errorf("token validator required")
+	if tokenParser == nil {
+		return nil, fmt.Errorf("token parser required")
 	}
 	return &service{
-		repo:           repo,
-		tx:             tx,
-		store:          store,
-		productRepo:    productRepo,
-		promo:          promo,
-		tokenValidator: tokenValidator,
+		repo:        repo,
+		tx:          tx,
+		store:       store,
+		productRepo: productRepo,
+		promo:       promo,
+		tokenParser: tokenParser,
 	}, nil
 }
 func (s *service) QuoteCart(ctx context.Context, buyerStoreID uuid.UUID, input QuoteCartInput) (*models.CartRecord, error) {
@@ -132,7 +133,7 @@ func (s *service) QuoteCart(ctx context.Context, buyerStoreID uuid.UUID, input Q
 	validUntil := time.Now().Add(15 * time.Minute)
 	currency := enums.CurrencyUSD
 
-	adTokens := s.filterAdTokens(input.AdTokens)
+	adTokens := s.normalizeAdTokens(input.AdTokens, buyerStoreID)
 
 	payload := cartRecordPayload{
 		ShippingAddress: &shippingAddress,
@@ -406,22 +407,14 @@ func normalizeState(value string) string {
 	return strings.ToUpper(strings.TrimSpace(value))
 }
 
-func (s *service) filterAdTokens(tokens []string) []string {
-	if len(tokens) == 0 {
+func (s *service) normalizeAdTokens(tokens []string, buyerStoreID uuid.UUID) []string {
+	normalized := token.NormalizeTokens(tokens, s.tokenParser, buyerStoreID)
+	if len(normalized) == 0 {
 		return nil
 	}
-	var valid []string
-	for _, token := range tokens {
-		if token == "" {
-			continue
-		}
-		if !s.tokenValidator.Validate(token) {
-			continue
-		}
-		valid = append(valid, token)
+	out := make([]string, len(normalized))
+	for i, entry := range normalized {
+		out[i] = entry.Raw
 	}
-	if len(valid) == 0 {
-		return nil
-	}
-	return valid
+	return out
 }

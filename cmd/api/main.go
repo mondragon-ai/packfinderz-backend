@@ -29,6 +29,7 @@ import (
 	"github.com/angelmondragon/packfinderz-backend/internal/users"
 	squarewebhook "github.com/angelmondragon/packfinderz-backend/internal/webhooks/square"
 	wishlist "github.com/angelmondragon/packfinderz-backend/internal/wishlist"
+	"github.com/angelmondragon/packfinderz-backend/pkg/ads/token"
 	"github.com/angelmondragon/packfinderz-backend/pkg/auth/session"
 	"github.com/angelmondragon/packfinderz-backend/pkg/bigquery"
 	"github.com/angelmondragon/packfinderz-backend/pkg/config"
@@ -232,15 +233,15 @@ func main() {
 	requireResource(ctx, logg, "wishlist service", err)
 
 	cartRepo := cart.NewRepository(dbClient.DB())
-	cartTokenValidator, err := cart.NewJWTAttributionTokenValidator(cfg.JWT)
-	requireResource(ctx, logg, "cart token validator", err)
+	adsTokenParser, err := token.NewParser(cfg.Ads.TokenSecret)
+	requireResource(ctx, logg, "ads token parser", err)
 	cartService, err := cart.NewService(
 		cartRepo,
 		dbClient,
 		storeService,
 		productRepo,
 		cart.NoopPromoLoader(),
-		cartTokenValidator,
+		adsTokenParser,
 	)
 	requireResource(ctx, logg, "cart service", err)
 
@@ -269,6 +270,7 @@ func main() {
 		productRepo,
 		nil,
 		outboxPublisher,
+		adsTokenParser,
 		cfg.FeatureFlags.AllowACH,
 	)
 	requireResource(ctx, logg, "checkout service", err)

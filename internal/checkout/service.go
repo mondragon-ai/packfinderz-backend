@@ -11,6 +11,7 @@ import (
 	"github.com/angelmondragon/packfinderz-backend/internal/checkout/reservation"
 	"github.com/angelmondragon/packfinderz-backend/internal/orders"
 	"github.com/angelmondragon/packfinderz-backend/internal/stores"
+	"github.com/angelmondragon/packfinderz-backend/pkg/ads/token"
 	dbpkg "github.com/angelmondragon/packfinderz-backend/pkg/db"
 	"github.com/angelmondragon/packfinderz-backend/pkg/db/models"
 	"github.com/angelmondragon/packfinderz-backend/pkg/enums"
@@ -19,6 +20,7 @@ import (
 	"github.com/angelmondragon/packfinderz-backend/pkg/outbox/payloads"
 	"github.com/angelmondragon/packfinderz-backend/pkg/types"
 	"github.com/google/uuid"
+	"github.com/lib/pq"
 	"gorm.io/gorm"
 )
 
@@ -68,6 +70,7 @@ type service struct {
 	productRepo productLoader
 	reservation reservationRunner
 	outbox      outboxPublisher
+	tokenParser token.Parser
 	allowACH    bool
 }
 
@@ -80,6 +83,7 @@ func NewService(
 	productRepo productLoader,
 	reservation reservationRunner,
 	publisher outboxPublisher,
+	tokenParser token.Parser,
 	allowACH bool,
 ) (Service, error) {
 	if tx == nil {
@@ -103,6 +107,9 @@ func NewService(
 	if publisher == nil {
 		return nil, fmt.Errorf("outbox publisher required")
 	}
+	if tokenParser == nil {
+		return nil, fmt.Errorf("token parser required")
+	}
 	return &service{
 		tx:          tx,
 		cartRepo:    cartRepo,
@@ -111,6 +118,7 @@ func NewService(
 		productRepo: productRepo,
 		reservation: reservation,
 		outbox:      publisher,
+		tokenParser: tokenParser,
 		allowACH:    allowACH,
 	}, nil
 }
@@ -190,6 +198,8 @@ func (s *service) Execute(ctx context.Context, buyerStoreID, cartID uuid.UUID, i
 		for _, group := range record.VendorGroups {
 			vendorGroups[group.VendorStoreID] = group
 		}
+		attributionTokens := token.NormalizeTokens(record.AdTokens, s.tokenParser, buyerStoreID)
+		storeTokens, productTokens := buildAttributionMaps(attributionTokens)
 		vendorOrderIDs := make([]uuid.UUID, 0, len(grouped))
 		vendorStoreIDs := make(map[uuid.UUID]struct{}, len(grouped))
 
@@ -247,6 +257,7 @@ func (s *service) Execute(ctx context.Context, buyerStoreID, cartID uuid.UUID, i
 				return pkgerrors.New(pkgerrors.CodeInternal, fmt.Sprintf("missing vendor group for vendor %s", vendorID))
 			}
 			orderTotals := computeVendorOrderTotals(items, reservationMap)
+			storeToken := storeTokens[vendorID]
 
 			var createdOrder *models.VendorOrder
 			if existingOrder, ok := existingOrdersByVendor[vendorID]; ok {
@@ -270,6 +281,10 @@ func (s *service) Execute(ctx context.Context, buyerStoreID, cartID uuid.UUID, i
 					Promo:             cartGroup.Promo,
 					ShippingLine:      appliedShippingLine,
 				}
+				if storeToken != nil {
+					tokenValue := storeToken.Raw
+					newOrder.AdToken = &tokenValue
+				}
 				createdOrder, err = ordersRepo.CreateVendorOrder(ctx, newOrder)
 				if err != nil {
 					if dbpkg.IsUniqueViolation(err, "ux_vendor_orders_group_vendor") {
@@ -290,7 +305,8 @@ func (s *service) Execute(ctx context.Context, buyerStoreID, cartID uuid.UUID, i
 						return err
 					}
 					result := reservationMap[item.ID]
-					lineItems = append(lineItems, buildLineItem(createdOrder.ID, item, product, result))
+					lineToken := productTokens[item.ProductID]
+					lineItems = append(lineItems, buildLineItem(createdOrder.ID, item, product, result, lineToken))
 				}
 
 				if err := ordersRepo.CreateOrderLineItems(ctx, lineItems); err != nil {
@@ -521,7 +537,7 @@ func uuidToString(u *uuid.UUID) string {
 	return u.String()
 }
 
-func buildLineItem(orderID uuid.UUID, cartItem models.CartItem, product *models.Product, reservation reservation.InventoryReservationResult) models.OrderLineItem {
+func buildLineItem(orderID uuid.UUID, cartItem models.CartItem, product *models.Product, reservation reservation.InventoryReservationResult, attributedToken *token.NormalizedToken) models.OrderLineItem {
 	total := cartItem.LineSubtotalCents
 	if total == 0 {
 		total = cartItem.UnitPriceCents * cartItem.Quantity
@@ -568,6 +584,11 @@ func buildLineItem(orderID uuid.UUID, cartItem models.CartItem, product *models.
 		unit = product.Unit
 	}
 
+	adToken := pq.StringArray(nil)
+	if attributedToken != nil {
+		adToken = pq.StringArray{attributedToken.Raw}
+	}
+
 	return models.OrderLineItem{
 		CartItemID:            &cartItem.ID,
 		OrderID:               orderID,
@@ -587,7 +608,7 @@ func buildLineItem(orderID uuid.UUID, cartItem models.CartItem, product *models.
 		TotalCents:            total,
 		Warnings:              cartItem.Warnings,
 		AppliedVolumeDiscount: cartItem.AppliedVolumeDiscount,
-		AttributedToken:       nil,
+		AdToken:               adToken,
 		Status:                status,
 		Notes:                 notes,
 	}
