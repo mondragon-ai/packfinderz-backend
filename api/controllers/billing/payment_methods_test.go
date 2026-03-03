@@ -5,12 +5,14 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 
 	"github.com/angelmondragon/packfinderz-backend/api/middleware"
+	"github.com/angelmondragon/packfinderz-backend/internal/paymentmethods"
 	"github.com/angelmondragon/packfinderz-backend/pkg/db/models"
 	"github.com/angelmondragon/packfinderz-backend/pkg/enums"
 	pkgerrors "github.com/angelmondragon/packfinderz-backend/pkg/errors"
@@ -24,6 +26,11 @@ type testPaymentMethodsService struct {
 	deleteErr       error
 	deletedStoreID  uuid.UUID
 	deletedMethodID uuid.UUID
+	updateStoreID   uuid.UUID
+	updateMethodID  uuid.UUID
+	updateIsDefault bool
+	updateResult    *models.PaymentMethod
+	updateErr       error
 }
 
 func (s *testPaymentMethodsService) ListPaymentMethods(ctx context.Context, storeID uuid.UUID) ([]models.PaymentMethod, error) {
@@ -35,6 +42,26 @@ func (s *testPaymentMethodsService) DeletePaymentMethod(ctx context.Context, sto
 	s.deletedStoreID = storeID
 	s.deletedMethodID = paymentMethodID
 	return s.deleteErr
+}
+
+func (s *testPaymentMethodsService) UpdatePaymentMethodDefault(ctx context.Context, storeID, paymentMethodID uuid.UUID, isDefault bool) (*models.PaymentMethod, error) {
+	s.updateStoreID = storeID
+	s.updateMethodID = paymentMethodID
+	s.updateIsDefault = isDefault
+	if s.updateErr != nil {
+		return nil, s.updateErr
+	}
+	if s.updateResult != nil {
+		return s.updateResult, nil
+	}
+	return &models.PaymentMethod{
+		ID:        paymentMethodID,
+		IsDefault: isDefault,
+	}, nil
+}
+
+func (s *testPaymentMethodsService) StoreCard(ctx context.Context, storeID uuid.UUID, input paymentmethods.StoreCardInput) (*models.PaymentMethod, error) {
+	return nil, nil
 }
 
 func TestVendorPaymentMethodsListRequiresVendorContext(t *testing.T) {
@@ -167,6 +194,113 @@ func TestVendorPaymentMethodDeleteHandlesNotFound(t *testing.T) {
 	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rc))
 
 	handler := VendorPaymentMethodDelete(service, nil)
+	resp := httptest.NewRecorder()
+	handler(resp, req)
+	if resp.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", resp.Code)
+	}
+}
+
+func TestVendorPaymentMethodUpdateRequiresVendorContext(t *testing.T) {
+	handler := VendorPaymentMethodUpdate(&testPaymentMethodsService{}, nil)
+	req := httptest.NewRequest(http.MethodPatch, "/api/v1/vendor/payment-methods/abc", strings.NewReader(`{"is_default": true}`))
+	resp := httptest.NewRecorder()
+	handler(resp, req)
+	if resp.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 without vendor context, got %d", resp.Code)
+	}
+}
+
+func TestVendorPaymentMethodUpdateRejectsMissingPayload(t *testing.T) {
+	service := &testPaymentMethodsService{}
+
+	storeID := uuid.New()
+	methodID := uuid.New()
+
+	req := httptest.NewRequest(http.MethodPatch, "/api/v1/vendor/payment-methods/"+methodID.String(), strings.NewReader(`{}`))
+	ctx := middleware.WithStoreID(req.Context(), storeID.String())
+	ctx = middleware.WithStoreType(ctx, enums.StoreTypeVendor)
+	req = req.WithContext(ctx)
+	rc := chi.NewRouteContext()
+	rc.URLParams.Add("paymentMethodId", methodID.String())
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rc))
+
+	handler := VendorPaymentMethodUpdate(service, nil)
+	resp := httptest.NewRecorder()
+	handler(resp, req)
+	if resp.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 when payload missing required field, got %d", resp.Code)
+	}
+}
+
+func TestVendorPaymentMethodUpdateReturnsUpdatedMethod(t *testing.T) {
+	storeID := uuid.New()
+	methodID := uuid.New()
+	cardBrand := "visa"
+	updated := &models.PaymentMethod{
+		ID:        methodID,
+		CardBrand: &cardBrand,
+		IsDefault: true,
+		CreatedAt: time.Now().UTC(),
+	}
+	service := &testPaymentMethodsService{
+		updateResult: updated,
+	}
+
+	req := httptest.NewRequest(http.MethodPatch, "/api/v1/vendor/payment-methods/"+methodID.String(), strings.NewReader(`{"is_default": true}`))
+	ctx := middleware.WithStoreID(req.Context(), storeID.String())
+	ctx = middleware.WithStoreType(ctx, enums.StoreTypeVendor)
+	req = req.WithContext(ctx)
+	rc := chi.NewRouteContext()
+	rc.URLParams.Add("paymentMethodId", methodID.String())
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rc))
+
+	handler := VendorPaymentMethodUpdate(service, nil)
+	resp := httptest.NewRecorder()
+	handler(resp, req)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.Code)
+	}
+
+	var envelope struct {
+		Data vendorPaymentMethodResponse `json:"data"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&envelope); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if envelope.Data.ID != methodID.String() {
+		t.Fatalf("expected id %s, got %s", methodID, envelope.Data.ID)
+	}
+	if envelope.Data.Brand == nil || *envelope.Data.Brand != cardBrand {
+		t.Fatalf("expected brand %s, got %v", cardBrand, envelope.Data.Brand)
+	}
+	if !envelope.Data.IsDefault {
+		t.Fatal("expected response to mark method as default")
+	}
+	if service.updateStoreID != storeID {
+		t.Fatalf("expected store %s, got %s", storeID, service.updateStoreID)
+	}
+	if service.updateMethodID != methodID {
+		t.Fatalf("expected method %s, got %s", methodID, service.updateMethodID)
+	}
+}
+
+func TestVendorPaymentMethodUpdateHandlesNotFound(t *testing.T) {
+	storeID := uuid.New()
+	methodID := uuid.New()
+	service := &testPaymentMethodsService{
+		updateErr: pkgerrors.New(pkgerrors.CodeNotFound, "missing"),
+	}
+
+	req := httptest.NewRequest(http.MethodPatch, "/api/v1/vendor/payment-methods/"+methodID.String(), strings.NewReader(`{"is_default": true}`))
+	ctx := middleware.WithStoreID(req.Context(), storeID.String())
+	ctx = middleware.WithStoreType(ctx, enums.StoreTypeVendor)
+	req = req.WithContext(ctx)
+	rc := chi.NewRouteContext()
+	rc.URLParams.Add("paymentMethodId", methodID.String())
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rc))
+
+	handler := VendorPaymentMethodUpdate(service, nil)
 	resp := httptest.NewRecorder()
 	handler(resp, req)
 	if resp.Code != http.StatusNotFound {

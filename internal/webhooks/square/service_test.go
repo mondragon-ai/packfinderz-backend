@@ -177,6 +177,10 @@ func (s *stubBillingRepo) ClearDefaultPaymentMethod(ctx context.Context, storeID
 	return nil
 }
 
+func (s *stubBillingRepo) UpdatePaymentMethodDefault(ctx context.Context, storeID uuid.UUID, paymentMethodID uuid.UUID, isDefault bool) error {
+	return nil
+}
+
 func (s *stubBillingRepo) CreateCharge(ctx context.Context, charge *models.Charge) error {
 	return nil
 }

@@ -30,6 +30,7 @@ type Repository interface {
 	ListPaymentMethodsByStore(ctx context.Context, storeID uuid.UUID) ([]models.PaymentMethod, error)
 	DeletePaymentMethod(ctx context.Context, storeID uuid.UUID, paymentMethodID uuid.UUID) error
 	ClearDefaultPaymentMethod(ctx context.Context, storeID uuid.UUID) error
+	UpdatePaymentMethodDefault(ctx context.Context, storeID uuid.UUID, paymentMethodID uuid.UUID, isDefault bool) error
 	CreateCharge(ctx context.Context, charge *models.Charge) error
 	ListCharges(ctx context.Context, params ListChargesQuery) ([]models.Charge, *pagination.Cursor, error)
 	CreateUsageCharge(ctx context.Context, usage *models.UsageCharge) error
@@ -243,6 +244,24 @@ func (r *repository) ClearDefaultPaymentMethod(ctx context.Context, storeID uuid
 		Model(&models.PaymentMethod{}).
 		Where("store_id = ? AND is_default", storeID).
 		Update("is_default", false).Error
+}
+
+func (r *repository) UpdatePaymentMethodDefault(ctx context.Context, storeID uuid.UUID, paymentMethodID uuid.UUID, isDefault bool) error {
+	if paymentMethodID == uuid.Nil {
+		return gorm.ErrRecordNotFound
+	}
+
+	result := r.db.WithContext(ctx).
+		Model(&models.PaymentMethod{}).
+		Where("store_id = ? AND id = ?", storeID, paymentMethodID).
+		Update("is_default", isDefault)
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return gorm.ErrRecordNotFound
+	}
+	return nil
 }
 
 func (r *repository) CreateCharge(ctx context.Context, charge *models.Charge) error {

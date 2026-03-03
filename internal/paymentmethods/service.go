@@ -19,6 +19,7 @@ import (
 // Service orchestrates card-on-file persistence.
 type Service interface {
 	StoreCard(ctx context.Context, storeID uuid.UUID, input StoreCardInput) (*models.PaymentMethod, error)
+	UpdatePaymentMethodDefault(ctx context.Context, storeID uuid.UUID, paymentMethodID uuid.UUID, isDefault bool) (*models.PaymentMethod, error)
 }
 
 // StoreCardInput captures the payload required to vault a card.

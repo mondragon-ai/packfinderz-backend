@@ -510,6 +510,50 @@ curl -X POST "{{API_BASE_URL}}/api/v1/vendor/payment-methods/cc" \
 - `409 Conflict` – duplicate payment method or reused `Idempotency-Key`.
 - `500/503` – billing service/unavailable Square dependency.
 
+### PATCH /api/v1/vendor/payment-methods/{paymentMethodId}
+
+Promotes or demotes the specified card as the default payment method for the authenticated vendor store. The handler enforces the vendor-only billing roles, validates that the `paymentMethodId` belongs to the active store, clears the previous default when `is_default` is `true`, and returns the updated DTO so the UI can flip the default flag without re-fetching every card.
+
+#### Request body
+```json
+{
+  "is_default": true
+}
+```
+
+#### cURL (copy into Postman > Raw)
+```bash
+curl -X PATCH "{{API_BASE_URL}}/api/v1/vendor/payment-methods/{{payment_method_id}}" \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json" \
+  -H "Authorization: Bearer {{access_token}}" \
+  -d '{
+    "is_default": true
+  }'
+```
+
+#### Success response (`200 OK`)
+```json
+{
+  "data": {
+    "id": "b7c3927d-13b6-4e56-ba44-1b5f89433062",
+    "card_brand": "visa",
+    "card_last4": "4242",
+    "card_exp_month": 12,
+    "card_exp_year": 2025,
+    "is_default": true,
+    "created_at": "2025-01-02T11:22:33.456Z"
+  }
+}
+```
+
+#### Failure paths
+- `400 Validation` – missing `is_default` or invalid boolean payload.
+- `401 Unauthorized` – missing/invalid token.
+- `403 Forbidden` – missing store context or the caller lacks any billing role.
+- `404 Not Found` – payment method does not exist or belongs to another store.
+- `500/503` – repository or dependency errors while toggling the default flag.
+
 ### GET /api/v1/vendor/billing/plans
 
 Returns the curated catalog of active billing plans (`status=active`). Each plan includes metadata that the storefront UI uses to describe pricing, trial rules, and features without hitting Square.

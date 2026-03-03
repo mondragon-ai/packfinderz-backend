@@ -2455,6 +2455,13 @@ Registration now calls the shared Square customer helper so onboarding persists 
   * Resolves the vendor store via `vendorcontext.ResolveVendorStoreID`, accepts the `paymentMethodId` route param, and deletes the matching `payment_methods` row when it belongs to the active store (`billing.Repository.DeletePaymentMethod`). The handler returns `204 No Content` when the row existed and belonged to the store; otherwise it returns `404 Not Found` so clients know the card cannot be deleted (no default reassignment occurs in this ticket).
   * Errors: `401 Unauthorized` when the store token is missing/invalid, `403 Forbidden` when the vendor store lacks the billing roles, `404 Not Found` when the row is absent or owned by a different store.
 
+**Toggle default payment method**
+
+* `PATCH /api/v1/vendor/payment-methods/{paymentMethodId}`
+
+  * Accepts `{ "is_default": true|false }` via the same billing role guard. The handler resolves the vendor store, validates ownership of `paymentMethodId`, and calls `internal/paymentmethods.Service.UpdatePaymentMethodDefault` so the change happens inside a transaction that first runs `ClearDefaultPaymentMethod` (when promoting a new default) and then flips the requested row’s `is_default` flag via the new repository helper.
+  * Returns `200` with the normalized payment method DTO (`id`, `card_brand`, `card_last4`, `card_exp_month`, `card_exp_year`, `is_default`, `created_at`) so the UI can reflect the default state; errors mirror the existing billing handlers (`400` validation, `401`, `403`, `404` when the card is missing or unowned).
+
 **Get CC payment method**
 
 * `GET /api/v1/vendor/payment-methods/cc`

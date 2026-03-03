@@ -137,10 +137,100 @@ func TestServiceStoreCardRejectsMissingCustomer(t *testing.T) {
 	}
 }
 
+func TestServiceUpdatePaymentMethodDefaultValidatesStoreID(t *testing.T) {
+	paymentMethodID := uuid.New()
+	service, _ := NewService(ServiceParams{
+		BillingRepo:       &stubBillingRepo{},
+		StoreLoader:       &stubStoreRepo{},
+		SquareClient:      &stubCardClient{},
+		TransactionRunner: &stubTxRunner{},
+	})
+
+	if _, err := service.UpdatePaymentMethodDefault(context.Background(), uuid.Nil, paymentMethodID, true); err == nil {
+		t.Fatal("expected validation error when store id missing")
+	}
+}
+
+func TestServiceUpdatePaymentMethodDefaultValidatesPaymentMethodID(t *testing.T) {
+	storeID := uuid.New()
+	service, _ := NewService(ServiceParams{
+		BillingRepo:       &stubBillingRepo{},
+		StoreLoader:       &stubStoreRepo{},
+		SquareClient:      &stubCardClient{},
+		TransactionRunner: &stubTxRunner{},
+	})
+
+	if _, err := service.UpdatePaymentMethodDefault(context.Background(), storeID, uuid.Nil, true); err == nil {
+		t.Fatal("expected validation error when payment method id missing")
+	}
+}
+
+func TestServiceUpdatePaymentMethodDefaultSetsDefault(t *testing.T) {
+	storeID := uuid.New()
+	methodID := uuid.New()
+	billingRepo := &stubBillingRepo{
+		paymentMethods: []models.PaymentMethod{
+			{ID: uuid.New(), IsDefault: true},
+			{ID: methodID, IsDefault: false},
+		},
+	}
+	service, _ := NewService(ServiceParams{
+		BillingRepo:       billingRepo,
+		StoreLoader:       &stubStoreRepo{},
+		SquareClient:      &stubCardClient{},
+		TransactionRunner: &stubTxRunner{},
+	})
+
+	method, err := service.UpdatePaymentMethodDefault(context.Background(), storeID, methodID, true)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if method == nil {
+		t.Fatal("expected method returned")
+	}
+	if method.ID != methodID {
+		t.Fatalf("expected method id %s, got %s", methodID, method.ID)
+	}
+	if !method.IsDefault {
+		t.Fatalf("expected method to be default")
+	}
+	if !billingRepo.cleared {
+		t.Fatal("expected previous defaults to be cleared")
+	}
+	if billingRepo.updatedStoreID != storeID {
+		t.Fatalf("expected update store id %s, got %s", storeID, billingRepo.updatedStoreID)
+	}
+	if billingRepo.updatedMethodID != methodID {
+		t.Fatalf("expected update method id %s, got %s", methodID, billingRepo.updatedMethodID)
+	}
+	if !billingRepo.updatedIsDefault {
+		t.Fatal("expected repo to persist default flag")
+	}
+}
+
+func TestServiceUpdatePaymentMethodDefaultNotFound(t *testing.T) {
+	storeID := uuid.New()
+	service, _ := NewService(ServiceParams{
+		BillingRepo:       &stubBillingRepo{},
+		StoreLoader:       &stubStoreRepo{},
+		SquareClient:      &stubCardClient{},
+		TransactionRunner: &stubTxRunner{},
+	})
+
+	if _, err := service.UpdatePaymentMethodDefault(context.Background(), storeID, uuid.New(), true); err == nil {
+		t.Fatal("expected error when payment method missing")
+	} else if pkgerrors.As(err).Code() != pkgerrors.CodeNotFound {
+		t.Fatalf("expected not found error, got %v", err)
+	}
+}
+
 type stubBillingRepo struct {
-	paymentMethods []models.PaymentMethod
-	created        []*models.PaymentMethod
-	cleared        bool
+	paymentMethods   []models.PaymentMethod
+	created          []*models.PaymentMethod
+	cleared          bool
+	updatedStoreID   uuid.UUID
+	updatedMethodID  uuid.UUID
+	updatedIsDefault bool
 }
 
 // DeletePaymentMethod implements [billing.Repository].
@@ -180,6 +270,19 @@ func (s *stubBillingRepo) ClearDefaultPaymentMethod(ctx context.Context, storeID
 		s.paymentMethods[i].IsDefault = false
 	}
 	return nil
+}
+
+func (s *stubBillingRepo) UpdatePaymentMethodDefault(ctx context.Context, storeID uuid.UUID, paymentMethodID uuid.UUID, isDefault bool) error {
+	s.updatedStoreID = storeID
+	s.updatedMethodID = paymentMethodID
+	s.updatedIsDefault = isDefault
+	for i := range s.paymentMethods {
+		if s.paymentMethods[i].ID == paymentMethodID {
+			s.paymentMethods[i].IsDefault = isDefault
+			return nil
+		}
+	}
+	return gorm.ErrRecordNotFound
 }
 func (s *stubBillingRepo) CreateCharge(ctx context.Context, charge *models.Charge) error {
 	return nil

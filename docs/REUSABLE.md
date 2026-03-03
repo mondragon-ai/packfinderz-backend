@@ -780,6 +780,7 @@ Redis-backed refresh sessions.
 * `billing_plans` tracks canonical plan metadata (`id`, `name`, `status`, `square_billing_plan_id`, `interval`, `price_amount`, `currency_code`, trial settings, optional `features`, UI metadata, and `test`/`is_default` flags) and the repo/service expose the curated plan list, lookup, create, update, and `FindDefaultBillingPlan` helpers so the UI can show one deterministic default plan without contacting Square (pkg/migrate/migrations/20270104000000_create_billing_plans.sql:1-49; pkg/db/models/billing_plan.go:7-27; internal/billing/repo.go:26-122; internal/billing/service.go:65-125).
 * `api/controllers/billing/plans.go` now exposes admin CRUD (`/api/admin/v1/billing/plans`) plus vendor read-only endpoints (`/api/v1/vendor/billing/plans` and `/{planId}`), validating statuses/intervals, converting `price_amount_cents` ↔ `decimal.Decimal`, and reusing the service helpers so plan metadata stays in sync with the `billing_plans` table.
 * `internal/paymentmethods.Service` is the controller-facing card-on-file helper: it validates `source_id` + `Idempotency-Key`, calls Square’s Cards API using the store’s `square_customer_id`, writes the metadata into a `payment_methods` row (new `is_default` boolean + unique partial index), and clears any prior default whenever the client requests `is_default=true`, guaranteeing one default per store before returning the retracted card DTO.
+* `PATCH /api/v1/vendor/payment-methods/{paymentMethodId}` now routes to `internal/paymentmethods.Service.UpdatePaymentMethodDefault`; the service clears the previous default when promoting a new one, toggles the requested row via `billing.Repository.UpdatePaymentMethodDefault`, and returns the updated DTO so the UI can flip the default flag without hitting Square.
 * Vendor subscription creation/cancellation is implemented in `api/controllers/subscriptions/vendor` and `internal/subscriptions.Service`, which drive Square + DB state in one transaction, gate `stores.subscription_active`, and uses the configured `PACKFINDERZ_SQUARE_SUBSCRIPTION_PLAN_ID` as the default plan. The same controller adds `POST /api/v1/vendor/subscriptions/pause`/`resume` so vendors can pause or resume billing without touching Square directly while the service persists the `PAUSED` status and `PausedAt` timestamp.
 * Vendor payment-method and subscription routes sit behind `middleware.RequireStoreRoles`, so only store members with owner/admin/manager/staff/ops roles reach the billing controllers that mutate Square subscriptions/payment methods.
 
@@ -804,8 +805,8 @@ Redis-backed refresh sessions.
 * `/api/v1/vendor/analytics`
 * `/api/v1/analytics/marketplace`
 * `/api/v1/vendor/billing/charges`
-* `/api/v1/vendor/payment-methods`
-* `/api/v1/vendor/payment-methods/{paymentMethodId}`
+  * `/api/v1/vendor/payment-methods`
+  * `/api/v1/vendor/payment-methods/{paymentMethodId}` (DELETE/PATCH)
 
 ---
 
