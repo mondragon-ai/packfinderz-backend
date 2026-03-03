@@ -191,12 +191,17 @@ func NewRouter(
 					r.Post("/resume", subscriptionControllers.VendorSubscriptionResume(subscriptionsService, logg))
 					r.Get("/", subscriptionControllers.VendorSubscriptionFetch(subscriptionsService, logg))
 				})
+				r.Route("/ads", func(r chi.Router) {
+					r.Post("/", controllers.VendorCreateAd(adsService, logg))
+					r.Get("/", controllers.VendorListAds(adsService, logg))
+					r.Get("/{adId}", controllers.VendorGetAdDetail(adsService, logg))
+				})
 			})
 
-			r.Route("/v1/vendors/ads", func(r chi.Router) {
-				r.Post("/", controllers.VendorCreateAd(adsService, logg))
-				r.Get("/", controllers.VendorListAds(adsService, logg))
-				r.Get("/{adId}", controllers.VendorGetAdDetail(adsService, logg))
+			r.Route("/v1/ads", func(r chi.Router) {
+				r.Get("/serve", controllers.ServeAd(adsService, logg))
+				r.Post("/impression", controllers.TrackAdImpression(adsService, logg))
+				r.Get("/click", controllers.TrackAdClick(adsService, logg))
 			})
 
 			r.Route("/v1/analytics", func(r chi.Router) {

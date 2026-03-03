@@ -440,6 +440,13 @@ The GitHub Actions workflow (`.github/workflows/ci.yml`) runs gofmt, `golangci-l
 
 * `POST /api/v1/vendor/payment-methods/cc` – vendor-only endpoint (Idempotency-Key required) that accepts `{ "source_id": "...", "cardholder_name": "...?", "verification_token": "...?", "is_default": true|false }`, creates a card-on-file via the Square Cards API (using the store’s `square_customer_id`), and writes the returned metadata (`card_brand`, `card_last4`, `card_exp_month`, `card_exp_year`, `billing_details`, `metadata`) into `payment_methods`. Only store members with the owning roles (`owner`, `admin`, `manager`, `staff`, or `ops`) may call this endpoint. The first card added (or any card when no default exists) automatically becomes the default, and `is_default=true` flips the existing default off before persisting the record, keeping the `is_default` column unique per store. The response returns a retracted view (`id`, `card_brand`, `card_last4`, `card_exp_month`, `card_exp_year`, `is_default`, `created_at`) so the UI can render the stored instrument without exposing Square identifiers.
 
+### Ads Serving & Tracking
+
+* `GET /api/v1/ads/serve` – buyer-only route (requires store context + `StoreType=buyer`). Pass `placement=hero|store|product` plus any other filtering query params; the API queries active ads (status/time window/store gating), budgets the candidates via Redis, and returns the winning creative plus a `request_id`, a `view_token`, and a `click_token`. Tokens are signed with `PACKFINDERZ_ADS_TOKEN_SECRET`, expire after `PACKFINDERZ_ADS_TOKEN_TTL_DAYS` (default 30), and carry `bid_cents`, `target`, and `destination_url` so the tracking endpoints can increment CPM spend and redirect without extra queries.
+* `POST /api/v1/ads/impression` – submit `{ "view_token": "...", "request_id": "..." }` once the creative renders. The handler validates the token (signature/expiry/buyer store/request id matching), uses `SETNX` on `pf:impdedupe:<request_id>:<ad_id>:<placement>` (10m TTL) to avoid duplicates, increments `pf:counter:imps:<ad_id>:<YYYYMMDD>`, and `pf:counter:spend:<ad_id>:<YYYYMMDD>` by `bid_cents/1000`, returning `204` on success. Redis outages fail closed (no impression is counted).
+* `GET /api/v1/ads/click` – browser clicks pass `token` (click token) plus the same `request_id`, the server validates the token, guards duplicates with `pf:clickdedupe:<request_id>:<ad_id>`, increments `pf:counter:clicks:<ad_id>:<YYYYMMDD>`, and issues `302` to the creative’s destination URL. Tokens bind the buyer store and expire after the configured TTL so stale clicks are rejected.
+* When Redis is unavailable the serve endpoint yields no creative (fail-closed) and the tracking endpoints return a dependency error so billing data remains accurate.
+
 ### Health
 
 ```bash
@@ -588,7 +595,11 @@ PACKFINDERZ_LOG_LEVEL=info
 PACKFINDERZ_LOG_WARN_STACK=false
 PACKFINDERZ_EVENTING_IDEMPOTENCY_TTL=720h
 PACKFINDERZ_GOOGLE_MAPS_API_KEY=<your-google-maps-api-key>
+PACKFINDERZ_ADS_TOKEN_SECRET=<your-ads-token-secret>
+PACKFINDERZ_ADS_TOKEN_TTL_DAYS=30
 ```
+
+Ads serving relies on signed view/click tokens, so you must configure `PACKFINDERZ_ADS_TOKEN_SECRET` and optionally `PACKFINDERZ_ADS_TOKEN_TTL_DAYS` (default 30) before running the API so the serve/tracking handlers can validate every request.
 
 > **Rule:** Do not add new env vars without documentation.
 

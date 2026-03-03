@@ -664,6 +664,18 @@ func (s stubAdService) ListAds(ctx context.Context, input ads.ListAdsInput) (ads
 	panic("unimplemented")
 }
 
+func (s stubAdService) ServeAd(ctx context.Context, input ads.ServeAdInput) (*ads.ServeAdResult, error) {
+	return nil, nil
+}
+
+func (s stubAdService) TrackImpression(ctx context.Context, input ads.TrackImpressionInput) error {
+	return nil
+}
+
+func (s stubAdService) TrackClick(ctx context.Context, input ads.TrackClickInput) (*ads.TrackClickResult, error) {
+	return &ads.TrackClickResult{}, nil
+}
+
 func testConfig() *config.Config {
 	return &config.Config{
 		App: config.AppConfig{Env: "test", Port: "0"},

@@ -209,6 +209,7 @@ Cursor-based limit/cursor helpers reused across list endpoints.
 ### `ads`
 
 * `ads`/`ad_creatives` store every campaign, placement/target, bid, budget, creative media, destination URL, and copy while the `ad_status`/`ad_target_type` enums keep values consistent across eligibility queries and the targeting index scopes (placement + window + store) plus the `(target_type, target_id)` index.
+* `/api/v1/ads/serve` + `/api/v1/ads/impression` + `/api/v1/ads/click` form the request-time ad engine. The serve endpoint returns the winning creative plus signed tokens (guarded by `PACKFINDERZ_ADS_TOKEN_SECRET`/`PACKFINDERZ_ADS_TOKEN_TTL_DAYS`) that include `bid_cents`, `destination_url`, and the `request_id`; the impression/click handlers validate the tokens, dedupe via `pf:impdedupe:<request_id>:<ad_id>:<placement>` and `pf:clickdedupe:<request_id>:<ad_id>`, and increment the Redis counters `pf:counter:imps/<clicks/spend>/<ad_id>/<YYYYMMDD>` before responding so pacing/billing remains accurate.
 * `ad_daily_rollups` is the daily counter table (`day` + `(ad_id, day)` unique) used by the nightly scheduler that all rollups/lifetime totals and `usage_charges` rely on.
 * `usage_charges` now carries `usage_type` and `for_date` columns and enforces `(store_id, usage_type, for_date)` uniqueness so the ad billing worker can insert daily charges without duplicates, keeping the `amount_cents` rows tied to the canonical rollups.
 ### `media`

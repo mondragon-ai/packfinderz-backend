@@ -29,6 +29,7 @@ type Config struct {
 	Square        SquareConfig
 	Sendgrid      SendgridConfig
 	Outbox        OutboxConfig
+	Ads           AdsConfig
 }
 
 func Load() (*Config, error) {
@@ -140,6 +141,18 @@ type OpenAIConfig struct {
 
 type GoogleMapsConfig struct {
 	APIKey string `envconfig:"PACKFINDERZ_GOOGLE_MAPS_API_KEY"`
+}
+
+type AdsConfig struct {
+	TokenSecret  string `envconfig:"PACKFINDERZ_ADS_TOKEN_SECRET" required:"true"`
+	TokenTTLDays int    `envconfig:"PACKFINDERZ_ADS_TOKEN_TTL_DAYS" default:"30"`
+}
+
+func (a AdsConfig) TokenTTL() time.Duration {
+	if a.TokenTTLDays <= 0 {
+		return 0
+	}
+	return time.Duration(a.TokenTTLDays) * 24 * time.Hour
 }
 
 type GCPConfig struct {

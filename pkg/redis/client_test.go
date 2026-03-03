@@ -94,6 +94,7 @@ func TestKeyBuilders(t *testing.T) {
 type mockCmdable struct {
 	data        map[string]string
 	incr        map[string]int64
+	floatValues map[string]float64
 	expireCalls []expireCall
 }
 
@@ -104,8 +105,9 @@ type expireCall struct {
 
 func newMockCmdable() *mockCmdable {
 	return &mockCmdable{
-		data: make(map[string]string),
-		incr: make(map[string]int64),
+		data:        make(map[string]string),
+		incr:        make(map[string]int64),
+		floatValues: make(map[string]float64),
 	}
 }
 
@@ -137,6 +139,11 @@ func (m *mockCmdable) SetNX(ctx context.Context, key string, value any, expirati
 func (m *mockCmdable) Incr(ctx context.Context, key string) *redis.IntCmd {
 	m.incr[key]++
 	return redis.NewIntResult(m.incr[key], nil)
+}
+
+func (m *mockCmdable) IncrByFloat(ctx context.Context, key string, value float64) *redis.FloatCmd {
+	m.floatValues[key] += value
+	return redis.NewFloatResult(m.floatValues[key], nil)
 }
 
 func (m *mockCmdable) Expire(ctx context.Context, key string, expiration time.Duration) *redis.BoolCmd {

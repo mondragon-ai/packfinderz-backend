@@ -26,6 +26,7 @@ type cmdable interface {
 	Get(context.Context, string) *redis.StringCmd
 	SetNX(context.Context, string, any, time.Duration) *redis.BoolCmd
 	Incr(context.Context, string) *redis.IntCmd
+	IncrByFloat(context.Context, string, float64) *redis.FloatCmd
 	Expire(context.Context, string, time.Duration) *redis.BoolCmd
 	Del(context.Context, ...string) *redis.IntCmd
 }
@@ -134,6 +135,14 @@ func (c *Client) Incr(ctx context.Context, key string) (int64, error) {
 		return 0, errors.New("redis client not initialized")
 	}
 	return c.store.Incr(ctx, key).Result()
+}
+
+// IncrByFloat increments the counter by a floating-point value.
+func (c *Client) IncrByFloat(ctx context.Context, key string, value float64) (float64, error) {
+	if c.store == nil {
+		return 0, errors.New("redis client not initialized")
+	}
+	return c.store.IncrByFloat(ctx, key, value).Result()
 }
 
 // IncrWithTTL increments and ensures the key has the supplied TTL on the first increment.

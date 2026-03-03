@@ -175,6 +175,7 @@ Client stores a bounded list of the most recent tokens, not raw IDs.
 * `expires_at` (occurred_at + 30d)
 * `request_id` or `nonce` (for tie-break + debugging)
 * `sig` (HMAC/JWT signature)
+* `bid_cents` (CPM) and `destination_url` (redirect target) so tracking can increment spend and redirect without extra reads
 
 **Server acceptance rules:**
 
@@ -182,6 +183,7 @@ Client stores a bounded list of the most recent tokens, not raw IDs.
 * not expired
 * `buyer_store_id == JWT.activeStoreId`
 * enums valid
+Tokens are signed with `PACKFINDERZ_ADS_TOKEN_SECRET` and obey the `PACKFINDERZ_ADS_TOKEN_TTL_DAYS` window so the serve endpoint can publish expiring tokens that the impression/click handlers still trust.
 
 ---
 

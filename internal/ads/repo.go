@@ -174,6 +174,10 @@ func (r *Repository) ListEligibleAdsForServe(ctx context.Context, placement enum
 		Preload("Creatives", func(db *gorm.DB) *gorm.DB {
 			return db.Order("created_at ASC").Order("id ASC")
 		}).
+		Joins("JOIN stores s ON s.id = ads.store_id").
+		Where("s.type = ?", enums.StoreTypeVendor).
+		Where("s.subscription_active = ?", true).
+		Where("s.kyc_status = ?", enums.KYCStatusVerified).
 		Where("status = ?", enums.AdStatusActive).
 		Where("placement = ?", placement).
 		Where("(starts_at IS NULL OR starts_at <= ?)", now).

@@ -341,7 +341,7 @@
   - [x] Ticket [PF-283]: Order detail + wishlist enabled for vendor + Shop (browse product) vednor
   - [x] Ticket [PF-284]: Product inventory search patch
   - [x] Ticket [PF-285]: Product Patch - adding fields - created patch
-  - [x] Ticket [PF-286]:
+  - [x] Ticket [PF-302]: feat - Product Update Patch
 
 ## Phase W — Wishlist\*\*
 
@@ -390,6 +390,9 @@
 
 - **Phase 3 — Ads: Inital CRUD & Logic**
   **Goal:** Create ads and server them. Later will be charges.
+  - [x] [PF-298]: Create Ads Core Tables + GORM Models + Goose Migrations (ads, creatives, placements, rollups)
+  - [x] [PF-299]: Implement Ads Repository Layer + DTOs + Mappers (Create/List/Detail)
+  - [x] [PF-298]: Create Ads Core Tables + GORM Models + Goose Migrations (ads, creatives, placements, rollups)
   - [x] [PF-298]: Create Ads Core Tables + GORM Models + Goose Migrations (ads, creatives, placements, rollups)
 
 - **Phase 3 — COA → OpenAI Product Drafts**

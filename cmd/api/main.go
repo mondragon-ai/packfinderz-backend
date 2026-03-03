@@ -200,6 +200,9 @@ func main() {
 		DB:                   dbClient,
 		AttachmentReconciler: attachmentReconciler,
 		Analytics:            analyticsService,
+		Redis:                redisClient,
+		TokenSecret:          cfg.Ads.TokenSecret,
+		TokenTTL:             cfg.Ads.TokenTTL(),
 	})
 	requireResource(ctx, logg, "ads service", err)
 	licenseRepo := licenses.NewRepository(dbClient.DB())

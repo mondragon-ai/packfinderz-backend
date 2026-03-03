@@ -1,6 +1,7 @@
 package controllers
 
 import (
+	"errors"
 	"math"
 	"net/http"
 	"strings"
@@ -10,6 +11,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/angelmondragon/packfinderz-backend/api/controllers/vendorcontext"
+	"github.com/angelmondragon/packfinderz-backend/api/middleware"
 	"github.com/angelmondragon/packfinderz-backend/api/responses"
 	"github.com/angelmondragon/packfinderz-backend/api/validators"
 	"github.com/angelmondragon/packfinderz-backend/internal/ads"
@@ -285,4 +287,177 @@ func (r *createAdRequest) toCreateInput(storeID uuid.UUID) (ads.CreateAdInput, e
 		EndsAt:           r.EndsAt,
 		Creatives:        creatives,
 	}, nil
+}
+
+func ServeAd(svc ads.Service, logg *logger.Logger) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if svc == nil {
+			responses.WriteError(r.Context(), logg, w, pkgerrors.New(pkgerrors.CodeInternal, "ads service unavailable"))
+			return
+		}
+
+		buyerStoreID, err := buyerStoreIDFromRequest(r)
+		if err != nil {
+			responses.WriteError(r.Context(), logg, w, err)
+			return
+		}
+
+		placementValue := strings.TrimSpace(r.URL.Query().Get("placement"))
+		placement, err := enums.ParseAdPlacement(placementValue)
+		if err != nil {
+			responses.WriteError(r.Context(), logg, w, pkgerrors.Wrap(pkgerrors.CodeValidation, err, "invalid placement"))
+			return
+		}
+
+		requestID := uuid.NewString()
+		result, err := svc.ServeAd(r.Context(), ads.ServeAdInput{
+			Placement:    placement,
+			BuyerStoreID: buyerStoreID,
+			RequestID:    requestID,
+			Now:          time.Now().UTC(),
+		})
+		if err != nil {
+			if errors.Is(err, ads.ErrRedisUnavailable) {
+				ctx := logg.WithFields(r.Context(), map[string]any{
+					"placement":  placement,
+					"request_id": requestID,
+					"error":      err.Error(),
+				})
+				logg.Warn(ctx, "ads.serve.redis-unavailable")
+				responses.WriteSuccess(w, nil)
+				return
+			}
+			responses.WriteError(r.Context(), logg, w, err)
+			return
+		}
+
+		if result == nil {
+			responses.WriteSuccess(w, nil)
+			return
+		}
+
+		resp := serveAdResponse{
+			AdID:       result.AdID,
+			Placement:  result.Placement,
+			TargetType: result.TargetType,
+			TargetID:   result.TargetID,
+			Creative:   result.Creative,
+			RequestID:  result.RequestID,
+			ViewToken:  result.ViewToken,
+			ClickToken: result.ClickToken,
+		}
+		responses.WriteSuccess(w, resp)
+	}
+}
+
+func TrackAdImpression(svc ads.Service, logg *logger.Logger) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if svc == nil {
+			responses.WriteError(r.Context(), logg, w, pkgerrors.New(pkgerrors.CodeInternal, "ads service unavailable"))
+			return
+		}
+
+		buyerStoreID, err := buyerStoreIDFromRequest(r)
+		if err != nil {
+			responses.WriteError(r.Context(), logg, w, err)
+			return
+		}
+
+		var payload impressionRequest
+		if err := validators.DecodeJSONBody(r, &payload); err != nil {
+			responses.WriteError(r.Context(), logg, w, err)
+			return
+		}
+
+		input := ads.TrackImpressionInput{
+			Token:        strings.TrimSpace(payload.ViewToken),
+			RequestID:    strings.TrimSpace(payload.RequestID),
+			BuyerStoreID: buyerStoreID,
+			Now:          time.Now().UTC(),
+		}
+
+		if err := svc.TrackImpression(r.Context(), input); err != nil {
+			responses.WriteError(r.Context(), logg, w, err)
+			return
+		}
+
+		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
+func TrackAdClick(svc ads.Service, logg *logger.Logger) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if svc == nil {
+			responses.WriteError(r.Context(), logg, w, pkgerrors.New(pkgerrors.CodeInternal, "ads service unavailable"))
+			return
+		}
+
+		buyerStoreID, err := buyerStoreIDFromRequest(r)
+		if err != nil {
+			responses.WriteError(r.Context(), logg, w, err)
+			return
+		}
+
+		tokenValue := strings.TrimSpace(r.URL.Query().Get("token"))
+		requestID := strings.TrimSpace(r.URL.Query().Get("request_id"))
+		if tokenValue == "" {
+			responses.WriteError(r.Context(), logg, w, pkgerrors.New(pkgerrors.CodeValidation, "token is required"))
+			return
+		}
+		if requestID == "" {
+			responses.WriteError(r.Context(), logg, w, pkgerrors.New(pkgerrors.CodeValidation, "request_id is required"))
+			return
+		}
+
+		input := ads.TrackClickInput{
+			Token:        tokenValue,
+			RequestID:    requestID,
+			BuyerStoreID: buyerStoreID,
+			Now:          time.Now().UTC(),
+		}
+
+		result, err := svc.TrackClick(r.Context(), input)
+		if err != nil {
+			responses.WriteError(r.Context(), logg, w, err)
+			return
+		}
+
+		if strings.TrimSpace(result.DestinationURL) == "" {
+			responses.WriteError(r.Context(), logg, w, pkgerrors.New(pkgerrors.CodeValidation, "destination url missing"))
+			return
+		}
+		http.Redirect(w, r, result.DestinationURL, http.StatusFound)
+	}
+}
+
+type serveAdResponse struct {
+	AdID       uuid.UUID          `json:"ad_id"`
+	Placement  enums.AdPlacement  `json:"placement"`
+	TargetType enums.AdTargetType `json:"target_type"`
+	TargetID   uuid.UUID          `json:"target_id"`
+	Creative   ads.AdCreativeDTO  `json:"creative"`
+	RequestID  string             `json:"request_id"`
+	ViewToken  string             `json:"view_token"`
+	ClickToken string             `json:"click_token"`
+}
+
+type impressionRequest struct {
+	ViewToken string `json:"view_token" validate:"required"`
+	RequestID string `json:"request_id" validate:"required"`
+}
+
+func buyerStoreIDFromRequest(r *http.Request) (uuid.UUID, error) {
+	storeType, ok := middleware.StoreTypeFromContext(r.Context())
+	if !ok || storeType != enums.StoreTypeBuyer {
+		return uuid.Nil, pkgerrors.New(pkgerrors.CodeForbidden, "buyer store context required")
+	}
+	storeID := middleware.StoreIDFromContext(r.Context())
+	if storeID == "" {
+		return uuid.Nil, pkgerrors.New(pkgerrors.CodeForbidden, "store context missing")
+	}
+	parsed, err := uuid.Parse(storeID)
+	if err != nil {
+		return uuid.Nil, pkgerrors.Wrap(pkgerrors.CodeValidation, err, "invalid store id")
+	}
+	return parsed, nil
 }

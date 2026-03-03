@@ -3,6 +3,7 @@ package ads
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/angelmondragon/packfinderz-backend/internal/analytics"
@@ -20,6 +21,16 @@ type Service interface {
 	CreateAd(ctx context.Context, input CreateAdInput) (*AdDTO, error)
 	ListAds(ctx context.Context, input ListAdsInput) (AdListResult, error)
 	GetAdDetail(ctx context.Context, input GetAdDetailInput) (*AdDetail, error)
+	ServeAd(ctx context.Context, input ServeAdInput) (*ServeAdResult, error)
+	TrackImpression(ctx context.Context, input TrackImpressionInput) error
+	TrackClick(ctx context.Context, input TrackClickInput) (*TrackClickResult, error)
+}
+
+type redisStore interface {
+	Get(context.Context, string) (string, error)
+	SetNX(context.Context, string, any, time.Duration) (bool, error)
+	Incr(context.Context, string) (int64, error)
+	IncrByFloat(context.Context, string, float64) (float64, error)
 }
 
 // GetAdDetailInput captures the parameters required to build the detail payload.
@@ -36,6 +47,9 @@ type ServiceParams struct {
 	DB                   *db.Client
 	AttachmentReconciler media.AttachmentReconciler
 	Analytics            analytics.Service
+	Redis                redisStore
+	TokenSecret          string
+	TokenTTL             time.Duration
 }
 
 type service struct {
@@ -43,6 +57,9 @@ type service struct {
 	db          *db.Client
 	attachments media.AttachmentReconciler
 	analytics   analytics.Service
+	redis       redisStore
+	tokenSecret string
+	tokenTTL    time.Duration
 }
 
 // NewService constructs an ads service with the provided dependencies.
@@ -59,11 +76,23 @@ func NewService(params ServiceParams) (Service, error) {
 	if params.Analytics == nil {
 		return nil, fmt.Errorf("analytics service required")
 	}
+	if params.Redis == nil {
+		return nil, fmt.Errorf("redis client required")
+	}
+	if strings.TrimSpace(params.TokenSecret) == "" {
+		return nil, fmt.Errorf("ads token secret required")
+	}
+	if params.TokenTTL <= 0 {
+		return nil, fmt.Errorf("ads token ttl required")
+	}
 	return &service{
 		repo:        params.Repo,
 		db:          params.DB,
 		attachments: params.AttachmentReconciler,
 		analytics:   params.Analytics,
+		redis:       params.Redis,
+		tokenSecret: strings.TrimSpace(params.TokenSecret),
+		tokenTTL:    params.TokenTTL,
 	}, nil
 }
 

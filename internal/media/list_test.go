@@ -68,7 +68,9 @@ func TestListMediaInvalidStore(t *testing.T) {
 }
 
 func TestListMediaCursorPagination(t *testing.T) {
-	now := time.Now()
+	now := time.Now().UTC()
+
+	// Ensure rows are in the same order your repo returns (typically DESC by created_at, id)
 	rows := []models.Media{
 		{
 			ID:        uuid.New(),
@@ -85,6 +87,7 @@ func TestListMediaCursorPagination(t *testing.T) {
 			PublicURL: "https://public.example/two",
 		},
 	}
+
 	repo := &stubListRepo{listRows: rows}
 	repo.firstCursor = pagination.EncodeCursor(pagination.Cursor{
 		CreatedAt: rows[0].CreatedAt,
@@ -94,6 +97,7 @@ func TestListMediaCursorPagination(t *testing.T) {
 		CreatedAt: rows[1].CreatedAt,
 		ID:        rows[1].ID,
 	})
+
 	svc := newServiceWithRepo(repo)
 	storeID := uuid.New()
 
@@ -101,26 +105,35 @@ func TestListMediaCursorPagination(t *testing.T) {
 		StoreID: storeID,
 		Params:  pagination.Params{Limit: 1},
 	}
+
 	res, err := svc.ListMedia(context.Background(), params)
 	if err != nil {
 		t.Fatalf("ListMedia returned error: %v", err)
 	}
+
 	if len(res.Items) != 1 {
 		t.Fatalf("expected 1 item, got %d", len(res.Items))
 	}
+
+	// SignedURL maps to PublicURL for readable status
 	if res.Items[0].SignedURL == nil || *res.Items[0].SignedURL != rows[0].PublicURL {
 		t.Fatalf("expected signed url %s got %v", rows[0].PublicURL, res.Items[0].SignedURL)
 	}
+
+	// With "start-after" cursor pagination, Next must be cursor(last item returned on this page).
+	// Since limit=1, the only returned item is rows[0], so Next should equal cursor(rows[0]).
+	expectedNext := pagination.EncodeCursor(pagination.Cursor{
+		CreatedAt: rows[0].CreatedAt,
+		ID:        rows[0].ID,
+	})
 	if res.Pagination.Next == "" {
 		t.Fatal("expected cursor for next page")
 	}
-	expected := pagination.EncodeCursor(pagination.Cursor{
-		CreatedAt: rows[1].CreatedAt,
-		ID:        rows[1].ID,
-	})
-	if res.Pagination.Next != expected {
-		t.Fatalf("expected cursor %s got %s", expected, res.Pagination.Next)
+	if res.Pagination.Next != expectedNext {
+		t.Fatalf("expected next cursor %s got %s", expectedNext, res.Pagination.Next)
 	}
+
+	// Total + boundaries
 	if res.Pagination.Total != len(rows) {
 		t.Fatalf("expected total %d got %d", len(rows), res.Pagination.Total)
 	}
@@ -130,8 +143,16 @@ func TestListMediaCursorPagination(t *testing.T) {
 	if res.Pagination.Last != repo.lastCursor {
 		t.Fatalf("expected last cursor %s got %s", repo.lastCursor, res.Pagination.Last)
 	}
+
+	// Initial page behavior in your updated code
 	if res.Pagination.Page != 1 {
 		t.Fatalf("expected page 1, got %d", res.Pagination.Page)
+	}
+	if res.Pagination.Current != "" {
+		t.Fatalf("expected current cursor empty, got %q", res.Pagination.Current)
+	}
+	if res.Pagination.Prev != "" {
+		t.Fatalf("expected prev cursor empty, got %q", res.Pagination.Prev)
 	}
 }
 

@@ -16,6 +16,12 @@ import (
 )
 
 const adsSchema = `
+CREATE TABLE stores (
+  id TEXT PRIMARY KEY,
+  type TEXT NOT NULL,
+  subscription_active BOOLEAN NOT NULL,
+  kyc_status TEXT NOT NULL
+);
 CREATE TABLE ads (
   id TEXT PRIMARY KEY,
   store_id TEXT NOT NULL,
@@ -179,6 +185,7 @@ func TestRepository_ListEligibleAdsForServeFiltersByPlacementAndWindow(t *testin
 
 	now := time.Now().UTC()
 	storeID := uuid.New()
+	insertStoreRecord(t, db, storeID)
 
 	highBid := models.Ad{
 		StoreID:          storeID,
@@ -249,4 +256,17 @@ func ptrAdPlacement(value enums.AdPlacement) *enums.AdPlacement {
 
 func ptrTime(value time.Time) *time.Time {
 	return &value
+}
+
+func insertStoreRecord(t *testing.T, db *gorm.DB, storeID uuid.UUID) {
+	t.Helper()
+	if err := db.Exec(
+		"INSERT INTO stores (id, type, subscription_active, kyc_status) VALUES (?, ?, ?, ?)",
+		storeID.String(),
+		string(enums.StoreTypeVendor),
+		true,
+		string(enums.KYCStatusVerified),
+	).Error; err != nil {
+		t.Fatalf("insert store record: %v", err)
+	}
 }

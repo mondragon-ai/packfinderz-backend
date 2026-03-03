@@ -57,6 +57,8 @@ func setMinimalEnv(t *testing.T) {
 	t.Setenv(EnvGCSBucket, "bucket")
 	t.Setenv(EnvGCSUploadExpiry, "15m")
 	t.Setenv(EnvGCSDownloadExpiry, "24h")
+	t.Setenv(EnvAdsTokenSecret, "ads-secret")
+	t.Setenv(EnvAdsTokenTTLDays, "30")
 	t.Setenv(EnvPubSubMediaTopic, "media-topic")
 	t.Setenv(EnvPubSubMediaSub, "media-sub")
 	t.Setenv(EnvPubSubMediaDeletionTopic, "media-deletion-topic")

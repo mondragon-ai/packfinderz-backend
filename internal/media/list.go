@@ -2,6 +2,7 @@ package media
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"time"
 
@@ -97,14 +98,25 @@ func (s *service) ListMedia(ctx context.Context, params ListParams) (*MediaListR
 	if err != nil {
 		return nil, pkgerrors.Wrap(pkgerrors.CodeDependency, err, "list media")
 	}
+	fmt.Printf("[media.list.debug] requested_limit=%d, normalized_limit=%d, query_limit=%d, rows_len=%d, cursor_in=%s",
+		params.Limit,
+		limit,
+		query.limit,
+		len(rows),
+		params.Cursor,
+	)
 
-	nextCursor := ""
-	if len(rows) > limit {
-		nextCursor = pkgpagination.EncodeCursor(pkgpagination.Cursor{
-			CreatedAt: rows[limit].CreatedAt,
-			ID:        rows[limit].ID,
-		})
+	var nextCursor string
+	hasNext := len(rows) > limit
+
+	if hasNext {
+		// keep only returned rows
 		rows = rows[:limit]
+		last := rows[len(rows)-1]
+		nextCursor = pkgpagination.EncodeCursor(pkgpagination.Cursor{
+			CreatedAt: last.CreatedAt,
+			ID:        last.ID,
+		})
 	}
 
 	items := make([]ListItem, len(rows))
