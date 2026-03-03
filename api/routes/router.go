@@ -89,6 +89,7 @@ func NewRouter(
 	subscriptionsService subscriptionsvc.Service,
 	paymentMethodService paymentsvc.Service,
 	billingService billingcontrollers.ChargesService,
+	billingPaymentMethodsService billingcontrollers.PaymentMethodsService,
 	billingPlanService billingcontrollers.BillingPlanService,
 	squareClient *square.Client,
 	squareWebhookService *squarewebhook.Service,
@@ -172,6 +173,7 @@ func NewRouter(
 				r.Get("/billing/charges", billingcontrollers.VendorBillingCharges(billingService, logg))
 				r.Route("/payment-methods", func(r chi.Router) {
 					r.Use(middleware.RequireStoreRoles(membershipChecker, logg, vendorBillingRoles...))
+					r.Get("/", billingcontrollers.VendorPaymentMethodsList(billingPaymentMethodsService, logg))
 					r.Post("/cc", billingcontrollers.VendorPaymentMethodCreate(paymentMethodService, logg))
 				})
 

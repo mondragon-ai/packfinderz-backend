@@ -408,6 +408,40 @@ curl -G "{{API_BASE_URL}}/api/v1/vendor/billing/charges" \
 - `403 Forbidden` – token belongs to a non-vendor store or lacks context.
 - `500/503` – internal/dependency errors when listing charges (e.g., repository failure).
 
+### GET /api/v1/vendor/payment-methods
+
+Returns every payment method saved for the requested vendor store (ordered by `created_at DESC`). Requires the vendor store context plus at least one of the billing roles (`owner`, `admin`, `manager`, `staff`, `ops`). The JSON response mirrors the standard envelope and always exposes `data.payment_methods` (an empty array when no cards exist).
+
+#### cURL
+```bash
+curl -G "{{API_BASE_URL}}/api/v1/vendor/payment-methods" \
+  -H "Accept: application/json" \
+  -H "Authorization: Bearer {{access_token}}"
+```
+
+#### Success response (`200 OK`)
+```json
+{
+  "data": {
+    "payment_methods": [
+      {
+        "id": "b7c3927d-13b6-4e56-ba44-1b5f89433062",
+        "card_brand": "visa",
+        "card_last4": "4242",
+        "card_exp_month": 12,
+        "card_exp_year": 2025,
+        "is_default": true,
+        "created_at": "2025-01-02T11:22:33.456Z"
+      }
+    ]
+  }
+}
+```
+
+#### Failure paths
+- `401 Unauthorized` – invalid or missing bearer token.
+- `403 Forbidden` – store context missing or the caller lacks the vendor billing roles.
+
 ### POST /api/v1/vendor/payment-methods/cc
 
 Registers a card-on-file via the billing service. Requires the vendor store to be active and the caller to hold one of the billing roles (`owner`, `admin`, `manager`, `staff`, `ops`). The request body is JSON and you should include an `Idempotency-Key` header for safe retries (default TTL matches other critical vendor POSTs).

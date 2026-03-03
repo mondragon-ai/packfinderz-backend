@@ -1,6 +1,7 @@
 package billing
 
 import (
+	"context"
 	"net/http"
 	"strings"
 	"time"
@@ -9,8 +10,10 @@ import (
 	"github.com/angelmondragon/packfinderz-backend/api/responses"
 	"github.com/angelmondragon/packfinderz-backend/api/validators"
 	"github.com/angelmondragon/packfinderz-backend/internal/paymentmethods"
+	"github.com/angelmondragon/packfinderz-backend/pkg/db/models"
 	pkgerrors "github.com/angelmondragon/packfinderz-backend/pkg/errors"
 	"github.com/angelmondragon/packfinderz-backend/pkg/logger"
+	"github.com/google/uuid"
 )
 
 type vendorPaymentMethodCreateRequest struct {
@@ -28,6 +31,15 @@ type vendorPaymentMethodResponse struct {
 	ExpYear   *int      `json:"card_exp_year,omitempty"`
 	IsDefault bool      `json:"is_default"`
 	CreatedAt time.Time `json:"created_at"`
+}
+
+type vendorPaymentMethodsResponse struct {
+	PaymentMethods []vendorPaymentMethodResponse `json:"payment_methods"`
+}
+
+// PaymentMethodsService describes the billing helper used by list handlers.
+type PaymentMethodsService interface {
+	ListPaymentMethods(ctx context.Context, storeID uuid.UUID) ([]models.PaymentMethod, error)
 }
 
 // VendorPaymentMethodCreate handles card-on-file registration.
@@ -64,15 +76,56 @@ func VendorPaymentMethodCreate(svc paymentmethods.Service, logg *logger.Logger) 
 			return
 		}
 
-		resp := vendorPaymentMethodResponse{
-			ID:        method.ID.String(),
-			Brand:     method.CardBrand,
-			Last4:     method.CardLast4,
-			ExpMonth:  method.CardExpMonth,
-			ExpYear:   method.CardExpYear,
-			IsDefault: method.IsDefault,
-			CreatedAt: method.CreatedAt.UTC(),
-		}
+		resp := mapVendorPaymentMethodResponse(method)
 		responses.WriteSuccessStatus(w, http.StatusCreated, resp)
+	}
+}
+
+// VendorPaymentMethodsList returns the stored cards for the authenticated vendor.
+func VendorPaymentMethodsList(svc PaymentMethodsService, logg *logger.Logger) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ctx := r.Context()
+		if svc == nil {
+			responses.WriteError(ctx, logg, w, pkgerrors.New(pkgerrors.CodeInternal, "payment methods service unavailable"))
+			return
+		}
+
+		storeID, err := vendorcontext.ResolveVendorStoreID(r)
+		if err != nil {
+			responses.WriteError(ctx, logg, w, err)
+			return
+		}
+
+		methods, err := svc.ListPaymentMethods(ctx, storeID)
+		if err != nil {
+			responses.WriteError(ctx, logg, w, err)
+			return
+		}
+
+		resp := vendorPaymentMethodsResponse{
+			PaymentMethods: make([]vendorPaymentMethodResponse, 0, len(methods)),
+		}
+		for _, method := range methods {
+			// take the address to share the pointer data safely
+			tmp := method
+			resp.PaymentMethods = append(resp.PaymentMethods, mapVendorPaymentMethodResponse(&tmp))
+		}
+
+		responses.WriteSuccess(w, resp)
+	}
+}
+
+func mapVendorPaymentMethodResponse(method *models.PaymentMethod) vendorPaymentMethodResponse {
+	if method == nil {
+		return vendorPaymentMethodResponse{}
+	}
+	return vendorPaymentMethodResponse{
+		ID:        method.ID.String(),
+		Brand:     method.CardBrand,
+		Last4:     method.CardLast4,
+		ExpMonth:  method.CardExpMonth,
+		ExpYear:   method.CardExpYear,
+		IsDefault: method.IsDefault,
+		CreatedAt: method.CreatedAt.UTC(),
 	}
 }

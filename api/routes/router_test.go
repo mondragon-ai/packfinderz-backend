@@ -722,6 +722,7 @@ func newTestRouter(cfg *config.Config) http.Handler {
 		stubSubscriptionsService{},
 		nil, // paymentmethods.Service
 		nil, // billingcontrollers.ChargesService
+		nil, // billingcontrollers.PaymentMethodsService
 		nil, // billingcontrollers.BillingPlanService
 		nil, // *square.Client
 		nil, // *squarewebhook.Service
@@ -998,6 +999,7 @@ func TestAgentAssignedOrdersRequiresAgentRole(t *testing.T) {
 		stubSubscriptionsService{},
 		nil, // paymentmethods.Service
 		nil, // billingcontrollers.ChargesService
+		nil, // billingcontrollers.PaymentMethodsService
 		nil, // billingcontrollers.BillingPlanService
 		nil, // *square.Client
 		nil, // *squarewebhook.Service
@@ -1074,6 +1076,7 @@ func TestAgentAssignedOrderDetailRequiresAgentRole(t *testing.T) {
 		stubSubscriptionsService{},
 		nil, // paymentmethods.Service
 		nil, // billingcontrollers.ChargesService
+		nil, // billingcontrollers.PaymentMethodsService
 		nil, // billingcontrollers.BillingPlanService
 		nil, // *square.Client
 		nil, // *squarewebhook.Service
@@ -1126,6 +1129,7 @@ func TestAgentPickupRequiresAgentRole(t *testing.T) {
 		stubSubscriptionsService{},
 		nil, // paymentmethods.Service
 		nil, // billingcontrollers.ChargesService
+		nil, // billingcontrollers.PaymentMethodsService
 		nil, // billingcontrollers.BillingPlanService
 		nil, // *square.Client
 		nil, // *squarewebhook.Service
@@ -1193,6 +1197,7 @@ func TestAgentDeliverRequiresAgentRole(t *testing.T) {
 		stubSubscriptionsService{},
 		nil, // paymentmethods.Service
 		nil, // billingcontrollers.ChargesService
+		nil, // billingcontrollers.PaymentMethodsService
 		nil, // billingcontrollers.BillingPlanService
 		nil, // *square.Client
 		nil, // *squarewebhook.Service

@@ -394,6 +394,18 @@
   - [x] [PF-299]: Implement Ads Repository Layer + DTOs + Mappers (Create/List/Detail)
   - [x] [PF-300]: Ads CRUD API — Create/List/Detail Endpoints + Service Wiring (Include BigQuery Analytics in Detail)
   - [x] [PF-301]: Ads Serve + Tracking Engine — Signed Tokens + /ads/serve, /ads/impression, /ads/click (Redis Counters + Dedupe)
+  - [ ] [PF-XXX]: Daily Ads Settlement Cron — Roll Redis Counters into Postgres (ad_daily_rollups + usage_charges) + Emit Outbox Events
+  - [ ] [PF-XXX]: Billing Bridge — Charge Advertiser Daily via Square (Card-on-File) Using usage_charges + Store Customer ID
+  - [ ] [PF-XXX]: Ads Analytics Ingestion + Query API — BigQuery Inserts for Ad Facts + Advertiser Analytics Endpoints
+
+
+- **Phase 4 — Payment Method Patches**
+  **Goal:** Payment Method fetch, update, & billing helpers
+  - [ ] [PF-304]: Implement Vendor Payment Methods List Endpoint (`GET /vendor/payment-methods`)
+  - [ ] [PF-XXX]: Implement Vendor Payment Method Deletion (`DELETE /vendor/payment-methods/:id`)
+  - [ ] [PF-XXX]: Implement Toggle Default Payment Method (`PATCH /vendor/payment-methods/:id`)
+  - [ ] [PF-XXX]: Extend Store `/store/me` DTO to Include Square Customer ID for Vendors
+
 
 - **Phase 3 — COA → OpenAI Product Drafts**
   **Goal:** Parse COA PDFs into structured product draftsmusing document AI & open toproduct product JSOn draft to return to client to be confirmed.
