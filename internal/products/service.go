@@ -58,8 +58,8 @@ type CreateProductInput struct {
 // InventoryInput captures the starting quantity for a product.
 type InventoryInput struct {
 	AvailableQty      int
-	ReservedQty       int
 	LowStockThreshold int
+	ReservedQty       int
 }
 
 // VolumeDiscountInput defines a tiered discount percentage for a given min quantity.
@@ -127,9 +127,6 @@ func NewService(repo *Repository, dbClient *db.Client, storeRepo storeLoader, me
 
 // CreateProduct creates the product with inventory, discounts, and media.
 func (s *service) CreateProduct(ctx context.Context, userID, storeID uuid.UUID, input CreateProductInput) (*ProductDTO, error) {
-	if input.Inventory.ReservedQty > input.Inventory.AvailableQty {
-		return nil, pkgerrors.New(pkgerrors.CodeValidation, "reserved_qty cannot exceed available_qty")
-	}
 
 	if err := s.ensureVendorStore(ctx, storeID); err != nil {
 		return nil, err
@@ -202,7 +199,6 @@ func (s *service) CreateProduct(ctx context.Context, userID, storeID uuid.UUID, 
 		inventory := &models.InventoryItem{
 			ProductID:         created.ID,
 			AvailableQty:      input.Inventory.AvailableQty,
-			ReservedQty:       input.Inventory.ReservedQty,
 			LowStockThreshold: input.Inventory.LowStockThreshold,
 		}
 		if _, err := txRepo.UpsertInventory(ctx, inventory); err != nil {
@@ -308,7 +304,7 @@ func (s *service) UpdateProduct(ctx context.Context, userID, storeID, productID 
 	}
 
 	if input.Inventory != nil {
-		fmt.Printf("[UpdateProduct] input.Inventory available=%d reserved=%d\n", input.Inventory.AvailableQty, input.Inventory.ReservedQty)
+		fmt.Printf("[UpdateProduct] input.Inventory available=%d", input.Inventory.AvailableQty)
 	}
 	if input.VolumeDiscounts != nil {
 		fmt.Printf("[UpdateProduct] input.VolumeDiscounts count=%d\n", len(*input.VolumeDiscounts))
@@ -322,10 +318,6 @@ func (s *service) UpdateProduct(ctx context.Context, userID, storeID, productID 
 	}
 	if input.BatchID != nil {
 		fmt.Printf("[UpdateProduct] input.BatchID text=%s\n", *input.BatchID)
-	}
-
-	if input.Inventory != nil && input.Inventory.ReservedQty > input.Inventory.AvailableQty {
-		return nil, pkgerrors.New(pkgerrors.CodeValidation, "reserved_qty cannot exceed available_qty")
 	}
 
 	if err := s.ensureVendorStore(ctx, storeID); err != nil {
@@ -387,10 +379,26 @@ func (s *service) UpdateProduct(ctx context.Context, userID, storeID, productID 
 		}
 
 		if input.Inventory != nil {
+			// Load existing reserved qty from DB (never from client)
+			existingInv, err := txRepo.FindInventoryByProductID(ctx, product.ID)
+			if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+				return err
+			}
+
+			reserved := 0
+			if existingInv != nil {
+				reserved = existingInv.ReservedQty
+			}
+
+			// Now validate against DB reserved
+			if reserved > input.Inventory.AvailableQty {
+				return pkgerrors.New(pkgerrors.CodeValidation, "reserved_qty cannot exceed available_qty")
+			}
+
 			inventory := &models.InventoryItem{
 				ProductID:         product.ID,
 				AvailableQty:      input.Inventory.AvailableQty,
-				ReservedQty:       input.Inventory.ReservedQty,
+				ReservedQty:       reserved,
 				LowStockThreshold: input.Inventory.LowStockThreshold,
 			}
 

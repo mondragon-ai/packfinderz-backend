@@ -155,8 +155,8 @@ func VendorUpdateProduct(svc productsvc.Service, logg *logger.Logger) http.Handl
 		}
 
 		if payload.Inventory != nil {
-			fmt.Printf("[VendorUpdateProduct] payload.Inventory: AvailableQty=%v ReservedQty=%v\n",
-				payload.Inventory.AvailableQty, payload.Inventory.ReservedQty)
+			fmt.Printf("[VendorUpdateProduct] payload.Inventory: AvailableQty=%v",
+				payload.Inventory.AvailableQty)
 		}
 
 		input, err := payload.toUpdateInput()
@@ -207,8 +207,8 @@ type updateProductRequest struct {
 
 type updateInventoryRequest struct {
 	AvailableQty      *int `json:"available_qty,omitempty" validate:"omitempty,min=0"`
-	ReservedQty       *int `json:"reserved_qty,omitempty" validate:"omitempty,min=0"`
 	LowStockThreshold *int `json:"low_stock_threshold,omitempty" validate:"omitempty,min=0"`
+	// ReservedQty removed on purpose: must never be client-controlled
 }
 
 type updateVolumeDiscountRequest struct {
@@ -319,15 +319,15 @@ func (r updateProductRequest) toUpdateInput() (productsvc.UpdateProductInput, er
 	}
 
 	if r.Inventory != nil {
-		if r.Inventory.AvailableQty == nil || r.Inventory.ReservedQty == nil {
-			return input, pkgerrors.New(pkgerrors.CodeValidation, "inventory available_qty and reserved_qty are required")
+		if r.Inventory.AvailableQty == nil {
+			return input, pkgerrors.New(pkgerrors.CodeValidation, "inventory available_qty is required")
 		}
 		if r.Inventory.LowStockThreshold == nil {
 			return input, pkgerrors.New(pkgerrors.CodeValidation, "inventory low_stock_threshold is required")
 		}
+
 		input.Inventory = &productsvc.InventoryInput{
 			AvailableQty:      *r.Inventory.AvailableQty,
-			ReservedQty:       *r.Inventory.ReservedQty,
 			LowStockThreshold: *r.Inventory.LowStockThreshold,
 		}
 	}
@@ -805,7 +805,7 @@ func (r createProductRequest) toCreateInput() (productsvc.CreateProductInput, er
 		CBDPercent:          r.CBDPercent,
 		Inventory: productsvc.InventoryInput{
 			AvailableQty:      r.Inventory.AvailableQty,
-			ReservedQty:       r.Inventory.ReservedQty,
+			ReservedQty:       0,
 			LowStockThreshold: r.Inventory.LowStockThreshold,
 		},
 		MediaIDs:        mediaIDs,

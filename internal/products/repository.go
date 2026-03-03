@@ -139,6 +139,20 @@ func (r *Repository) UpdateProduct(ctx context.Context, product *models.Product)
 	return product, nil
 }
 
+func (r *Repository) FindInventoryByProductID(ctx context.Context, productID uuid.UUID) (*models.InventoryItem, error) {
+	var inv models.InventoryItem
+	err := r.db.WithContext(ctx).
+		Where("product_id = ?", productID).
+		First(&inv).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, gorm.ErrRecordNotFound
+		}
+		return nil, err
+	}
+	return &inv, nil
+}
+
 // DeleteProduct removes a product by ID.
 func (r *Repository) DeleteProduct(ctx context.Context, id uuid.UUID) error {
 	return r.db.WithContext(ctx).Where("id = ?", id).Delete(&models.Product{}).Error
