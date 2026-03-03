@@ -442,6 +442,24 @@ curl -G "{{API_BASE_URL}}/api/v1/vendor/payment-methods" \
 - `401 Unauthorized` – invalid or missing bearer token.
 - `403 Forbidden` – store context missing or the caller lacks the vendor billing roles.
 
+### DELETE /api/v1/vendor/payment-methods/{paymentMethodId}
+
+Deletes the specified payment method as long as it belongs to the active vendor store. Requires the same billing roles and store context as the list/create endpoints.
+
+#### cURL
+```bash
+curl -X DELETE "{{API_BASE_URL}}/api/v1/vendor/payment-methods/{{payment_method_id}}" \
+  -H "Authorization: Bearer {{access_token}}"
+```
+
+#### Success response (`204 No Content`)
+- Empty body, just the status.
+
+#### Failure paths
+- `401 Unauthorized` – missing/invalid token.
+- `403 Forbidden` – store roles/context missing.
+- `404 Not Found` – the payment method does not exist or does not belong to the active store.
+
 ### POST /api/v1/vendor/payment-methods/cc
 
 Registers a card-on-file via the billing service. Requires the vendor store to be active and the caller to hold one of the billing roles (`owner`, `admin`, `manager`, `staff`, `ops`). The request body is JSON and you should include an `Idempotency-Key` header for safe retries (default TTL matches other critical vendor POSTs).

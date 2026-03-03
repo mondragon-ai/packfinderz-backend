@@ -19,6 +19,11 @@ type stubRepo struct {
 	findDefaultBillingPlanFn func(ctx context.Context) (*models.BillingPlan, error)
 }
 
+// DeletePaymentMethod implements [Repository].
+func (s *stubRepo) DeletePaymentMethod(ctx context.Context, storeID uuid.UUID, paymentMethodID uuid.UUID) error {
+	panic("unimplemented")
+}
+
 func (s *stubRepo) WithTx(tx *gorm.DB) Repository { return s }
 func (s *stubRepo) CreateSubscription(ctx context.Context, subscription *models.Subscription) error {
 	return nil

@@ -805,6 +805,7 @@ Redis-backed refresh sessions.
 * `/api/v1/analytics/marketplace`
 * `/api/v1/vendor/billing/charges`
 * `/api/v1/vendor/payment-methods`
+* `/api/v1/vendor/payment-methods/{paymentMethodId}`
 
 ---
 

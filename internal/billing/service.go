@@ -9,6 +9,7 @@ import (
 	pkgerrors "github.com/angelmondragon/packfinderz-backend/pkg/errors"
 	"github.com/angelmondragon/packfinderz-backend/pkg/pagination"
 	"github.com/google/uuid"
+	"gorm.io/gorm"
 )
 
 // ServiceParams groups dependencies for the billing service.
@@ -47,6 +48,24 @@ func (s *Service) CreatePaymentMethod(ctx context.Context, method *models.Paymen
 
 func (s *Service) ListPaymentMethods(ctx context.Context, storeID uuid.UUID) ([]models.PaymentMethod, error) {
 	return s.repo.ListPaymentMethodsByStore(ctx, storeID)
+}
+
+func (s *Service) DeletePaymentMethod(ctx context.Context, storeID, paymentMethodID uuid.UUID) error {
+	if storeID == uuid.Nil {
+		return pkgerrors.New(pkgerrors.CodeValidation, "store id is required")
+	}
+	if paymentMethodID == uuid.Nil {
+		return pkgerrors.New(pkgerrors.CodeValidation, "payment method id is required")
+	}
+
+	if err := s.repo.DeletePaymentMethod(ctx, storeID, paymentMethodID); err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return pkgerrors.Wrap(pkgerrors.CodeNotFound, err, "payment method not found")
+		}
+		return pkgerrors.Wrap(pkgerrors.CodeDependency, err, "delete payment method")
+	}
+
+	return nil
 }
 
 func (s *Service) CreateCharge(ctx context.Context, charge *models.Charge) error {

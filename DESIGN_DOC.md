@@ -2448,6 +2448,13 @@ Registration now calls the shared Square customer helper so onboarding persists 
   * Returns `200` with `{ "data": { "payment_methods": [ { "id", "card_brand", "card_last4", "card_exp_month", "card_exp_year", "is_default", "created_at" } ] } }`. When no cards exist the `payment_methods` array is empty rather than `null`.
   * Errors: `401 Unauthorized` if the token is missing/expired, `403 Forbidden` when the store context is absent or the requester lacks vendor billing roles.
 
+**Delete stored payment method**
+
+* `DELETE /api/v1/vendor/payment-methods/{paymentMethodId}`
+
+  * Resolves the vendor store via `vendorcontext.ResolveVendorStoreID`, accepts the `paymentMethodId` route param, and deletes the matching `payment_methods` row when it belongs to the active store (`billing.Repository.DeletePaymentMethod`). The handler returns `204 No Content` when the row existed and belonged to the store; otherwise it returns `404 Not Found` so clients know the card cannot be deleted (no default reassignment occurs in this ticket).
+  * Errors: `401 Unauthorized` when the store token is missing/invalid, `403 Forbidden` when the vendor store lacks the billing roles, `404 Not Found` when the row is absent or owned by a different store.
+
 **Get CC payment method**
 
 * `GET /api/v1/vendor/payment-methods/cc`

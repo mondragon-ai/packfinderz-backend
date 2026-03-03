@@ -6,6 +6,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-chi/chi/v5"
+
 	"github.com/angelmondragon/packfinderz-backend/api/controllers/vendorcontext"
 	"github.com/angelmondragon/packfinderz-backend/api/responses"
 	"github.com/angelmondragon/packfinderz-backend/api/validators"
@@ -40,6 +42,7 @@ type vendorPaymentMethodsResponse struct {
 // PaymentMethodsService describes the billing helper used by list handlers.
 type PaymentMethodsService interface {
 	ListPaymentMethods(ctx context.Context, storeID uuid.UUID) ([]models.PaymentMethod, error)
+	DeletePaymentMethod(ctx context.Context, storeID, paymentMethodID uuid.UUID) error
 }
 
 // VendorPaymentMethodCreate handles card-on-file registration.
@@ -112,6 +115,41 @@ func VendorPaymentMethodsList(svc PaymentMethodsService, logg *logger.Logger) ht
 		}
 
 		responses.WriteSuccess(w, resp)
+	}
+}
+
+// VendorPaymentMethodDelete removes a stored payment method for the vendor.
+func VendorPaymentMethodDelete(svc PaymentMethodsService, logg *logger.Logger) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ctx := r.Context()
+		if svc == nil {
+			responses.WriteError(ctx, logg, w, pkgerrors.New(pkgerrors.CodeInternal, "payment methods service unavailable"))
+			return
+		}
+
+		storeID, err := vendorcontext.ResolveVendorStoreID(r)
+		if err != nil {
+			responses.WriteError(ctx, logg, w, err)
+			return
+		}
+
+		idParam := strings.TrimSpace(chi.URLParam(r, "paymentMethodId"))
+		if idParam == "" {
+			responses.WriteError(ctx, logg, w, pkgerrors.New(pkgerrors.CodeValidation, "payment method id is required"))
+			return
+		}
+		paymentMethodID, err := uuid.Parse(idParam)
+		if err != nil {
+			responses.WriteError(ctx, logg, w, pkgerrors.Wrap(pkgerrors.CodeValidation, err, "invalid payment method id"))
+			return
+		}
+
+		if err := svc.DeletePaymentMethod(ctx, storeID, paymentMethodID); err != nil {
+			responses.WriteError(ctx, logg, w, err)
+			return
+		}
+
+		w.WriteHeader(http.StatusNoContent)
 	}
 }
 

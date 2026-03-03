@@ -90,13 +90,11 @@ func (c *squareSubscriptionClient) Get(ctx context.Context, id string, params *S
 	if c.square == nil {
 		return nil, fmt.Errorf("square client required")
 	}
-	fmt.Printf("[squareSubscriptionClient.Get] Square API GET /v2/subscriptions/%s\n", id)
 	includeActions := params != nil && params.IncludeActions
 	resp, err := c.square.GetSubscription(ctx, id, includeActions)
 	if err != nil {
 		return nil, err
 	}
-	fmt.Printf("[squareSubscriptionClient.Get] Square API GET /v2/subscriptions/%s response=%+v\n", id, resp)
 	var metadata map[string]string
 	fallbackPrice := ""
 	if params != nil {

@@ -8,21 +8,33 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-chi/chi/v5"
+
 	"github.com/angelmondragon/packfinderz-backend/api/middleware"
 	"github.com/angelmondragon/packfinderz-backend/pkg/db/models"
 	"github.com/angelmondragon/packfinderz-backend/pkg/enums"
+	pkgerrors "github.com/angelmondragon/packfinderz-backend/pkg/errors"
 	"github.com/google/uuid"
 )
 
 type testPaymentMethodsService struct {
-	lastStoreID uuid.UUID
-	result      []models.PaymentMethod
-	err         error
+	lastStoreID     uuid.UUID
+	result          []models.PaymentMethod
+	err             error
+	deleteErr       error
+	deletedStoreID  uuid.UUID
+	deletedMethodID uuid.UUID
 }
 
 func (s *testPaymentMethodsService) ListPaymentMethods(ctx context.Context, storeID uuid.UUID) ([]models.PaymentMethod, error) {
 	s.lastStoreID = storeID
 	return s.result, s.err
+}
+
+func (s *testPaymentMethodsService) DeletePaymentMethod(ctx context.Context, storeID, paymentMethodID uuid.UUID) error {
+	s.deletedStoreID = storeID
+	s.deletedMethodID = paymentMethodID
+	return s.deleteErr
 }
 
 func TestVendorPaymentMethodsListRequiresVendorContext(t *testing.T) {
@@ -107,5 +119,57 @@ func TestVendorPaymentMethodsListReturnsPaymentMethods(t *testing.T) {
 	}
 	if service.lastStoreID != storeID {
 		t.Fatalf("store id not passed through; expected %s got %s", storeID, service.lastStoreID)
+	}
+}
+
+func TestVendorPaymentMethodDeleteReturnsNoContent(t *testing.T) {
+	storeID := uuid.New()
+	methodID := uuid.New()
+
+	service := &testPaymentMethodsService{}
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/v1/vendor/payment-methods/"+methodID.String(), nil)
+	ctx := middleware.WithStoreID(req.Context(), storeID.String())
+	ctx = middleware.WithStoreType(ctx, enums.StoreTypeVendor)
+	req = req.WithContext(ctx)
+	rc := chi.NewRouteContext()
+	rc.URLParams.Add("paymentMethodId", methodID.String())
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rc))
+
+	handler := VendorPaymentMethodDelete(service, nil)
+	resp := httptest.NewRecorder()
+	handler(resp, req)
+	if resp.Code != http.StatusNoContent {
+		t.Fatalf("expected 204, got %d", resp.Code)
+	}
+	if service.deletedStoreID != storeID {
+		t.Fatalf("expected store id %s, got %s", storeID, service.deletedStoreID)
+	}
+	if service.deletedMethodID != methodID {
+		t.Fatalf("expected method id %s, got %s", methodID, service.deletedMethodID)
+	}
+}
+
+func TestVendorPaymentMethodDeleteHandlesNotFound(t *testing.T) {
+	storeID := uuid.New()
+	methodID := uuid.New()
+
+	service := &testPaymentMethodsService{
+		deleteErr: pkgerrors.New(pkgerrors.CodeNotFound, "not found"),
+	}
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/v1/vendor/payment-methods/"+methodID.String(), nil)
+	ctx := middleware.WithStoreID(req.Context(), storeID.String())
+	ctx = middleware.WithStoreType(ctx, enums.StoreTypeVendor)
+	req = req.WithContext(ctx)
+	rc := chi.NewRouteContext()
+	rc.URLParams.Add("paymentMethodId", methodID.String())
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rc))
+
+	handler := VendorPaymentMethodDelete(service, nil)
+	resp := httptest.NewRecorder()
+	handler(resp, req)
+	if resp.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", resp.Code)
 	}
 }

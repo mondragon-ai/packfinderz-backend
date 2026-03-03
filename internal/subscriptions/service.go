@@ -431,7 +431,6 @@ func (s *service) GetActive(ctx context.Context, storeID uuid.UUID) (*models.Sub
 	if storeID == uuid.Nil {
 		return nil, pkgerrors.New(pkgerrors.CodeValidation, "store id is required")
 	}
-	fmt.Printf("[subscriptions.GetActive] storeID=%s\n", storeID)
 	sub, err := s.findActive(ctx, storeID)
 	if err != nil {
 		return nil, err
@@ -451,7 +450,6 @@ func (s *service) findActive(ctx context.Context, storeID uuid.UUID) (*models.Su
 		return nil, err
 	}
 	active := sub != nil && IsActiveStatus(sub.Status)
-	fmt.Printf("[subscriptions.findActive] storeID=%s found=%t sub=%+v\n", storeID, active, sub)
 	if !active {
 		return nil, nil
 	}

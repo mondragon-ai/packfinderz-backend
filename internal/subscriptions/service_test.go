@@ -539,6 +539,11 @@ type stubBillingRepo struct {
 	updated  []*models.Subscription
 }
 
+// DeletePaymentMethod implements [billing.Repository].
+func (s *stubBillingRepo) DeletePaymentMethod(ctx context.Context, storeID uuid.UUID, paymentMethodID uuid.UUID) error {
+	panic("unimplemented")
+}
+
 func (s *stubBillingRepo) WithTx(tx *gorm.DB) billing.Repository {
 	return s
 }

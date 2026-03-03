@@ -401,8 +401,8 @@
 
 - **Phase 4 — Payment Method Patches**
   **Goal:** Payment Method fetch, update, & billing helpers
-  - [ ] [PF-304]: Implement Vendor Payment Methods List Endpoint (`GET /vendor/payment-methods`)
-  - [ ] [PF-XXX]: Implement Vendor Payment Method Deletion (`DELETE /vendor/payment-methods/:id`)
+  - [x] [PF-304]: Implement Vendor Payment Methods List Endpoint (`GET /vendor/payment-methods`)
+  - [x] [PF-305]: Implement Vendor Payment Method Deletion (`DELETE /vendor/payment-methods/:id`)
   - [ ] [PF-XXX]: Implement Toggle Default Payment Method (`PATCH /vendor/payment-methods/:id`)
   - [ ] [PF-XXX]: Extend Store `/store/me` DTO to Include Square Customer ID for Vendors
 
