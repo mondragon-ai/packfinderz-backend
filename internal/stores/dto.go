@@ -31,6 +31,7 @@ type StoreDTO struct {
 	Ratings              map[string]int    `json:"ratings,omitempty"`
 	Categories           []string          `json:"categories,omitempty"`
 	OwnerID              uuid.UUID         `json:"owner"`
+	SquareCustomerID     *string           `json:"square_customer_id,omitempty"`
 	Badge                *enums.StoreBadge `json:"badge,omitempty"`
 	LastActiveAt         *time.Time        `json:"last_active_at,omitempty"`
 	Owner                OwnerSummaryDTO   `json:"owner_detail"`
@@ -133,6 +134,8 @@ func FromModel(m *models.Store, u *OwnerSummaryDTO) *StoreDTO {
 		dto.Categories = append(dto.Categories, m.Categories...)
 	}
 
+	dto.SquareCustomerID = squareCustomerIDForVendor(m)
+
 	return dto
 }
 
@@ -187,4 +190,15 @@ func cloneUUIDPtr(id *uuid.UUID) *uuid.UUID {
 	}
 	cpy := *id
 	return &cpy
+}
+
+func squareCustomerIDForVendor(store *models.Store) *string {
+	if store == nil || store.Type != enums.StoreTypeVendor {
+		return nil
+	}
+	if store.SquareCustomerID != nil {
+		return cloneStringPtr(store.SquareCustomerID)
+	}
+	empty := ""
+	return &empty
 }

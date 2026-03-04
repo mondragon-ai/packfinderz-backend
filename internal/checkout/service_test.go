@@ -416,9 +416,13 @@ func TestServiceAttributesAdTokens(t *testing.T) {
 		t.Fatalf("expected 1 line item, got %d", len(order.Items))
 	}
 	line := order.Items[0]
-	gotLineTokens := []string(line.AdToken)
-	if len(gotLineTokens) != 1 || gotLineTokens[0] != productClickToken {
-		t.Fatalf("expected product click attribution, got %v", gotLineTokens)
+
+	if line.AdToken == nil {
+		t.Fatalf("expected product click attribution, got nil")
+	}
+
+	if *line.AdToken != productClickToken {
+		t.Fatalf("expected product click attribution %s, got %s", productClickToken, *line.AdToken)
 	}
 }
 

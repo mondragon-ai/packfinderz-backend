@@ -537,7 +537,7 @@ Requires the current Authorization bearer token while the JSON body only needs t
 
 These endpoints rely on `activeStoreId` and enforce owner/manager access for mutating flows.
 
-* `GET /api/v1/stores/me` – returns the requested store’s profile for the active store.
+* `GET /api/v1/stores/me` – returns the requested store’s profile for the active store; vendor stores now include `square_customer_id` (empty string when unset) while buyers omit the field.
 * `PUT /api/v1/stores/me` – updates mutable store metadata (description, phone, email, social links, banner/logo URLs, ratings, categories) while keeping address and geo locked until an admin override exists.
 * `GET /api/v1/stores/me/users` – lists memberships plus user info (`email`, `name`, `role`, `created_at`, `last_login_at`); accessible to owner/manager roles.
 * `POST /api/v1/stores/me/users/invite` – invites (or reuses) a user, creates a membership, and issues a temporary password for new accounts (passwords are never logged).

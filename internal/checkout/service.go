@@ -20,7 +20,6 @@ import (
 	"github.com/angelmondragon/packfinderz-backend/pkg/outbox/payloads"
 	"github.com/angelmondragon/packfinderz-backend/pkg/types"
 	"github.com/google/uuid"
-	"github.com/lib/pq"
 	"gorm.io/gorm"
 )
 
@@ -584,9 +583,10 @@ func buildLineItem(orderID uuid.UUID, cartItem models.CartItem, product *models.
 		unit = product.Unit
 	}
 
-	adToken := pq.StringArray(nil)
+	var adToken *string
 	if attributedToken != nil {
-		adToken = pq.StringArray{attributedToken.Raw}
+		token := attributedToken.Raw
+		adToken = &token
 	}
 
 	return models.OrderLineItem{

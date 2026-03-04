@@ -502,7 +502,7 @@ Manifest approach (MVP):
 **Store-scoped APIs**
 
 * `GET /api/ping` – auth + store context, echoes the resolved scope/store_id for quick debugging (api/controllers/ping.go:16-24).
-* `GET /api/v1/stores/me` – returns `stores.StoreDTO` with company info, KYC, ratings, socials, and addresses for the active store (api/controllers/stores.go:21-48).
+* `GET /api/v1/stores/me` – returns `stores.StoreDTO` with company info, KYC, ratings, socials, and addresses for the active store, and now exposes vendor-only `square_customer_id` (empty string when missing) so billing flows can read the associated Square customer (api/controllers/stores.go:21-48).
 * `PUT /api/v1/stores/me` – owner/manager only, accepts storefront updates and returns the refreshed DTO (api/controllers/stores.go:51-124).
 * `GET /api/v1/stores/me/users` – owner/manager only, lists memberships with role/status/last_login (api/controllers/stores.go:126-165).
 * `POST /api/v1/stores/me/users/invite` – owner/manager only, requires `Idempotency-Key`, invites new users, returns membership DTO +/- temporary password (api/controllers/stores.go:221-302).

@@ -318,6 +318,11 @@ Applying this helper everywhere keeps buyer-facing product and directory endpoin
 * The handler runs under `middleware.Auth` but intentionally skips `middleware.StoreContext`, so any authenticated user can view another store’s profile without needing membership or `activeStoreId`.
 * Validation failures emit `pkgerrors.CodeValidation`/HTTP `400`, missing stores bubble `pkgerrors.CodeNotFound`/HTTP `404`, and service-side issues map to the standard error envelope.
 
+**Private store profile**
+
+* `controllers.StoreProfile` (`GET /api/v1/stores/me`) runs under `middleware.StoreContext`, calls `stores.Service.GetManagerView`, and returns the `StoreDTO` for the active store.
+* The DTO now surfaces `square_customer_id` for vendor stores (empty string when the ID isn’t set) and omits that field for buyer stores, giving dashboards access to the billed customer identifier without exposing it publicly.
+
 ### `orders`
 
 **Storefront order history**

@@ -26,13 +26,14 @@ type vendorPaymentMethodCreateRequest struct {
 }
 
 type vendorPaymentMethodResponse struct {
-	ID        string    `json:"id"`
-	Brand     *string   `json:"card_brand,omitempty"`
-	Last4     *string   `json:"card_last4,omitempty"`
-	ExpMonth  *int      `json:"card_exp_month,omitempty"`
-	ExpYear   *int      `json:"card_exp_year,omitempty"`
-	IsDefault bool      `json:"is_default"`
-	CreatedAt time.Time `json:"created_at"`
+	SquarePaymentMethodID string    `json:"payment_method_id"`
+	ID                    string    `json:"id"`
+	Brand                 *string   `json:"card_brand,omitempty"`
+	Last4                 *string   `json:"card_last4,omitempty"`
+	ExpMonth              *int      `json:"card_exp_month,omitempty"`
+	ExpYear               *int      `json:"card_exp_year,omitempty"`
+	IsDefault             bool      `json:"is_default"`
+	CreatedAt             time.Time `json:"created_at"`
 }
 
 type vendorPaymentMethodsResponse struct {
@@ -158,12 +159,13 @@ func mapVendorPaymentMethodResponse(method *models.PaymentMethod) vendorPaymentM
 		return vendorPaymentMethodResponse{}
 	}
 	return vendorPaymentMethodResponse{
-		ID:        method.ID.String(),
-		Brand:     method.CardBrand,
-		Last4:     method.CardLast4,
-		ExpMonth:  method.CardExpMonth,
-		ExpYear:   method.CardExpYear,
-		IsDefault: method.IsDefault,
-		CreatedAt: method.CreatedAt.UTC(),
+		SquarePaymentMethodID: method.SquarePaymentMethodID,
+		ID:                    method.ID.String(),
+		Brand:                 method.CardBrand,
+		Last4:                 method.CardLast4,
+		ExpMonth:              method.CardExpMonth,
+		ExpYear:               method.CardExpYear,
+		IsDefault:             method.IsDefault,
+		CreatedAt:             method.CreatedAt.UTC(),
 	}
 }
