@@ -307,8 +307,9 @@ func applyProductListFilters(q *gorm.DB, query productListQuery) *gorm.DB {
 		q = q.Where("s.kyc_status = ?", enums.KYCStatusVerified)
 		q = q.Where("s.subscription_active = ?", true)
 		q = q.Where("p.is_active = ?", true)
+
 		if query.RequestedState != "" {
-			q = q.Where("(s.address).state = ?", query.RequestedState)
+			q = q.Where("LOWER((s.address).state) = LOWER(?)", query.RequestedState)
 		}
 	}
 	return q

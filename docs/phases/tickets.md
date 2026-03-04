@@ -342,6 +342,7 @@
   - [x] Ticket [PF-284]: Product inventory search patch
   - [x] Ticket [PF-285]: Product Patch - adding fields - created patch
   - [x] Ticket [PF-302]: feat - Product Update Patch
+  - [x] Ticket [PF-307]: patch to tokens/checkout + PM 
 
 ## Phase W — Wishlist\*\*
 

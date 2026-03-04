@@ -358,6 +358,8 @@ func (s *service) Update(ctx context.Context, userID, storeID uuid.UUID, input U
 				"has_social":     store.Social != nil,
 				"has_ratings":    store.Ratings != nil,
 				"has_categories": store.Categories != nil,
+				"has_banner":     store.BannerMediaID != nil,
+				"has_logo":       store.LogoMediaID != nil,
 			}
 
 			if store.Social != nil {

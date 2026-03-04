@@ -469,19 +469,16 @@ func BrowseProducts(svc productsvc.Service, storeSvc stores.Service, logg *logge
 			return
 		}
 		cursor := strings.TrimSpace(r.URL.Query().Get("cursor"))
-		requestedState := strings.ToUpper(strings.TrimSpace(r.URL.Query().Get("state")))
 
 		filters, err := decodeProductFilters(r)
 		if err != nil {
 			responses.WriteError(r.Context(), logg, w, err)
 			return
 		}
+
+		requestedState := ""
 		switch storeType {
 		case enums.StoreTypeBuyer:
-			if requestedState == "" {
-				responses.WriteError(r.Context(), logg, w, pkgerrors.New(pkgerrors.CodeValidation, "state is required"))
-				return
-			}
 			buyerStore, err := storeSvc.GetByID(r.Context(), storeID)
 			if err != nil {
 				responses.WriteError(r.Context(), logg, w, pkgerrors.Wrap(pkgerrors.CodeDependency, err, "load store"))
@@ -496,17 +493,16 @@ func BrowseProducts(svc productsvc.Service, storeSvc stores.Service, logg *logge
 				responses.WriteError(r.Context(), logg, w, pkgerrors.New(pkgerrors.CodeValidation, "buyer store state missing"))
 				return
 			}
-			if buyerState != requestedState {
-				responses.WriteError(r.Context(), logg, w, pkgerrors.New(pkgerrors.CodeValidation,
-					fmt.Sprintf("buyer store is in %s and cannot browse %s", buyerState, requestedState)))
-				return
-			}
+			requestedState = buyerState
+
 		case enums.StoreTypeVendor:
 			// vendor users may skip the state filter; their view is scoped to their store below.
 		default:
 			responses.WriteError(r.Context(), logg, w, pkgerrors.New(pkgerrors.CodeForbidden, "unsupported store type"))
 			return
 		}
+
+		fmt.Printf("[requestedState]: %s", requestedState)
 
 		input := productsvc.ListProductsInput{
 			StoreID:        storeID,

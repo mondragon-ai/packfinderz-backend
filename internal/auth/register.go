@@ -179,6 +179,8 @@ func (s *registerService) Register(ctx context.Context, req RegisterRequest) err
 			return pkgerrors.Wrap(pkgerrors.CodeInternal, err, "create store")
 		}
 
+		fmt.Println(req.Phone)
+
 		customerID, err := s.squareCustomers.EnsureCustomer(ctx, squarecustomers.Input{
 			FirstName:   req.FirstName,
 			LastName:    req.LastName,
